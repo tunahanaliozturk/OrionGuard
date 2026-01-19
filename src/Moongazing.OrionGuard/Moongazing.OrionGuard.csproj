@@ -1,30 +1,55 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <TargetFramework>net9.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-  </PropertyGroup>
+	<PropertyGroup>
+		<TargetFrameworks>net8.0;net9.0</TargetFrameworks>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<LangVersion>latest</LangVersion>
+		<GenerateDocumentationFile>true</GenerateDocumentationFile>
+		<EnableNETAnalyzers>true</EnableNETAnalyzers>
+		<AnalysisLevel>latest</AnalysisLevel>
+	</PropertyGroup>
 
-  <PropertyGroup>
-    <PackageId>OrionGuard</PackageId>
-    <Version>3.0.0</Version>
-    <Authors>Tunahan Ali Ozturk</Authors>
-    <Company>Tunahan Ali Ozturk</Company>
-    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-    <IncludeContentInPack>true</IncludeContentInPack>
-    <Description>
-      OrionGuard is a lightweight and extensible library for input validation in .NET applications.
-    </Description>
-    <PackageLicenseFile>docs/LICENSE.txt</PackageLicenseFile>
-    <PackageReadmeFile>docs/README.md</PackageReadmeFile>
-    <PackageIcon>docs/logo.png</PackageIcon>
+	<PropertyGroup>
+		<OutputType>Library</OutputType>
 
-    <PackageTags>guard validation exceptions .NET</PackageTags>
-  </PropertyGroup>
-  <ItemGroup>
-    <None Include="docs\README.md" Pack="true" PackagePath="docs/" />
-    <None Include="docs\LICENSE.txt" Pack="true" PackagePath="docs/" />
-    <None Include="docs\logo.png" Pack="true" PackagePath="docs/" />
+		<PackageId>OrionGuard</PackageId>
+		<Version>4.0.1</Version>
+		<Authors>Tunahan Ali Ozturk</Authors>
+		<Company>Tunahan Ali Ozturk</Company>
+		<GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+		<IncludeContentInPack>true</IncludeContentInPack>
+		<Description>
+			OrionGuard is a modern, fluent, and extensible validation library for .NET applications.
+		</Description>
+		<PackageLicenseFile>docs/LICENSE.txt</PackageLicenseFile>
+		<PackageReadmeFile>docs/README.md</PackageReadmeFile>
+		<PackageIcon>docs/logo.png</PackageIcon>
+		<RepositoryUrl>https://github.com/Moongazing/OrionGuard</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<PackageProjectUrl>https://github.com/Moongazing/OrionGuard</PackageProjectUrl>
+		<PackageTags>guard;validation;fluent;exceptions;.NET;input-validation;guard-clauses;defensive-programming</PackageTags>
+		<PackageReleaseNotes>
+			v4.0.0:
+			- New fluent API with Ensure.That() entry point
+			- Result Pattern with error accumulation (Ensure.Accumulate())
+			- Async validation support (EnsureAsync)
+			- Conditional validation (When/Unless)
+			- CallerArgumentExpression for automatic parameter names
+			- Object validation with property expressions
+			- DI integration (AddOrionGuard, IValidator&lt;T&gt;)
+			- Localization support
+			- Advanced validators (Credit Card, IBAN, JSON, XML, Base64, Identity No, etc.)
+			- Common validation profiles
+		</PackageReleaseNotes>
+	</PropertyGroup>
 
-  </ItemGroup>
+	<ItemGroup>
+		<PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.0" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<None Include="docs\README.md" Pack="true" PackagePath="docs/" />
+		<None Include="docs\LICENSE.txt" Pack="true" PackagePath="docs/" />
+		<None Include="docs\logo.png" Pack="true" PackagePath="docs/" />
+	</ItemGroup>
 </Project>

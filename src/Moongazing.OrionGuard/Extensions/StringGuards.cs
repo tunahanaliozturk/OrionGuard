@@ -233,7 +233,9 @@ public static class StringGuards
     }
     public static void AgainstNonPalindrome(this string value, string parameterName)
     {
-        var reversed = new string(value.ToCharArray().Reverse().ToArray());
+        var charArray = value.ToCharArray();
+        Array.Reverse(charArray);
+        var reversed = new string(charArray);
         if (!value.Equals(reversed, StringComparison.OrdinalIgnoreCase))
         {
             throw new ArgumentException($"{parameterName} must be a palindrome.", parameterName);
@@ -286,6 +288,7 @@ public static class StringGuards
         }
     }
 
+
     public static void AgainstNonLowercaseUnderscore(this string value, string parameterName)
     {
         if (!Regex.IsMatch(value, @"^[a-z_]+$"))
@@ -293,29 +296,7 @@ public static class StringGuards
             throw new ArgumentException($"{parameterName} must contain only lowercase letters and underscores.", parameterName);
         }
     }
-    public static void AgainstInvalidJson(this string value, string parameterName)
-    {
-        try
-        {
-            System.Text.Json.JsonDocument.Parse(value);
-        }
-        catch
-        {
-            throw new ArgumentException($"{parameterName} must be a valid JSON string.", parameterName);
-        }
-    }
 
-    public static void AgainstInvalidXml(this string value, string parameterName)
-    {
-        try
-        {
-            var xml = System.Xml.Linq.XDocument.Parse(value);
-        }
-        catch
-        {
-            throw new ArgumentException($"{parameterName} must be a valid XML string.", parameterName);
-        }
-    }
     public static void AgainstNotStartingWithAny(this string value, string[] prefixes, string parameterName)
     {
         if (!prefixes.Any(prefix => value.StartsWith(prefix)))
