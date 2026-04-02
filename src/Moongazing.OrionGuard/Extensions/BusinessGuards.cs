@@ -1,3 +1,6 @@
+using System.Collections.Frozen;
+using Moongazing.OrionGuard.Core;
+
 namespace Moongazing.OrionGuard.Extensions;
 
 /// <summary>
@@ -5,6 +8,13 @@ namespace Moongazing.OrionGuard.Extensions;
 /// </summary>
 public static class BusinessGuards
 {
+    private static readonly FrozenSet<string> ValidCurrencyCodes = new HashSet<string>
+    {
+        "USD", "EUR", "GBP", "JPY", "CHF", "AUD", "CAD", "CNY", "INR", "MXN",
+        "BRL", "RUB", "KRW", "SGD", "HKD", "NOK", "SEK", "DKK", "NZD", "ZAR",
+        "TRY", "PLN", "THB", "IDR", "MYR", "PHP", "CZK", "ILS", "CLP", "PKR",
+        "EGP", "AED", "SAR", "QAR", "KWD", "BHD", "OMR", "JOD", "LBP", "MAD"
+    }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
     #region Money & Currency
 
     /// <summary>
@@ -29,15 +39,7 @@ public static class BusinessGuards
     /// </summary>
     public static void AgainstInvalidCurrencyCode(this string value, string parameterName)
     {
-        var validCodes = new HashSet<string>
-        {
-            "USD", "EUR", "GBP", "JPY", "CHF", "AUD", "CAD", "CNY", "INR", "MXN",
-            "BRL", "RUB", "KRW", "SGD", "HKD", "NOK", "SEK", "DKK", "NZD", "ZAR",
-            "TRY", "PLN", "THB", "IDR", "MYR", "PHP", "CZK", "ILS", "CLP", "PKR",
-            "EGP", "AED", "SAR", "QAR", "KWD", "BHD", "OMR", "JOD", "LBP", "MAD"
-        };
-
-        if (string.IsNullOrWhiteSpace(value) || !validCodes.Contains(value.ToUpperInvariant()))
+        if (string.IsNullOrWhiteSpace(value) || !ValidCurrencyCodes.Contains(value))
         {
             throw new ArgumentException($"{parameterName} is not a valid ISO 4217 currency code.", parameterName);
         }
@@ -75,7 +77,7 @@ public static class BusinessGuards
     public static void AgainstInvalidSku(this string value, string parameterName)
     {
         if (string.IsNullOrWhiteSpace(value) ||
-            !System.Text.RegularExpressions.Regex.IsMatch(value, @"^[A-Z0-9]{3,20}(-[A-Z0-9]{1,10})*$"))
+            !RegexCache.IsMatch(value, @"^[A-Z0-9]{3,20}(-[A-Z0-9]{1,10})*$"))
         {
             throw new ArgumentException($"{parameterName} is not a valid SKU format.", parameterName);
         }
@@ -199,7 +201,7 @@ public static class BusinessGuards
     public static void AgainstInvalidCouponCode(this string value, string parameterName)
     {
         if (string.IsNullOrWhiteSpace(value) ||
-            !System.Text.RegularExpressions.Regex.IsMatch(value, @"^[A-Z0-9]{4,20}$"))
+            !RegexCache.IsMatch(value, @"^[A-Z0-9]{4,20}$"))
         {
             throw new ArgumentException($"{parameterName} is not a valid coupon code format.", parameterName);
         }

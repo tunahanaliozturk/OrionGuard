@@ -3,8 +3,8 @@
 /// <summary>
 /// Exception thrown when a date is in the future.
 /// </summary>
-public class FutureDateException : GuardException
+public sealed class FutureDateException : GuardException
 {
     public FutureDateException(string parameterName)
-        : base($"{parameterName} cannot be in the future.") { }
+        : base($"{parameterName} cannot be in the future.", parameterName, "FUTURE_DATE") { }
 }

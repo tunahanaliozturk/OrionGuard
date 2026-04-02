@@ -1,7 +1,10 @@
 ﻿namespace Moongazing.OrionGuard.Exceptions;
 
-public class WeekendException : GuardException
+/// <summary>
+/// Exception thrown when a date falls on a weekend.
+/// </summary>
+public sealed class WeekendException : GuardException
 {
     public WeekendException(string parameterName)
-        : base($"{parameterName} cannot be a weekend.") { }
+        : base($"{parameterName} cannot be a weekend.", parameterName, "WEEKEND") { }
 }

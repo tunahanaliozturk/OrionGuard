@@ -203,7 +203,7 @@ public sealed class FluentGuard<T>
     {
         if (!_shouldValidate) return this;
 
-        if (_value is string str && !System.Text.RegularExpressions.Regex.IsMatch(str, pattern))
+        if (_value is string str && !RegexCache.IsMatch(str, pattern))
         {
             AddError(message ?? $"{_parameterName} does not match the required pattern.", "PATTERN");
         }
@@ -215,7 +215,7 @@ public sealed class FluentGuard<T>
     /// </summary>
     public FluentGuard<T> Email(string? message = null)
     {
-        return Matches(@"^[^@\s]+@[^@\s]+\.[^@\s]+$", message ?? $"{_parameterName} must be a valid email address.");
+        return Matches(Utilities.RegexPatterns.Email, message ?? $"{_parameterName} must be a valid email address.");
     }
 
     /// <summary>
@@ -239,7 +239,7 @@ public sealed class FluentGuard<T>
     {
         if (!_shouldValidate) return this;
 
-        if (_value is string str && !str.StartsWith(prefix))
+        if (_value is string str && !str.StartsWith(prefix, StringComparison.Ordinal))
         {
             AddError(message ?? $"{_parameterName} must start with '{prefix}'.", "STARTS_WITH");
         }
@@ -253,7 +253,7 @@ public sealed class FluentGuard<T>
     {
         if (!_shouldValidate) return this;
 
-        if (_value is string str && !str.EndsWith(suffix))
+        if (_value is string str && !str.EndsWith(suffix, StringComparison.Ordinal))
         {
             AddError(message ?? $"{_parameterName} must end with '{suffix}'.", "ENDS_WITH");
         }
@@ -489,11 +489,11 @@ public sealed class FluentGuard<T>
     {
         if (!_shouldValidate) return this;
 
-        if (_value is DateTime dt && dt >= DateTime.Now)
+        if (_value is DateTime dt && dt >= DateTime.UtcNow)
         {
             AddError(message ?? $"{_parameterName} must be in the past.", "IN_PAST");
         }
-        else if (_value is DateOnly d && d >= DateOnly.FromDateTime(DateTime.Now))
+        else if (_value is DateOnly d && d >= DateOnly.FromDateTime(DateTime.UtcNow))
         {
             AddError(message ?? $"{_parameterName} must be in the past.", "IN_PAST");
         }
@@ -507,11 +507,11 @@ public sealed class FluentGuard<T>
     {
         if (!_shouldValidate) return this;
 
-        if (_value is DateTime dt && dt <= DateTime.Now)
+        if (_value is DateTime dt && dt <= DateTime.UtcNow)
         {
             AddError(message ?? $"{_parameterName} must be in the future.", "IN_FUTURE");
         }
-        else if (_value is DateOnly d && d <= DateOnly.FromDateTime(DateTime.Now))
+        else if (_value is DateOnly d && d <= DateOnly.FromDateTime(DateTime.UtcNow))
         {
             AddError(message ?? $"{_parameterName} must be in the future.", "IN_FUTURE");
         }
@@ -528,6 +528,42 @@ public sealed class FluentGuard<T>
         if (_value is DateTime dt && (dt < start || dt > end))
         {
             AddError(message ?? $"{_parameterName} must be between {start:d} and {end:d}.", "DATE_BETWEEN");
+        }
+        return this;
+    }
+
+    #endregion
+
+    #region Transform Operations
+
+    /// <summary>
+    /// Transforms the value (e.g., trim, lowercase) during validation.
+    /// Creates a new FluentGuard with the transformed value.
+    /// </summary>
+    public FluentGuard<T> Transform(Func<T, T> transform)
+    {
+        if (!_shouldValidate) return this;
+
+        var transformed = transform(_value);
+        var guard = new FluentGuard<T>(transformed, _parameterName, _throwOnFirstError);
+        guard._shouldValidate = _shouldValidate;
+        foreach (var error in _errors)
+            guard._errors.Add(error);
+        return guard;
+    }
+
+    /// <summary>
+    /// Returns a default value if the current value is null.
+    /// </summary>
+    public FluentGuard<T> Default(T defaultValue)
+    {
+        if (_value is null)
+        {
+            var guard = new FluentGuard<T>(defaultValue, _parameterName, _throwOnFirstError);
+            guard._shouldValidate = _shouldValidate;
+            foreach (var error in _errors)
+                guard._errors.Add(error);
+            return guard;
         }
         return this;
     }

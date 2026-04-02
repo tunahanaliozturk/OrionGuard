@@ -1,16 +1,19 @@
-﻿namespace Moongazing.OrionGuard.Core
+﻿namespace Moongazing.OrionGuard.Core;
+
+/// <summary>
+/// Represents a validation clause that can be executed.
+/// </summary>
+public interface IGuardClause
 {
     /// <summary>
-    /// Represents a validation clause that can be executed.
+    /// Executes the validation logic for this clause.
     /// </summary>
-    public interface IGuardClause
-    {
-        /// <summary>
-        /// Executes the validation logic for this clause.
-        /// </summary>
-        void Validate();
-    }
+    void Validate();
 }
+
+/// <summary>
+/// Defines the contract for fluent guard step operations.
+/// </summary>
 public interface IFluentGuardStep<T>
 {
     IFluentGuardStep<T> NotNull();

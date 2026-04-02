@@ -1,7 +1,10 @@
 ﻿namespace Moongazing.OrionGuard.Exceptions;
 
-public class OnlyAlphanumericCharacterException : GuardException
+/// <summary>
+/// Exception thrown when a string does not contain only alphanumeric characters.
+/// </summary>
+public sealed class OnlyAlphanumericCharacterException : GuardException
 {
     public OnlyAlphanumericCharacterException(string parameterName)
-        : base($"{parameterName} must contain at least one alphanumeric character.") { }
+        : base($"{parameterName} must contain only alphanumeric characters.", parameterName, "ALPHANUMERIC_ONLY") { }
 }

@@ -7,7 +7,7 @@
     {
         public static void AgainstPastDate(this DateTime date, string parameterName)
         {
-            if (date < DateTime.Now)
+            if (date < DateTime.UtcNow)
             {
                 throw new ArgumentException($"{parameterName} cannot be in the past.", parameterName);
             }
@@ -15,7 +15,7 @@
 
         public static void AgainstFutureDate(this DateTime date, string parameterName)
         {
-            if (date > DateTime.Now)
+            if (date > DateTime.UtcNow)
             {
                 throw new ArgumentException($"{parameterName} cannot be in the future.", parameterName);
             }
@@ -46,22 +46,23 @@
         }
         public static void AgainstNonToday(this DateTime date, string parameterName)
         {
-            if (date.Date != DateTime.Now.Date)
+            if (date.Date != DateTime.UtcNow.Date)
             {
                 throw new ArgumentException($"{parameterName} must be today's date.", parameterName);
             }
         }
         public static void AgainstUnrealisticBirthDate(this DateTime date, string parameterName)
         {
-            var maxDate = DateTime.Now.AddYears(-120);
-            if (date > DateTime.Now || date < maxDate)
+            var now = DateTime.UtcNow;
+            var maxDate = now.AddYears(-120);
+            if (date > now || date < maxDate)
             {
                 throw new ArgumentException($"{parameterName} is not a realistic birth date.", parameterName);
             }
         }
         public static void AgainstFuturePeriod(this DateTime date, TimeSpan period, string parameterName)
         {
-            if (date > DateTime.Now.Add(period))
+            if (date > DateTime.UtcNow.Add(period))
             {
                 throw new ArgumentException($"{parameterName} cannot be beyond {period} from now.", parameterName);
             }

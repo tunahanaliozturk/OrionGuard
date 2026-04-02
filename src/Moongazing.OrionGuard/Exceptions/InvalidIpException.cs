@@ -1,7 +1,10 @@
 ﻿namespace Moongazing.OrionGuard.Exceptions;
 
-public class InvalidIpException : GuardException
+/// <summary>
+/// Exception thrown when an invalid IP address is provided.
+/// </summary>
+public sealed class InvalidIpException : GuardException
 {
     public InvalidIpException(string parameterName)
-        : base($"{parameterName} is not a valid IP address.") { }
+        : base($"{parameterName} is not a valid IP address.", parameterName, "INVALID_IP") { }
 }

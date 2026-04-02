@@ -1,7 +1,10 @@
 ﻿namespace Moongazing.OrionGuard.Exceptions;
 
-public class InvalidUrlException : GuardException
+/// <summary>
+/// Exception thrown when an invalid URL is provided.
+/// </summary>
+public sealed class InvalidUrlException : GuardException
 {
     public InvalidUrlException(string parameterName)
-        : base($"{parameterName} is not a valid URL.") { }
+        : base($"{parameterName} is not a valid URL.", parameterName, "INVALID_URL") { }
 }

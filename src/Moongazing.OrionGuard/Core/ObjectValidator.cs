@@ -1,19 +1,23 @@
+using System.Collections.Concurrent;
 using System.Linq.Expressions;
-using System.Reflection;
 
 namespace Moongazing.OrionGuard.Core;
 
 /// <summary>
 /// Object validator that validates all properties of an object at once.
+/// Uses compiled expression caching to avoid repeated compilation overhead.
 /// </summary>
 public sealed class ObjectValidator<T> where T : class
 {
+    private static readonly ConcurrentDictionary<string, Delegate> _compiledAccessors = new();
+
     private readonly T _instance;
     private readonly List<ValidationError> _errors = new();
     private readonly bool _throwOnFirstError;
 
     internal ObjectValidator(T instance, bool throwOnFirstError)
     {
+        ArgumentNullException.ThrowIfNull(instance);
         _instance = instance;
         _throwOnFirstError = throwOnFirstError;
     }
@@ -26,7 +30,8 @@ public sealed class ObjectValidator<T> where T : class
         Action<FluentGuard<TProperty>> configure)
     {
         var propertyName = GetPropertyName(selector);
-        var value = selector.Compile()(_instance);
+        var accessor = GetOrCompileAccessor(selector, propertyName);
+        var value = accessor(_instance);
 
         var guard = new FluentGuard<TProperty>(value, propertyName, throwOnFirstError: false);
         configure(guard);
@@ -35,6 +40,34 @@ public sealed class ObjectValidator<T> where T : class
         if (result.IsInvalid)
         {
             _errors.AddRange(result.Errors);
+
+            if (_throwOnFirstError)
+            {
+                throw new AggregateValidationException(_errors);
+            }
+        }
+
+        return this;
+    }
+
+    /// <summary>
+    /// Validates a property against another property (cross-property validation).
+    /// </summary>
+    public ObjectValidator<T> CrossProperty<TProp1, TProp2>(
+        Expression<Func<T, TProp1>> selector1,
+        Expression<Func<T, TProp2>> selector2,
+        Func<TProp1, TProp2, bool> predicate,
+        string message,
+        string? errorCode = null)
+    {
+        var name1 = GetPropertyName(selector1);
+        var name2 = GetPropertyName(selector2);
+        var value1 = GetOrCompileAccessor(selector1, name1)(_instance);
+        var value2 = GetOrCompileAccessor(selector2, name2)(_instance);
+
+        if (!predicate(value1, value2))
+        {
+            _errors.Add(new ValidationError($"{name1},{name2}", message, errorCode ?? "CROSS_PROPERTY"));
 
             if (_throwOnFirstError)
             {
@@ -77,6 +110,18 @@ public sealed class ObjectValidator<T> where T : class
     }
 
     /// <summary>
+    /// Conditionally applies validation rules.
+    /// </summary>
+    public ObjectValidator<T> When(bool condition, Action<ObjectValidator<T>> configure)
+    {
+        if (condition)
+        {
+            configure(this);
+        }
+        return this;
+    }
+
+    /// <summary>
     /// Returns the validation result.
     /// </summary>
     public GuardResult ToResult()
@@ -100,6 +145,14 @@ public sealed class ObjectValidator<T> where T : class
     /// Returns the validated object if valid.
     /// </summary>
     public T Build() => ThrowIfInvalid();
+
+    private static Func<T, TProperty> GetOrCompileAccessor<TProperty>(
+        Expression<Func<T, TProperty>> selector, string cacheKey)
+    {
+        var key = $"{typeof(T).FullName}.{cacheKey}.{typeof(TProperty).FullName}";
+        var cached = _compiledAccessors.GetOrAdd(key, _ => selector.Compile());
+        return (Func<T, TProperty>)cached;
+    }
 
     private static string GetPropertyName<TProperty>(Expression<Func<T, TProperty>> expression)
     {
@@ -126,7 +179,7 @@ public static class Validate
     /// <summary>
     /// Creates an object validator for the specified instance.
     /// </summary>
-    public static ObjectValidator<T> Object<T>(T instance) where T : class
+    public static ObjectValidator<T> For<T>(T instance) where T : class
     {
         return new ObjectValidator<T>(instance, throwOnFirstError: false);
     }
@@ -134,7 +187,7 @@ public static class Validate
     /// <summary>
     /// Creates an object validator that throws on first error.
     /// </summary>
-    public static ObjectValidator<T> ObjectStrict<T>(T instance) where T : class
+    public static ObjectValidator<T> ForStrict<T>(T instance) where T : class
     {
         return new ObjectValidator<T>(instance, throwOnFirstError: true);
     }

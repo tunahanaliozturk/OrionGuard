@@ -1,9 +1,12 @@
 ﻿namespace Moongazing.OrionGuard.Exceptions;
 
-public class UninitializedPropertyException : Exception
+/// <summary>
+/// Exception thrown when an object contains uninitialized (null) properties.
+/// </summary>
+public sealed class UninitializedPropertyException : GuardException
 {
     public UninitializedPropertyException(string parameterName, string propertyName)
-        : base($"{parameterName} contains uninitialized property: {propertyName}.")
+        : base($"{parameterName} contains uninitialized property: {propertyName}.", parameterName, "UNINITIALIZED_PROPERTY")
     {
     }
 }

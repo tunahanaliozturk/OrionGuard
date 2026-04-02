@@ -228,13 +228,13 @@ namespace Moongazing.OrionGuard.Tests
         }
 
         [Fact]
-        public void AgainstEmptyCollection_ShouldThrowEmptyStringException_WhenCollectionIsEmpty()
+        public void AgainstEmptyCollection_ShouldThrowNullValueException_WhenCollectionIsEmpty()
         {
             // Arrange
             var collection = new List<int>();
 
             // Act & Assert
-            Assert.Throws<EmptyStringException>(() => Guard.AgainstEmptyCollection(collection, nameof(collection)));
+            Assert.Throws<NullValueException>(() => Guard.AgainstEmptyCollection(collection, nameof(collection)));
         }
 
         [Fact]

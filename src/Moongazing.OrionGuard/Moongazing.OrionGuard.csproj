@@ -6,20 +6,25 @@
 		<LangVersion>latest</LangVersion>
 		<GenerateDocumentationFile>true</GenerateDocumentationFile>
 		<EnableNETAnalyzers>true</EnableNETAnalyzers>
-		<AnalysisLevel>latest</AnalysisLevel>
+		<AnalysisLevel>latest-recommended</AnalysisLevel>
+		<EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+		<TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+		<NoWarn>CS1591;NU1900;NU1901;NU1902;NU1903;NU1904</NoWarn>
 	</PropertyGroup>
 
 	<PropertyGroup>
 		<OutputType>Library</OutputType>
 
 		<PackageId>OrionGuard</PackageId>
-		<Version>4.0.1</Version>
+		<Version>5.0.0</Version>
 		<Authors>Tunahan Ali Ozturk</Authors>
 		<Company>Tunahan Ali Ozturk</Company>
-		<GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+		<GeneratePackageOnBuild>false</GeneratePackageOnBuild>
 		<IncludeContentInPack>true</IncludeContentInPack>
 		<Description>
 			OrionGuard is a modern, fluent, and extensible validation library for .NET applications.
+			Features: ThrowHelper-optimized guards, span-based FastGuard, security guards (SQL/XSS/Path Traversal),
+			universal format guards, thread-safe localization, compiled expression caching, and Result pattern.
 		</Description>
 		<PackageLicenseFile>docs/LICENSE.txt</PackageLicenseFile>
 		<PackageReadmeFile>docs/README.md</PackageReadmeFile>
@@ -27,19 +32,9 @@
 		<RepositoryUrl>https://github.com/Moongazing/OrionGuard</RepositoryUrl>
 		<RepositoryType>git</RepositoryType>
 		<PackageProjectUrl>https://github.com/Moongazing/OrionGuard</PackageProjectUrl>
-		<PackageTags>guard;validation;fluent;exceptions;.NET;input-validation;guard-clauses;defensive-programming</PackageTags>
+		<PackageTags>guard;validation;fluent;exceptions;.NET;input-validation;guard-clauses;defensive-programming;security;localization;format-validation</PackageTags>
 		<PackageReleaseNotes>
-			v4.0.0:
-			- New fluent API with Ensure.That() entry point
-			- Result Pattern with error accumulation (Ensure.Accumulate())
-			- Async validation support (EnsureAsync)
-			- Conditional validation (When/Unless)
-			- CallerArgumentExpression for automatic parameter names
-			- Object validation with property expressions
-			- DI integration (AddOrionGuard, IValidator&lt;T&gt;)
-			- Localization support
-			- Advanced validators (Credit Card, IBAN, JSON, XML, Base64, Identity No, etc.)
-			- Common validation profiles
+			v5.0.0: See CHANGELOG.md for full details.
 		</PackageReleaseNotes>
 	</PropertyGroup>
 

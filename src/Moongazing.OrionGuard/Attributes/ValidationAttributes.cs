@@ -136,7 +136,7 @@ public sealed class RangeAttribute : ValidationAttribute
 
         try
         {
-            var doubleValue = Convert.ToDouble(value);
+            var doubleValue = Convert.ToDouble(value, System.Globalization.CultureInfo.InvariantCulture);
             return doubleValue >= Minimum && doubleValue <= Maximum;
         }
         catch
@@ -185,7 +185,7 @@ public sealed class PositiveAttribute : ValidationAttribute
 
         try
         {
-            var doubleValue = Convert.ToDouble(value);
+            var doubleValue = Convert.ToDouble(value, System.Globalization.CultureInfo.InvariantCulture);
             return doubleValue > 0;
         }
         catch

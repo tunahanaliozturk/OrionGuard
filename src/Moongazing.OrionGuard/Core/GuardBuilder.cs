@@ -3,42 +3,42 @@ using System.Text.RegularExpressions;
 
 namespace Moongazing.OrionGuard.Core;
 
-public class GuardBuilder<T> : IFluentGuardStep<T>
+public sealed class GuardBuilder<T> : IFluentGuardStep<T>
 {
     public T Value { get; }
-    private readonly string _parameterName;
+    public string ParameterName { get; }
 
     public GuardBuilder(T value, string parameterName)
     {
         Value = value;
-        _parameterName = parameterName;
+        ParameterName = parameterName;
     }
 
     public IFluentGuardStep<T> NotNull()
     {
         if (Value is null)
-            throw new NullValueException(_parameterName);
+            ThrowHelper.ThrowNullValue(ParameterName);
         return this;
     }
 
     public IFluentGuardStep<T> NotEmpty()
     {
         if (Value is string str && string.IsNullOrWhiteSpace(str))
-            throw new EmptyStringException(_parameterName);
+            ThrowHelper.ThrowEmptyString(ParameterName);
         return this;
     }
 
     public IFluentGuardStep<T> Length(int min, int max)
     {
         if (Value is string str && (str.Length < min || str.Length > max))
-            throw new OutOfRangeException(_parameterName, min, max);
+            ThrowHelper.ThrowOutOfRange(ParameterName, min, max);
         return this;
     }
 
     public IFluentGuardStep<T> Matches(string pattern)
     {
-        if (Value is string str && !Regex.IsMatch(str, pattern))
-            throw new RegexMismatchException(_parameterName, pattern);
+        if (Value is string str && !RegexCache.IsMatch(str, pattern))
+            ThrowHelper.ThrowRegexMismatch(ParameterName, pattern);
         return this;
     }
 }

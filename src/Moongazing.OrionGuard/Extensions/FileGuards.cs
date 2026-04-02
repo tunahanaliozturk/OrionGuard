@@ -13,7 +13,7 @@ public static class FileGuards
     public static void AgainstInvalidFileExtension(this string filePath, string[] validExtensions, string parameterName)
     {
         var fileExtension = System.IO.Path.GetExtension(filePath);
-        if (!validExtensions.Contains(fileExtension))
+        if (!validExtensions.Contains(fileExtension, StringComparer.OrdinalIgnoreCase))
         {
             throw new ArgumentException($"{parameterName} must have one of the following extensions: {string.Join(", ", validExtensions)}.", parameterName);
         }

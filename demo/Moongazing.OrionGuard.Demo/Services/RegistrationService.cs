@@ -25,7 +25,7 @@ public class RegistrationService
     // v4.0 - Object validation approach
     public GuardResult ValidateWithResult(UserInput input)
     {
-        return Validate.Object(input)
+        return Validate.For(input)
             .Property(u => u.Email, g => g.NotNull().NotEmpty().Email())
             .Property(u => u.Password, g => g.NotNull().MinLength(8))
             .Property(u => u.Username, g => g.NotNull().Length(3, 30))

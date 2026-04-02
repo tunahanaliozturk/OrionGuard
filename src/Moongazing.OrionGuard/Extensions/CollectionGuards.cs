@@ -12,7 +12,17 @@ public static class CollectionGuards
 
     public static void AgainstExceedingCount<T>(this IEnumerable<T> collection, int maxCount, string parameterName)
     {
-        if (collection.Count() > maxCount)
+        if (collection is ICollection<T> col)
+        {
+            if (col.Count > maxCount)
+                throw new ArgumentException($"{parameterName} cannot contain more than {maxCount} items.", parameterName);
+        }
+        else if (collection is IReadOnlyCollection<T> roc)
+        {
+            if (roc.Count > maxCount)
+                throw new ArgumentException($"{parameterName} cannot contain more than {maxCount} items.", parameterName);
+        }
+        else if (collection.Take(maxCount + 1).Count() > maxCount)
         {
             throw new ArgumentException($"{parameterName} cannot contain more than {maxCount} items.", parameterName);
         }

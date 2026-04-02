@@ -8,7 +8,7 @@ public static class GuardBuilderExtensions
         where T : IComparable<T>
     {
         if (builder.Value.CompareTo(min) <= 0)
-            throw new GreaterThanException(builder.Value?.ToString() ?? "value");
+            ThrowHelper.ThrowGreaterThan(builder.ParameterName, min!);
         return builder;
     }
 
@@ -16,7 +16,7 @@ public static class GuardBuilderExtensions
         where T : IComparable<T>
     {
         if (builder.Value.CompareTo(max) >= 0)
-            throw new LessThanException(builder.Value?.ToString() ?? "value");
+            ThrowHelper.ThrowLessThan(builder.ParameterName, max!);
         return builder;
     }
 }

@@ -1,7 +1,10 @@
 ﻿namespace Moongazing.OrionGuard.Exceptions;
 
-public class CharactersOutsideSetException : GuardException
+/// <summary>
+/// Exception thrown when a string contains characters outside the allowed set.
+/// </summary>
+public sealed class CharactersOutsideSetException : GuardException
 {
     public CharactersOutsideSetException(string parameterName)
-        : base($"{parameterName} contains characters outside the set.") { }
+        : base($"{parameterName} contains characters outside the set.", parameterName, "CHARACTERS_OUTSIDE_SET") { }
 }

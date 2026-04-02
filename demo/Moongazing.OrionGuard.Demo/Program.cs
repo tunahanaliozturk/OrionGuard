@@ -5,11 +5,12 @@ using Moongazing.OrionGuard.Profiles;
 using Moongazing.OrionGuard.Core;
 using Moongazing.OrionGuard.Extensions;
 using Moongazing.OrionGuard.Localization;
+using System.Globalization;
 
-Console.WriteLine("🔐 OrionGuard v4.0 - Full Demo\n");
-Console.WriteLine("=".PadRight(50, '='));
+Console.WriteLine("🔐 OrionGuard v5.0 - Full Demo\n");
+Console.WriteLine("=".PadRight(60, '='));
 
-#region 🌟 NEW v4.0 Features
+#region 🌟 Core Fluent API
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 1. FLUENT API with Ensure.That()
@@ -19,7 +20,6 @@ Console.WriteLine("\n📌 1. Fluent API - Ensure.That()");
 string email = "user@example.com";
 string password = "SecureP@ss123";
 
-// Automatic parameter name capture with CallerArgumentExpression
 Ensure.That(email).NotNull().NotEmpty().Email();
 Ensure.That(password).NotNull().MinLength(8);
 Console.WriteLine("   ✅ Email and password validated!");
@@ -54,19 +54,40 @@ Console.WriteLine("\n📌 3. Conditional Validation - When/Unless");
 int? age = null;
 bool isAgeRequired = false;
 
-// Only validate when required
 var ageResult = Ensure.Accumulate(age, "Age")
     .When(isAgeRequired)
     .NotNull()
-    .Always() // Reset condition
+    .Always()
     .ToResult();
 
 Console.WriteLine($"   ✅ Age validation (optional): {(ageResult.IsValid ? "Passed" : "Failed")}");
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 4. OBJECT VALIDATION
+// 4. TRANSFORM & DEFAULT
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Console.WriteLine("\n📌 4. Object Validation");
+Console.WriteLine("\n📌 4. Transform & Default (NEW v5.0)");
+
+string rawInput = "  Hello World  ";
+var trimmed = Ensure.That(rawInput)
+    .Transform(v => v.Trim())
+    .NotEmpty()
+    .Build();
+Console.WriteLine($"   ✅ Transformed: '{trimmed}'");
+
+string? nullable = null;
+var defaulted = Ensure.That(nullable)
+    .Default("fallback-value")
+    .Build();
+Console.WriteLine($"   ✅ Default applied: '{defaulted}'");
+
+#endregion
+
+#region 🌟 Object Validation
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 5. OBJECT VALIDATION with CrossProperty
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Console.WriteLine("\n📌 5. Object Validation + Cross-Property (NEW v5.0)");
 
 var userInput = new UserInput
 {
@@ -75,55 +96,152 @@ var userInput = new UserInput
     Username = "user_01"
 };
 
-var objectResult = Validate.Object(userInput)
+var objectResult = Validate.For(userInput)
     .Property(u => u.Email, g => g.NotNull().NotEmpty().Email())
     .Property(u => u.Password, g => g.NotNull().MinLength(8))
     .Property(u => u.Username, g => g.NotNull().Length(3, 30))
+    .CrossProperty(u => u.Email, u => u.Username,
+        (e, u) => e != u, "Email and Username must be different")
     .ToResult();
 
 Console.WriteLine($"   ✅ Object validation: {(objectResult.IsValid ? "Passed" : "Failed")}");
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 5. COMMON PROFILES
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Console.WriteLine("\n📌 5. Built-in Profiles");
+// Conditional object validation with When
+var conditionalResult = Validate.For(userInput)
+    .When(userInput.Email.Contains('@'), v => v
+        .Property(u => u.Email, g => g.Email()))
+    .ToResult();
 
-var emailResult = CommonProfiles.Email("valid@email.com");
-var passwordResult = CommonProfiles.Password("StrongP@ss1", minLength: 8);
-var usernameResult = CommonProfiles.Username("john_doe");
+Console.WriteLine($"   ✅ Conditional validation: {(conditionalResult.IsValid ? "Passed" : "Failed")}");
 
-Console.WriteLine($"   ✅ Email: {(emailResult.IsValid ? "Valid" : "Invalid")}");
-Console.WriteLine($"   ✅ Password: {(passwordResult.IsValid ? "Valid" : "Invalid")}");
-Console.WriteLine($"   ✅ Username: {(usernameResult.IsValid ? "Valid" : "Invalid")}");
+#endregion
+
+#region 🌟 Security Guards
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 6. ADVANCED VALIDATORS
+// 6. SECURITY GUARDS (NEW v5.0)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Console.WriteLine("\n📌 6. Advanced Validators");
+Console.WriteLine("\n📌 6. Security Guards (NEW v5.0)");
+
+var safeInput = "normal user input";
+safeInput.AgainstSqlInjection("input");
+safeInput.AgainstXss("input");
+safeInput.AgainstPathTraversal("input");
+safeInput.AgainstCommandInjection("input");
+safeInput.AgainstLdapInjection("input");
+Console.WriteLine("   ✅ SQL Injection check passed!");
+Console.WriteLine("   ✅ XSS check passed!");
+Console.WriteLine("   ✅ Path Traversal check passed!");
+Console.WriteLine("   ✅ Command Injection check passed!");
+Console.WriteLine("   ✅ LDAP Injection check passed!");
+
+// Combined injection check
+"safe-filename.pdf".AgainstUnsafeFileName("filename");
+Console.WriteLine("   ✅ Safe filename validated!");
+
+// Demonstrate catching attacks
+try { "SELECT * FROM Users".AgainstSqlInjection("search"); }
+catch (ArgumentException ex) { Console.WriteLine($"   🛡️ SQL Injection blocked: {ex.Message}"); }
+
+try { "<script>alert('xss')</script>".AgainstXss("comment"); }
+catch (ArgumentException ex) { Console.WriteLine($"   🛡️ XSS blocked: {ex.Message}"); }
+
+try { "../../etc/passwd".AgainstPathTraversal("path"); }
+catch (ArgumentException ex) { Console.WriteLine($"   🛡️ Path Traversal blocked: {ex.Message}"); }
+
+#endregion
+
+#region Format Guards
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 7. FORMAT GUARDS - Universal Formats (NEW v5.0)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Console.WriteLine("\n📌 7. Format Guards - Universal Formats (NEW v5.0)");
 
 try
 {
-    // Credit Card (Luhn algorithm)
+    41.0082.AgainstInvalidLatitude("latitude");
+    28.9784.AgainstInvalidLongitude("longitude");
+    Console.WriteLine("   ✅ Geo coordinates (41.0082, 28.9784) validated!");
+
+    "00:1A:2B:3C:4D:5E".AgainstInvalidMacAddress("mac");
+    Console.WriteLine("   ✅ MAC address validated!");
+
+    "api.example.com".AgainstInvalidHostname("hostname");
+    Console.WriteLine("   ✅ Hostname validated!");
+
+    "192.168.1.0/24".AgainstInvalidCidr("cidr");
+    Console.WriteLine("   ✅ CIDR notation validated!");
+
+    "US".AgainstInvalidCountryCode("country");
+    Console.WriteLine("   ✅ ISO country code validated!");
+
+    "Europe/Istanbul".AgainstInvalidTimeZoneId("timezone");
+    Console.WriteLine("   ✅ Time zone ID validated!");
+
+    "en-US".AgainstInvalidLanguageTag("lang");
+    Console.WriteLine("   ✅ Language tag validated!");
+
+    "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.abc123".AgainstInvalidJwtFormat("token");
+    Console.WriteLine("   ✅ JWT format validated!");
+
+    "Server=localhost;Database=mydb;User=sa;Password=secret".AgainstInvalidConnectionString("connStr");
+    Console.WriteLine("   ✅ Connection string validated!");
+}
+catch (ArgumentException ex)
+{
+    Console.WriteLine($"   ❌ Format validation error: {ex.Message}");
+}
+
+#endregion
+
+#region 🌟 FastGuard (Zero-Allocation)
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 8. FASTGUARD - Span-based validation (NEW v5.0)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Console.WriteLine("\n📌 8. FastGuard - Zero-Allocation Validation (NEW v5.0)");
+
+FastGuard.NotNullOrEmpty("valid-string", "param");
+FastGuard.InRange(25, 1, 100, "age");
+FastGuard.Positive(42, "count");
+FastGuard.Email("test@example.com", "email");
+FastGuard.Ascii("hello123".AsSpan(), "ascii");
+FastGuard.AlphaNumeric("abc123".AsSpan(), "alphaNum");
+FastGuard.NumericString("123456".AsSpan(), "digits");
+FastGuard.MaxLength("short".AsSpan(), 100, "text");
+FastGuard.ValidGuid(Guid.NewGuid().ToString().AsSpan(), "guid");
+FastGuard.Finite(3.14, "pi");
+
+Console.WriteLine("   ✅ All FastGuard span-based validations passed!");
+Console.WriteLine("   📊 Zero heap allocations for hot-path validations!");
+
+#endregion
+
+#region 🌟 Advanced Validators
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 9. ADVANCED VALIDATORS
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Console.WriteLine("\n📌 9. Advanced Validators");
+
+try
+{
     "4111111111111111".AgainstInvalidCreditCard("creditCard");
     Console.WriteLine("   ✅ Credit card validated!");
 
-    // IBAN
     "DE89370400440532013000".AgainstInvalidIban("iban");
     Console.WriteLine("   ✅ IBAN validated!");
 
-    // JSON
     "{\"name\": \"test\"}".AgainstInvalidJson("jsonData");
     Console.WriteLine("   ✅ JSON validated!");
 
-    // Turkish ID (TC Kimlik No)
     "10000000146".AgainstInvalidTurkishId("tcKimlik");
     Console.WriteLine("   ✅ Turkish ID validated!");
 
-    // Base64
     "SGVsbG8gV29ybGQ=".AgainstInvalidBase64("base64Data");
     Console.WriteLine("   ✅ Base64 validated!");
 
-    // Hex Color
     "#FF5733".AgainstInvalidHexColor("color");
     Console.WriteLine("   ✅ Hex color validated!");
 }
@@ -132,36 +250,56 @@ catch (ArgumentException ex)
     Console.WriteLine($"   ❌ Validation error: {ex.Message}");
 }
 
+#endregion
+
+#region 🌟 Localization (8 Languages)
+
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 7. LOCALIZATION
+// 10. LOCALIZATION - 8 Languages (Enhanced v5.0)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Console.WriteLine("\n📌 7. Localization Support");
+Console.WriteLine("\n📌 10. Localization Support (8 Languages)");
 
-ValidationMessages.SetCulture("tr");
-Console.WriteLine($"   TR: {ValidationMessages.Get("NotNull", "Email")}");
+string[] languages = ["en", "tr", "de", "fr", "es", "pt", "ar", "ja"];
+foreach (var lang in languages)
+{
+    var msg = ValidationMessages.Get("NotNull", new CultureInfo(lang), "Email");
+    Console.WriteLine($"   {lang.ToUpperInvariant()}: {msg}");
+}
 
-ValidationMessages.SetCulture("en");
-Console.WriteLine($"   EN: {ValidationMessages.Get("NotNull", "Email")}");
-
-ValidationMessages.SetCulture("de");
-Console.WriteLine($"   DE: {ValidationMessages.Get("NotNull", "Email")}");
+// Scoped culture (thread-safe)
+Console.WriteLine("\n   🔒 Thread-safe scoped culture:");
+ValidationMessages.SetCultureForCurrentScope(new CultureInfo("tr"));
+Console.WriteLine($"   Scoped (TR): {ValidationMessages.Get("NotNull", "Field")}");
 
 #endregion
 
-Console.WriteLine("\n" + "=".PadRight(50, '='));
+#region 🌟 Common Profiles
 
-#region 🎯 Legacy API (Still works!)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 11. BUILT-IN PROFILES
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Console.WriteLine("\n📌 11. Built-in Profiles");
 
-Console.WriteLine("\n📌 Legacy API - Still Compatible!");
+var emailResult2 = CommonProfiles.Email("valid@email.com");
+var passwordResult2 = CommonProfiles.Password("StrongP@ss1", minLength: 8);
+var usernameResult2 = CommonProfiles.Username("john_doe");
 
-// Guard: Null & Empty
+Console.WriteLine($"   ✅ Email: {(emailResult2.IsValid ? "Valid" : "Invalid")}");
+Console.WriteLine($"   ✅ Password: {(passwordResult2.IsValid ? "Valid" : "Invalid")}");
+Console.WriteLine($"   ✅ Username: {(usernameResult2.IsValid ? "Valid" : "Invalid")}");
+
+#endregion
+
+Console.WriteLine("\n" + "=".PadRight(60, '='));
+
+#region 🎯 Legacy API (Backward Compatible)
+
+Console.WriteLine("\n📌 Legacy API - Fully Backward Compatible!");
+
 Guard.AgainstNull("test", "testParam");
 Guard.AgainstNullOrEmpty("some text", "textParam");
-
-// Guard: Range
 Guard.AgainstOutOfRange(25, 18, 60, "age");
 
-// Guard.For fluent builder (v3.0)
 Guard.For("valid@email.com", "email")
      .NotNull()
      .NotEmpty()
@@ -171,7 +309,7 @@ Console.WriteLine("   ✅ Legacy guards still work!");
 
 #endregion
 
-#region 🎯 Real-world usage
+#region 🎯 Real-world Service Example
 
 Console.WriteLine("\n📌 Real-world Service Example");
 
@@ -190,7 +328,7 @@ Console.WriteLine("   ✅ Registration succeeded!");
 
 #endregion
 
-Console.WriteLine("\n" + "=".PadRight(50, '='));
-Console.WriteLine("🎉 All demos completed successfully!");
-Console.WriteLine("=".PadRight(50, '='));
+Console.WriteLine("\n" + "=".PadRight(60, '='));
+Console.WriteLine("🎉 All OrionGuard v5.0 demos completed successfully!");
+Console.WriteLine("=".PadRight(60, '='));
 

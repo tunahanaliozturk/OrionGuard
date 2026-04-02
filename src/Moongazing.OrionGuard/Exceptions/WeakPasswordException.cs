@@ -1,7 +1,10 @@
 ﻿namespace Moongazing.OrionGuard.Exceptions;
 
-public class WeakPasswordException : GuardException
+/// <summary>
+/// Exception thrown when a password does not meet strength requirements.
+/// </summary>
+public sealed class WeakPasswordException : GuardException
 {
     public WeakPasswordException(string parameterName)
-        : base($"{parameterName} is too weak.") { }
+        : base($"{parameterName} is too weak.", parameterName, "WEAK_PASSWORD") { }
 }
