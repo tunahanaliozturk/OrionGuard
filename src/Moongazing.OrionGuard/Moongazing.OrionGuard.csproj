@@ -16,7 +16,7 @@
 		<OutputType>Library</OutputType>
 
 		<PackageId>OrionGuard</PackageId>
-		<Version>5.0.0</Version>
+		<Version>5.0.1</Version>
 		<Authors>Tunahan Ali Ozturk</Authors>
 		<Company>Tunahan Ali Ozturk</Company>
 		<GeneratePackageOnBuild>false</GeneratePackageOnBuild>
@@ -34,7 +34,33 @@
 		<PackageProjectUrl>https://github.com/Moongazing/OrionGuard</PackageProjectUrl>
 		<PackageTags>guard;validation;fluent;exceptions;.NET;input-validation;guard-clauses;defensive-programming;security;localization;format-validation</PackageTags>
 		<PackageReleaseNotes>
-			v5.0.0: See CHANGELOG.md for full details.
+v5.0.1 — Release Notes
+
+NEW: Security Guards — SQL injection, XSS, path traversal, command injection, LDAP injection, XXE detection, unsafe filename, and open redirect validation. All patterns use FrozenSet for O(1) lookups.
+
+NEW: Format Guards (replaces TurkishGuards) — Geographic coordinates, MAC address, hostname (RFC 1123), CIDR notation, ISO 3166-1 country codes, IANA time zones, BCP 47 language tags, JWT structure, connection strings, and Base64 validation.
+
+NEW: ThrowHelper Pattern — All hot-path guards delegate throwing to a centralized ThrowHelper with [DoesNotReturn] and [StackTraceHidden] for smaller JIT-compiled method bodies and cleaner stack traces.
+
+NEW: Span-Based FastGuard — Email, ASCII, AlphaNumeric, NumericString, MaxLength, ValidGuid, and Finite validators using ReadOnlySpan with zero allocations.
+
+IMPROVED: Thread-Safe Localization — Rewritten with ConcurrentDictionary and AsyncLocal. Now supports 8 languages: EN, TR, DE, FR, ES, PT, AR, JA. Per-request culture scoping via SetCultureForCurrentScope.
+
+IMPROVED: ObjectValidator — Compiled expression caching, CrossProperty validation, conditional When() blocks.
+
+IMPROVED: FluentGuard — Transform() and Default() pipeline methods. All date comparisons use DateTime.UtcNow.
+
+IMPROVED: All exceptions are sealed with ErrorCode and ParameterName properties.
+
+IMPROVED: RegexCache with bounded size (1000), FrozenSet for BusinessGuards currency codes, ICollection.Count optimization in CollectionGuards.
+
+FIXED: AgainstNotAllLowercase was comparing string to itself (always passed).
+FIXED: AgainstEmptyCollection was throwing EmptyStringException instead of NullValueException.
+FIXED: GuardBuilderExtensions was passing .Value instead of .ParameterName.
+
+BREAKING: Validate.Object renamed to Validate.For. FastGuard.Guid renamed to FastGuard.ValidGuid. TurkishGuards removed.
+
+Full changelog: https://github.com/Moongazing/OrionGuard/blob/master/CHANGELOG.md
 		</PackageReleaseNotes>
 	</PropertyGroup>
 
