@@ -259,7 +259,7 @@ catch (ArgumentException ex)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Console.WriteLine("\n📌 10. Localization Support (8 Languages)");
 
-string[] languages = ["en", "tr", "de", "fr", "es", "pt", "ar", "ja"];
+string[] languages = ["en", "tr", "de", "fr", "es", "pt", "ar", "ja", "it"];
 foreach (var lang in languages)
 {
     var msg = ValidationMessages.Get("NotNull", new CultureInfo(lang), "Email");
