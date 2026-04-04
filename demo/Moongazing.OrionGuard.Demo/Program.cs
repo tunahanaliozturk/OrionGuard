@@ -252,14 +252,14 @@ catch (ArgumentException ex)
 
 #endregion
 
-#region 🌟 Localization (8 Languages)
+#region 🌟 Localization (9 Languages)
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 10. LOCALIZATION - 8 Languages (Enhanced v5.0)
+// 10. LOCALIZATION - 9 Languages (Enhanced v5.0)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Console.WriteLine("\n📌 10. Localization Support (8 Languages)");
+Console.WriteLine("\n📌 10. Localization Support (9 Languages)");
 
-string[] languages = ["en", "tr", "de", "fr", "es", "pt", "ar", "ja"];
+string[] languages = ["en", "tr", "de", "fr", "es", "pt", "ar", "ja", "it"];
 foreach (var lang in languages)
 {
     var msg = ValidationMessages.Get("NotNull", new CultureInfo(lang), "Email");

@@ -150,6 +150,22 @@ public class ValidationMessagesTests
     }
 
     [Fact]
+    public void Get_ShouldReturnItalianMessage_WhenCultureIsItalian()
+    {
+        var original = ValidationMessages.CurrentCulture;
+        try
+        {
+            ValidationMessages.SetCulture("it");
+            var message = ValidationMessages.Get("NotNull", "Email");
+            Assert.Equal("Email non può essere nullo.", message);
+        }
+        finally
+        {
+            ValidationMessages.SetCulture(original);
+        }
+    }
+
+    [Fact]
     public void Get_ShouldFallbackToEnglish_WhenCultureNotSupported()
     {
         var original = ValidationMessages.CurrentCulture;
@@ -281,6 +297,7 @@ public class ValidationMessagesTests
     [InlineData("pt")]
     [InlineData("ar")]
     [InlineData("ja")]
+    [InlineData("it")]
     public void Get_ShouldReturnMessage_ForAllSupportedLanguages(string cultureName)
     {
         var message = ValidationMessages.Get("NotNull", new CultureInfo(cultureName), "Field");

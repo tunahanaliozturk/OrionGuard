@@ -348,7 +348,7 @@ ValidationMessages.AddMessages("es", new Dictionary<string, string>
 });
 ```
 
-**Supported:** English, Turkish, German, French, Spanish, Portuguese, Arabic, Japanese
+**Supported:** English, Turkish, German, French, Spanish, Portuguese, Arabic, Japanese, Italian
 
 ---
 

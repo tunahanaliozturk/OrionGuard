@@ -1,6 +1,6 @@
 # OrionGuard
 
-A modern, fluent, and extensible guard clause & validation library for .NET 8/9.
+A modern, fluent, and extensible guard clause & validation library for .NET 8/9/10.
 
 ## Features
 
@@ -14,7 +14,7 @@ A modern, fluent, and extensible guard clause & validation library for .NET 8/9.
 - Business Guards — Money, SKU, coupon, scheduling, status transitions
 - Attribute-Based — `[NotNull]`, `[Email]`, `[Range]` on model properties
 - DI Support — `services.AddOrionGuard()`
-- Localization — 8 languages, thread-safe per-request culture
+- Localization — 9 languages, thread-safe per-request culture
 
 ## Quick Start
 

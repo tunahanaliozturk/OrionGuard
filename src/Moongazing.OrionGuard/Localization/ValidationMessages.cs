@@ -154,6 +154,39 @@ public static class ValidationMessages
                 ["Required"] = "{0} は必須です。",
                 ["InRange"] = "{0} は{1}から{2}の間である必要があります。",
                 ["Positive"] = "{0} は正の数である必要があります。"
+            }),
+            ["it"] = new(new Dictionary<string, string>
+            {
+                ["NotNull"] = "{0} non può essere nullo.",
+                ["NotEmpty"] = "{0} non può essere vuoto.",
+                ["NotDefault"] = "{0} non può essere il valore predefinito.",
+                ["Length"] = "{0} deve essere compreso tra {1} e {2} caratteri.",
+                ["MinLength"] = "{0} deve contenere almeno {1} caratteri.",
+                ["MaxLength"] = "{0} deve contenere al massimo {1} caratteri.",
+                ["Email"] = "{0} deve essere un indirizzo email valido.",
+                ["Url"] = "{0} deve essere un URL valido.",
+                ["Pattern"] = "{0} non corrisponde al formato richiesto.",
+                ["GreaterThan"] = "{0} deve essere maggiore di {1}.",
+                ["LessThan"] = "{0} deve essere minore di {1}.",
+                ["InRange"] = "{0} deve essere compreso tra {1} e {2}.",
+                ["Positive"] = "{0} deve essere positivo.",
+                ["NotNegative"] = "{0} non può essere negativo.",
+                ["NotZero"] = "{0} non può essere zero.",
+                ["InPast"] = "{0} deve essere una data passata.",
+                ["InFuture"] = "{0} deve essere una data futura.",
+                ["CreditCard"] = "{0} non è un numero di carta di credito valido.",
+                ["Iban"] = "{0} non è un IBAN valido.",
+                ["PhoneNumber"] = "{0} non è un numero di telefono valido.",
+                ["Required"] = "{0} è obbligatorio.",
+                ["Unique"] = "{0} deve essere univoco.",
+                ["Exists"] = "{0} non esiste.",
+                ["SqlInjection"] = "{0} contiene contenuto SQL potenzialmente pericoloso.",
+                ["Xss"] = "{0} contiene codice script potenzialmente pericoloso.",
+                ["PathTraversal"] = "{0} contiene una sequenza di path traversal.",
+                ["WeakPassword"] = "{0} non soddisfa i requisiti di complessità della password.",
+                ["TurkishId"] = "{0} non è un numero di documento turco valido.",
+                ["TaxNumber"] = "{0} non è un numero di identificazione fiscale valido.",
+                ["LicensePlate"] = "{0} non è una targa valida."
             })
         });
 
