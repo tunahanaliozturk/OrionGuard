@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <NoWarn>CS1591;NU1900;NU1901;NU1902;NU1903;NU1904</NoWarn>
+    <PackageId>Moongazing.OrionGuard.Swagger</PackageId>
+    <Version>6.0.0</Version>
+    <Authors>Tunahan Ali Ozturk</Authors>
+    <Description>Swagger/OpenAPI integration for OrionGuard. Auto-generates OpenAPI constraints from OrionGuard validation attributes.</Description>
+    <PackageTags>guard;validation;swagger;openapi;swashbuckle</PackageTags>
+    <RepositoryUrl>https://github.com/Moongazing/OrionGuard</RepositoryUrl>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Swashbuckle.AspNetCore.SwaggerGen" Version="6.6.2" />
+    <ProjectReference Include="..\Moongazing.OrionGuard\Moongazing.OrionGuard.csproj" />
+  </ItemGroup>
+</Project>

@@ -77,7 +77,7 @@ public static class BusinessGuards
     public static void AgainstInvalidSku(this string value, string parameterName)
     {
         if (string.IsNullOrWhiteSpace(value) ||
-            !RegexCache.IsMatch(value, @"^[A-Z0-9]{3,20}(-[A-Z0-9]{1,10})*$"))
+            !Utilities.GeneratedRegexPatterns.Sku().IsMatch(value))
         {
             throw new ArgumentException($"{parameterName} is not a valid SKU format.", parameterName);
         }
@@ -201,9 +201,37 @@ public static class BusinessGuards
     public static void AgainstInvalidCouponCode(this string value, string parameterName)
     {
         if (string.IsNullOrWhiteSpace(value) ||
-            !RegexCache.IsMatch(value, @"^[A-Z0-9]{4,20}$"))
+            !Utilities.GeneratedRegexPatterns.CouponCode().IsMatch(value))
         {
             throw new ArgumentException($"{parameterName} is not a valid coupon code format.", parameterName);
+        }
+    }
+
+    #endregion
+
+    #region Expiration & Activation
+
+    /// <summary>
+    /// Validates that the expiration date has not passed (expirationDate >= DateTime.UtcNow).
+    /// Useful for tokens, coupons, subscriptions, and licenses.
+    /// </summary>
+    public static void AgainstExpired(this DateTime expirationDate, string parameterName)
+    {
+        if (expirationDate < DateTime.UtcNow)
+        {
+            throw new ArgumentException($"{parameterName} has expired.", parameterName);
+        }
+    }
+
+    /// <summary>
+    /// Validates that the activation date has already passed (activationDate &lt;= DateTime.UtcNow).
+    /// Ensures the resource is already active and available for use.
+    /// </summary>
+    public static void AgainstNotYetActive(this DateTime activationDate, string parameterName)
+    {
+        if (activationDate > DateTime.UtcNow)
+        {
+            throw new ArgumentException($"{parameterName} is not yet active.", parameterName);
         }
     }
 

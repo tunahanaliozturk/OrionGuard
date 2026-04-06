@@ -193,6 +193,44 @@ public static class Validate
     }
 
     /// <summary>
+    /// Creates a nested validator for deep hierarchical object graph validation.
+    /// Supports unlimited-depth validation with full property path tracking.
+    /// </summary>
+    /// <typeparam name="T">The type of the root object to validate.</typeparam>
+    /// <param name="instance">The object instance to validate.</param>
+    /// <returns>A <see cref="NestedValidator{T}"/> for fluent configuration.</returns>
+    /// <example>
+    /// <code>
+    /// var result = Validate.Nested(order)
+    ///     .Property(o => o.OrderNumber, p => p.NotEmpty())
+    ///     .Nested(o => o.Customer, customer => customer
+    ///         .Property(c => c.Email, p => p.Email())
+    ///         .Nested(c => c.Address, address => address
+    ///             .Property(a => a.City, p => p.NotEmpty())))
+    ///     .Collection(o => o.Items, (item, index) => item
+    ///         .Property(i => i.ProductName, p => p.NotEmpty())
+    ///         .Property(i => i.Quantity, p => p.GreaterThan(0)))
+    ///     .ToResult();
+    /// </code>
+    /// </example>
+    public static NestedValidator<T> Nested<T>(T instance) where T : class
+    {
+        return new NestedValidator<T>(instance);
+    }
+
+    /// <summary>
+    /// Creates a fluent cross-property validator for the specified instance.
+    /// Usage: Validate.CrossProperties(order).IsGreaterThan(o => o.EndDate, o => o.StartDate).ThrowIfInvalid();
+    /// </summary>
+    public static CrossPropertyValidator<T> CrossProperties<T>(T instance) where T : class => new(instance);
+
+    /// <summary>
+    /// Creates a polymorphic validator for the specified base type.
+    /// Usage: Validate.Polymorphic&lt;PaymentBase&gt;().When&lt;CreditCard&gt;(cc => ...).Validate(payment);
+    /// </summary>
+    public static PolymorphicValidator<T> Polymorphic<T>() where T : class => new();
+
+    /// <summary>
     /// Validates multiple objects and combines their results.
     /// </summary>
     public static GuardResult All(params GuardResult[] results)

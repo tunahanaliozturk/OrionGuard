@@ -28,7 +28,7 @@ public static class AdvancedStringGuards
     public static void AgainstInvalidVisaCard(this string value, string parameterName)
     {
         var cleaned = value.Replace(" ", "").Replace("-", "");
-        if (!RegexCache.IsMatch(cleaned, @"^4[0-9]{12}(?:[0-9]{3})?$") || !IsValidLuhn(cleaned))
+        if (!Utilities.GeneratedRegexPatterns.VisaCard().IsMatch(cleaned) || !IsValidLuhn(cleaned))
         {
             throw new ArgumentException($"{parameterName} is not a valid Visa card number.", parameterName);
         }
@@ -40,7 +40,7 @@ public static class AdvancedStringGuards
     public static void AgainstInvalidMasterCard(this string value, string parameterName)
     {
         var cleaned = value.Replace(" ", "").Replace("-", "");
-        if (!RegexCache.IsMatch(cleaned, @"^5[1-5][0-9]{14}$") || !IsValidLuhn(cleaned))
+        if (!Utilities.GeneratedRegexPatterns.MasterCard().IsMatch(cleaned) || !IsValidLuhn(cleaned))
         {
             throw new ArgumentException($"{parameterName} is not a valid MasterCard number.", parameterName);
         }
@@ -88,11 +88,19 @@ public static class AdvancedStringGuards
     private static bool IsValidIban(string iban)
     {
         if (iban.Length < 15 || iban.Length > 34) return false;
-        if (!RegexCache.IsMatch(iban, @"^[A-Z]{2}[0-9]{2}[A-Z0-9]+$")) return false;
+        if (!Utilities.GeneratedRegexPatterns.IbanFormat().IsMatch(iban)) return false;
 
         // Move first 4 chars to end and convert letters to numbers
         var rearranged = string.Concat(iban.AsSpan(4), iban.AsSpan(0, 4));
-        var numericIban = string.Concat(rearranged.Select(c => char.IsLetter(c) ? (c - 'A' + 10).ToString(System.Globalization.CultureInfo.InvariantCulture) : c.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+        var sb = new System.Text.StringBuilder(rearranged.Length * 2);
+        foreach (var c in rearranged)
+        {
+            if (char.IsLetter(c))
+                sb.Append(c - 'A' + 10);
+            else
+                sb.Append(c);
+        }
+        var numericIban = sb.ToString();
 
         // Mod 97 check
         return Mod97(numericIban) == 1;
@@ -214,7 +222,7 @@ public static class AdvancedStringGuards
     /// </summary>
     public static void AgainstInvalidPhoneNumber(this string value, string parameterName)
     {
-        if (string.IsNullOrWhiteSpace(value) || !RegexCache.IsMatch(value, @"^\+?[1-9]\d{1,14}$"))
+        if (string.IsNullOrWhiteSpace(value) || !Utilities.GeneratedRegexPatterns.PhoneNumber().IsMatch(value))
         {
             throw new ArgumentException($"{parameterName} is not a valid phone number.", parameterName);
         }
@@ -226,7 +234,7 @@ public static class AdvancedStringGuards
     public static void AgainstInvalidTurkishPhoneNumber(this string value, string parameterName)
     {
         var cleaned = value.Replace(" ", "").Replace("-", "").Replace("(", "").Replace(")", "");
-        if (!RegexCache.IsMatch(cleaned, @"^(\+90|0)?5\d{9}$"))
+        if (!Utilities.GeneratedRegexPatterns.TurkishPhone().IsMatch(cleaned))
         {
             throw new ArgumentException($"{parameterName} is not a valid Turkish phone number.", parameterName);
         }
@@ -274,7 +282,7 @@ public static class AdvancedStringGuards
     /// </summary>
     public static void AgainstInvalidSlug(this string value, string parameterName)
     {
-        if (string.IsNullOrWhiteSpace(value) || !RegexCache.IsMatch(value, @"^[a-z0-9]+(?:-[a-z0-9]+)*$"))
+        if (string.IsNullOrWhiteSpace(value) || !Utilities.GeneratedRegexPatterns.Slug().IsMatch(value))
         {
             throw new ArgumentException($"{parameterName} is not a valid URL slug.", parameterName);
         }
@@ -290,7 +298,7 @@ public static class AdvancedStringGuards
     public static void AgainstInvalidSemVer(this string value, string parameterName)
     {
         if (string.IsNullOrWhiteSpace(value) ||
-            !RegexCache.IsMatch(value, @"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$"))
+            !Utilities.GeneratedRegexPatterns.SemVer().IsMatch(value))
         {
             throw new ArgumentException($"{parameterName} is not a valid semantic version.", parameterName);
         }
@@ -305,7 +313,7 @@ public static class AdvancedStringGuards
     /// </summary>
     public static void AgainstInvalidHexColor(this string value, string parameterName)
     {
-        if (string.IsNullOrWhiteSpace(value) || !RegexCache.IsMatch(value, @"^#?([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$"))
+        if (string.IsNullOrWhiteSpace(value) || !Utilities.GeneratedRegexPatterns.HexColor().IsMatch(value))
         {
             throw new ArgumentException($"{parameterName} is not a valid hex color code.", parameterName);
         }

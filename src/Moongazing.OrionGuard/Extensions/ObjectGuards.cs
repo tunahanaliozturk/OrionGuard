@@ -1,7 +1,14 @@
-﻿namespace Moongazing.OrionGuard.Extensions;
+﻿using System.Reflection;
+
+namespace Moongazing.OrionGuard.Extensions;
 
 public static class ObjectGuards
 {
+    private static class PropertyCache<T>
+    {
+        internal static readonly PropertyInfo[] Properties = typeof(T).GetProperties();
+    }
+
     public static void AgainstNull(this object obj, string parameterName)
     {
         if (obj == null)
@@ -12,7 +19,7 @@ public static class ObjectGuards
 
     public static void AgainstUninitializedProperties<T>(this T obj, string parameterName)
     {
-        var properties = typeof(T).GetProperties();
+        var properties = PropertyCache<T>.Properties;
         foreach (var property in properties)
         {
             if (property.GetValue(obj) == null)

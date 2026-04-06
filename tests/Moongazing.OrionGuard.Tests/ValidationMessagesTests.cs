@@ -171,7 +171,7 @@ public class ValidationMessagesTests
         var original = ValidationMessages.CurrentCulture;
         try
         {
-            ValidationMessages.SetCulture("zh"); // Chinese - not in the dictionary
+            ValidationMessages.SetCulture("th"); // Thai - not in the dictionary
             var message = ValidationMessages.Get("NotNull", "Email");
             Assert.Equal("Email cannot be null.", message); // Falls back to English
         }

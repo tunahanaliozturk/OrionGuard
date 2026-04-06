@@ -11,8 +11,7 @@ on:
 env:
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
   DOTNET_CLI_TELEMETRY_OPTOUT: true
-  PROJECT_PATH: src/Moongazing.OrionGuard/Moongazing.OrionGuard.csproj
-  TEST_PATH: tests/Moongazing.OrionGuard.Tests/Moongazing.OrionGuard.Tests.csproj
+  SOLUTION_PATH: Moongazing.OrionGuard.sln
 
 jobs:
   build-and-test:
@@ -31,16 +30,13 @@ jobs:
           dotnet-version: ${{ matrix.dotnet-version }}
 
       - name: Restore dependencies
-        run: dotnet restore ${{ env.PROJECT_PATH }}
+        run: dotnet restore ${{ env.SOLUTION_PATH }}
 
       - name: Build
-        run: dotnet build ${{ env.PROJECT_PATH }} --no-restore --configuration Release
-
-      - name: Restore test dependencies
-        run: dotnet restore ${{ env.TEST_PATH }}
+        run: dotnet build ${{ env.SOLUTION_PATH }} --no-restore --configuration Release
 
       - name: Test
-        run: dotnet test ${{ env.TEST_PATH }} --no-restore --configuration Release --verbosity normal
+        run: dotnet test ${{ env.SOLUTION_PATH }} --no-restore --configuration Release --verbosity normal
 
   publish:
     needs: build-and-test
@@ -60,13 +56,22 @@ jobs:
           dotnet-version: '10.0.x'
 
       - name: Restore
-        run: dotnet restore ${{ env.PROJECT_PATH }}
+        run: dotnet restore ${{ env.SOLUTION_PATH }}
 
       - name: Build
-        run: dotnet build ${{ env.PROJECT_PATH }} --no-restore --configuration Release
+        run: dotnet build ${{ env.SOLUTION_PATH }} --no-restore --configuration Release
 
-      - name: Pack
-        run: dotnet pack ${{ env.PROJECT_PATH }} --no-build --configuration Release -o ./nupkgs
+      - name: Pack All Projects
+        run: |
+          dotnet pack src/Moongazing.OrionGuard/Moongazing.OrionGuard.csproj --no-build --configuration Release -o ./nupkgs
+          dotnet pack src/Moongazing.OrionGuard.AspNetCore/Moongazing.OrionGuard.AspNetCore.csproj --no-build --configuration Release -o ./nupkgs
+          dotnet pack src/Moongazing.OrionGuard.MediatR/Moongazing.OrionGuard.MediatR.csproj --no-build --configuration Release -o ./nupkgs
+          dotnet pack src/Moongazing.OrionGuard.Generators/Moongazing.OrionGuard.Generators.csproj --no-build --configuration Release -o ./nupkgs
+          dotnet pack src/Moongazing.OrionGuard.Swagger/Moongazing.OrionGuard.Swagger.csproj --no-build --configuration Release -o ./nupkgs
+          dotnet pack src/Moongazing.OrionGuard.OpenTelemetry/Moongazing.OrionGuard.OpenTelemetry.csproj --no-build --configuration Release -o ./nupkgs
+          dotnet pack src/Moongazing.OrionGuard.Blazor/Moongazing.OrionGuard.Blazor.csproj --no-build --configuration Release -o ./nupkgs
+          dotnet pack src/Moongazing.OrionGuard.Grpc/Moongazing.OrionGuard.Grpc.csproj --no-build --configuration Release -o ./nupkgs
+          dotnet pack src/Moongazing.OrionGuard.SignalR/Moongazing.OrionGuard.SignalR.csproj --no-build --configuration Release -o ./nupkgs
 
       - name: Push to NuGet.org
         run: dotnet nuget push "./nupkgs/*.nupkg" --api-key ${{ secrets.NUGET }} --source https://api.nuget.org/v3/index.json --skip-duplicate

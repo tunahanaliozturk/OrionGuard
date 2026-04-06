@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Linq.Expressions;
 using System.Reflection;
 
@@ -94,14 +95,11 @@ public sealed class LengthAttribute : ValidationAttribute
 /// </summary>
 public sealed class EmailAttribute : ValidationAttribute
 {
-    private static readonly System.Text.RegularExpressions.Regex EmailRegex =
-        new(@"^[^@\s]+@[^@\s]+\.[^@\s]+$", System.Text.RegularExpressions.RegexOptions.Compiled);
-
     public override bool IsValid(object? value)
     {
         if (value is string s)
         {
-            return !string.IsNullOrWhiteSpace(s) && EmailRegex.IsMatch(s);
+            return !string.IsNullOrWhiteSpace(s) && Utilities.GeneratedRegexPatterns.Email().IsMatch(s);
         }
         return value is null; // Null is valid, use [NotNull] for null check
     }
@@ -203,17 +201,30 @@ public sealed class PositiveAttribute : ValidationAttribute
 /// </summary>
 public static class AttributeValidator
 {
+    private static readonly ConcurrentDictionary<Type, (PropertyInfo Property, ValidationAttribute[] Attributes)[]> _typeCache = new();
+
+    private static (PropertyInfo Property, ValidationAttribute[] Attributes)[] GetCachedTypeInfo(Type type)
+    {
+        return _typeCache.GetOrAdd(type, t =>
+        {
+            var properties = t.GetProperties(BindingFlags.Public | BindingFlags.Instance);
+            return properties
+                .Select(p => (p, p.GetCustomAttributes<ValidationAttribute>().ToArray()))
+                .Where(x => x.Item2.Length > 0)
+                .ToArray();
+        });
+    }
+
     /// <summary>
     /// Validates an object using its validation attributes.
     /// </summary>
     public static Core.GuardResult Validate<T>(T instance) where T : class
     {
         var errors = new List<Core.ValidationError>();
-        var properties = typeof(T).GetProperties(BindingFlags.Public | BindingFlags.Instance);
+        var cachedProperties = GetCachedTypeInfo(typeof(T));
 
-        foreach (var property in properties)
+        foreach (var (property, attributes) in cachedProperties)
         {
-            var attributes = property.GetCustomAttributes<ValidationAttribute>();
             var value = property.GetValue(instance);
 
             foreach (var attribute in attributes)
