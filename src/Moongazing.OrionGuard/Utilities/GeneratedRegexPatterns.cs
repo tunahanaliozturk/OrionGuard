@@ -100,6 +100,22 @@ public static partial class GeneratedRegexPatterns
 
     #endregion
 
+    #region Sensitive Data Detection
+
+    [GeneratedRegex(@"\b\d{13,19}\b", RegexOptions.None, DefaultTimeoutMs)]
+    public static partial Regex CreditCardDigitSequence();
+
+    [GeneratedRegex(@"\b(?:\d{1,3}\.){3}\d{1,3}\b", RegexOptions.None, DefaultTimeoutMs)]
+    public static partial Regex IPv4Address();
+
+    [GeneratedRegex(@"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}", RegexOptions.None, DefaultTimeoutMs)]
+    public static partial Regex EmbeddedEmail();
+
+    [GeneratedRegex(@"(?:\+?\d{1,3}[\s\-]?)?\(?\d{2,4}\)?[\s\-]?\d{3,4}[\s\-]?\d{2,4}", RegexOptions.None, DefaultTimeoutMs)]
+    public static partial Regex EmbeddedPhoneNumber();
+
+    #endregion
+
     #region Identifiers
 
     [GeneratedRegex(@"^[a-z0-9]+(?:-[a-z0-9]+)*$", RegexOptions.None, DefaultTimeoutMs)]
