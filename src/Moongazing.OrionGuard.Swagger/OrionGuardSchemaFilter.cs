@@ -19,7 +19,7 @@ public sealed class OrionGuardSchemaFilter : ISchemaFilter
 
         foreach (var property in properties)
         {
-            var propertyName = char.ToLowerInvariant(property.Name[0]) + property.Name[1..];
+            var propertyName = System.Text.Json.JsonNamingPolicy.CamelCase.ConvertName(property.Name);
 
             if (!schema.Properties.TryGetValue(propertyName, out var propertySchema))
                 continue;

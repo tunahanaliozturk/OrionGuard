@@ -13,7 +13,7 @@ public sealed class CachedValidator<T> : IValidator<T> where T : class
     private readonly IValidator<T> _inner;
     private readonly TimeSpan _ttl;
     private readonly int _maxCacheSize;
-    private readonly ConcurrentDictionary<int, CacheEntry> _cache = new();
+    private readonly ConcurrentDictionary<string, CacheEntry> _cache = new();
 
     public CachedValidator(IValidator<T> inner, TimeSpan? ttl = null, int maxCacheSize = 1000)
     {
@@ -24,7 +24,7 @@ public sealed class CachedValidator<T> : IValidator<T> where T : class
 
     public GuardResult Validate(T value)
     {
-        var key = ComputeHash(value);
+        var key = ComputeStructuralKey(value);
 
         if (_cache.TryGetValue(key, out var entry) && !entry.IsExpired)
             return entry.Result;
@@ -36,7 +36,7 @@ public sealed class CachedValidator<T> : IValidator<T> where T : class
 
     public async Task<GuardResult> ValidateAsync(T value, CancellationToken cancellationToken = default)
     {
-        var key = ComputeHash(value);
+        var key = ComputeStructuralKey(value);
 
         if (_cache.TryGetValue(key, out var entry) && !entry.IsExpired)
             return entry.Result;
@@ -52,7 +52,7 @@ public sealed class CachedValidator<T> : IValidator<T> where T : class
     /// <summary>Current cache size.</summary>
     public int CacheSize => _cache.Count;
 
-    private void StoreResult(int key, GuardResult result)
+    private void StoreResult(string key, GuardResult result)
     {
         if (_cache.Count >= _maxCacheSize)
             _cache.Clear(); // Simple eviction — clear all when full
@@ -63,19 +63,21 @@ public sealed class CachedValidator<T> : IValidator<T> where T : class
     private static readonly System.Reflection.PropertyInfo[] CachedProperties =
         typeof(T).GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
 
-    private static int ComputeHash(T value)
+    /// <summary>
+    /// Builds a structural string key from all public instance properties.
+    /// Unlike a hash code, this eliminates collision risk because two distinct
+    /// values will always produce distinct keys.
+    /// </summary>
+    private static string ComputeStructuralKey(T value)
     {
-        if (value is null) return 0;
+        if (value is null) return "null";
 
-        var hash = new HashCode();
-
+        var sb = new System.Text.StringBuilder();
         foreach (var prop in CachedProperties)
         {
-            var val = prop.GetValue(value);
-            hash.Add(val);
+            sb.Append(prop.Name).Append('=').Append(prop.GetValue(value)?.ToString() ?? "null").Append(';');
         }
-
-        return hash.ToHashCode();
+        return sb.ToString();
     }
 
     private sealed record CacheEntry(GuardResult Result, DateTime ExpiresAt)

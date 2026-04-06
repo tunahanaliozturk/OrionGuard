@@ -18,7 +18,19 @@ public static class ServiceCollectionExtensions
         // Scan assemblies for IValidator<T> implementations
         foreach (var assembly in assemblies)
         {
-            var validatorTypes = assembly.GetTypes()
+            Type[] types;
+            try
+            {
+                types = assembly.GetTypes();
+            }
+            catch (ReflectionTypeLoadException ex)
+            {
+                // Some types may fail to load (e.g. missing transitive dependencies).
+                // Use the successfully loaded subset instead of crashing.
+                types = ex.Types.Where(t => t is not null).ToArray()!;
+            }
+
+            var validatorTypes = types
                 .Where(t => !t.IsAbstract && !t.IsInterface)
                 .SelectMany(t => t.GetInterfaces()
                     .Where(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IValidator<>))

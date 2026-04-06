@@ -67,10 +67,9 @@ public sealed class OrionGuardInterceptor : Interceptor
         if (result.IsInvalid)
         {
             var metadata = new Metadata();
-            foreach (var error in result.Errors)
-            {
-                metadata.Add($"validation-error-{error.ParameterName}", error.Message);
-            }
+            var errorsJson = System.Text.Json.JsonSerializer.Serialize(
+                result.Errors.Select(e => new { e.ParameterName, e.Message }));
+            metadata.Add("validation-errors-json", errorsJson);
 
             throw new RpcException(
                 new Status(StatusCode.InvalidArgument, result.GetErrorSummary("; ")),

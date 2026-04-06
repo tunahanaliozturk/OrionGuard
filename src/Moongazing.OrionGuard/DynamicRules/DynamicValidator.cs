@@ -223,7 +223,6 @@ public sealed class DynamicValidator
         if (!TryGetDouble(value, out var numericValue))
             return null;
 
-        var paramName = op == ">" ? "Value" : "Value";
         if (!TryGetDouble(rule, "Value", out var threshold))
             return null;
 
@@ -249,7 +248,7 @@ public sealed class DynamicValidator
         if (string.IsNullOrEmpty(pattern))
             return null;
 
-        if (!Regex.IsMatch(sv, pattern))
+        if (!Regex.IsMatch(sv, pattern, RegexOptions.None, TimeSpan.FromSeconds(1)))
         {
             return CreateError(rule, propertyName,
                 $"{propertyName} does not match the required pattern.");

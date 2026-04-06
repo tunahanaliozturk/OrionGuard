@@ -33,11 +33,16 @@ public static class ServiceCollectionExtensions
 
     /// <summary>
     /// Registers a custom exception factory for OrionGuard.
+    /// The factory is instantiated immediately and wired into both the DI container
+    /// and the static <see cref="ExceptionFactoryProvider"/> so that non-DI code paths
+    /// (e.g. Guard.Against helpers) also use the custom factory.
     /// </summary>
     public static IServiceCollection AddOrionGuardExceptionFactory<TFactory>(this IServiceCollection services)
-        where TFactory : class, IExceptionFactory
+        where TFactory : class, IExceptionFactory, new()
     {
-        services.AddSingleton<IExceptionFactory, TFactory>();
+        var factory = new TFactory();
+        ExceptionFactoryProvider.Configure(factory);
+        services.AddSingleton<IExceptionFactory>(factory);
         return services;
     }
 

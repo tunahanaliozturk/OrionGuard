@@ -1,4 +1,6 @@
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
+using Moongazing.OrionGuard.AspNetCore.Options;
 using Moongazing.OrionGuard.AspNetCore.ProblemDetails;
 using Moongazing.OrionGuard.DependencyInjection;
 
@@ -36,8 +38,19 @@ public sealed class OrionGuardEndpointFilter<TRequest> : IEndpointFilter where T
             return await next(context).ConfigureAwait(false);
         }
 
-        var problemDetails = OrionGuardProblemDetailsFactory.Create(result);
-        return Results.Problem(problemDetails);
+        var options = context.HttpContext.RequestServices.GetService<OrionGuardAspNetCoreOptions>();
+        var statusCode = options?.DefaultStatusCode ?? 422;
+
+        if (options is null || options.UseProblemDetails)
+        {
+            var problemDetails = OrionGuardProblemDetailsFactory.Create(result);
+            problemDetails.Status = statusCode;
+            return Results.Problem(problemDetails);
+        }
+
+        return Results.Json(
+            result.ToErrorDictionary(),
+            statusCode: statusCode);
     }
 
     private static TRequest? FindRequestArgument(EndpointFilterInvocationContext context)

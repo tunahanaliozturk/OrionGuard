@@ -1,4 +1,6 @@
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Moongazing.OrionGuard.Core;
 using Moongazing.OrionGuard.DependencyInjection;
 
 namespace Moongazing.OrionGuard.AspNetCore.HealthChecks;
@@ -28,8 +30,8 @@ public sealed class OrionGuardHealthCheck : IHealthCheck
                     "OrionGuard ValidatorFactory is not registered. Call services.AddOrionGuard() in startup."));
             }
 
-            // Check if ExceptionFactory is available
-            var exceptionFactory = Core.ExceptionFactoryProvider.Current;
+            // Check if ExceptionFactory is available — prefer DI registration, fall back to static provider
+            var exceptionFactory = _serviceProvider.GetService<IExceptionFactory>() ?? ExceptionFactoryProvider.Current;
             if (exceptionFactory is null)
             {
                 return Task.FromResult(HealthCheckResult.Degraded(

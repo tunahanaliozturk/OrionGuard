@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using Moongazing.OrionGuard.AspNetCore.ProblemDetails;
+using Moongazing.OrionGuard.AspNetCore.Options;
 using Moongazing.OrionGuard.Core;
 using Moongazing.OrionGuard.Exceptions;
 
@@ -24,10 +25,12 @@ public sealed class OrionGuardExceptionHandler : IExceptionHandler
     };
 
     private readonly ILogger<OrionGuardExceptionHandler> _logger;
+    private readonly OrionGuardAspNetCoreOptions _options;
 
-    public OrionGuardExceptionHandler(ILogger<OrionGuardExceptionHandler> logger)
+    public OrionGuardExceptionHandler(ILogger<OrionGuardExceptionHandler> logger, OrionGuardAspNetCoreOptions options)
     {
         _logger = logger;
+        _options = options;
     }
 
     /// <inheritdoc />
@@ -43,15 +46,35 @@ public sealed class OrionGuardExceptionHandler : IExceptionHandler
                 "Validation failed with {ErrorCount} error(s)",
                 aggregateException.Errors.Count);
 
-            var problemDetails = OrionGuardProblemDetailsFactory.Create(aggregateException);
+            var statusCode = _options.DefaultStatusCode;
 
-            httpContext.Response.StatusCode = problemDetails.Status ?? StatusCodes.Status422UnprocessableEntity;
-            httpContext.Response.ContentType = MediaTypeNames.Application.Json;
+            if (_options.UseProblemDetails)
+            {
+                var problemDetails = OrionGuardProblemDetailsFactory.Create(aggregateException);
+                problemDetails.Status = statusCode;
 
-            await httpContext.Response.WriteAsJsonAsync(
-                problemDetails,
-                SerializerOptions,
-                cancellationToken).ConfigureAwait(false);
+                httpContext.Response.StatusCode = statusCode;
+                httpContext.Response.ContentType = MediaTypeNames.Application.Json;
+
+                await httpContext.Response.WriteAsJsonAsync(
+                    problemDetails,
+                    SerializerOptions,
+                    cancellationToken).ConfigureAwait(false);
+            }
+            else
+            {
+                httpContext.Response.StatusCode = statusCode;
+                httpContext.Response.ContentType = MediaTypeNames.Application.Json;
+
+                var errors = aggregateException.Errors
+                    .Select(e => new { e.ParameterName, e.Message })
+                    .ToArray();
+
+                await httpContext.Response.WriteAsJsonAsync(
+                    new { errors },
+                    SerializerOptions,
+                    cancellationToken).ConfigureAwait(false);
+            }
 
             return true;
         }
@@ -63,31 +86,46 @@ public sealed class OrionGuardExceptionHandler : IExceptionHandler
                 "Guard validation failed for parameter '{ParameterName}'",
                 guardException.ParameterName);
 
-            var errors = new Dictionary<string, string[]>();
+            var guardStatusCode = StatusCodes.Status400BadRequest;
 
-            if (!string.IsNullOrEmpty(guardException.ParameterName))
+            if (_options.UseProblemDetails)
             {
-                errors[guardException.ParameterName] = [guardException.Message];
+                var errors = new Dictionary<string, string[]>();
+
+                if (!string.IsNullOrEmpty(guardException.ParameterName))
+                {
+                    errors[guardException.ParameterName] = [guardException.Message];
+                }
+                else
+                {
+                    errors[""] = [guardException.Message];
+                }
+
+                var problemDetails = new ValidationProblemDetails(errors)
+                {
+                    Type = "https://tools.ietf.org/html/rfc9457",
+                    Title = "Validation Failed",
+                    Status = guardStatusCode
+                };
+
+                httpContext.Response.StatusCode = guardStatusCode;
+                httpContext.Response.ContentType = MediaTypeNames.Application.Json;
+
+                await httpContext.Response.WriteAsJsonAsync(
+                    problemDetails,
+                    SerializerOptions,
+                    cancellationToken).ConfigureAwait(false);
             }
             else
             {
-                errors[""] = [guardException.Message];
+                httpContext.Response.StatusCode = guardStatusCode;
+                httpContext.Response.ContentType = MediaTypeNames.Application.Json;
+
+                await httpContext.Response.WriteAsJsonAsync(
+                    new { error = guardException.Message, parameterName = guardException.ParameterName },
+                    SerializerOptions,
+                    cancellationToken).ConfigureAwait(false);
             }
-
-            var problemDetails = new ValidationProblemDetails(errors)
-            {
-                Type = "https://tools.ietf.org/html/rfc9457",
-                Title = "Validation Failed",
-                Status = StatusCodes.Status400BadRequest
-            };
-
-            httpContext.Response.StatusCode = StatusCodes.Status400BadRequest;
-            httpContext.Response.ContentType = MediaTypeNames.Application.Json;
-
-            await httpContext.Response.WriteAsJsonAsync(
-                problemDetails,
-                SerializerOptions,
-                cancellationToken).ConfigureAwait(false);
 
             return true;
         }

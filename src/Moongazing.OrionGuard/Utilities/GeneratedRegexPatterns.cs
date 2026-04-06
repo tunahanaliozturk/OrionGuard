@@ -40,7 +40,7 @@ public static partial class GeneratedRegexPatterns
     [GeneratedRegex(@"^\P{C}+$", RegexOptions.None, DefaultTimeoutMs)]
     public static partial Regex Unicode();
 
-    [GeneratedRegex(@"^[\u1F600-\u1F64F\u1F300-\u1F5FF\u1F680-\u1F6FF\u2600-\u26FF\u2700-\u27BF]+$", RegexOptions.None, DefaultTimeoutMs)]
+    [GeneratedRegex(@"[\p{So}\p{Cs}]+", RegexOptions.None, DefaultTimeoutMs)]
     public static partial Regex Emoji();
 
     [GeneratedRegex(@"^[A-Z0-9]+$", RegexOptions.None, DefaultTimeoutMs)]
