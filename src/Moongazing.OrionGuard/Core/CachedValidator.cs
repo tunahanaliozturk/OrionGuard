@@ -41,7 +41,10 @@ public sealed class CachedValidator<T> : IValidator<T> where T : class
         if (_cache.TryGetValue(key, out var entry) && !entry.IsExpired)
             return entry.Result;
 
-        var result = await _inner.ValidateAsync(value, cancellationToken);
+        // ConfigureAwait(false): library code must not capture the synchronization
+        // context to avoid deadlocks in UI frameworks (WPF/WinForms/legacy ASP.NET)
+        // that use single-threaded contexts.
+        var result = await _inner.ValidateAsync(value, cancellationToken).ConfigureAwait(false);
         StoreResult(key, result);
         return result;
     }
@@ -55,9 +58,49 @@ public sealed class CachedValidator<T> : IValidator<T> where T : class
     private void StoreResult(string key, GuardResult result)
     {
         if (_cache.Count >= _maxCacheSize)
-            _cache.Clear(); // Simple eviction — clear all when full
+            Evict();
 
         _cache[key] = new CacheEntry(result, DateTime.UtcNow.Add(_ttl));
+    }
+
+    /// <summary>
+    /// Capacity eviction. Two-phase and biased toward keeping fresh, hot entries:
+    /// <list type="number">
+    /// <item><description>Sweep all expired entries first -- they cost nothing to evict.</description></item>
+    /// <item><description>If we're still over capacity, remove the single entry with
+    /// the earliest <c>ExpiresAt</c> (the coldest live entry) instead of clearing
+    /// the whole cache.</description></item>
+    /// </list>
+    /// <para>
+    /// Safe to run concurrently: <see cref="ConcurrentDictionary{TKey,TValue}.TryRemove(TKey, out TValue)"/>
+    /// is atomic, and redundant scans by racing threads cost only a pass through the
+    /// dictionary. Avoiding a lock here keeps <see cref="Validate"/> hits fully lock-free.
+    /// </para>
+    /// </summary>
+    private void Evict()
+    {
+        // Phase 1: drop expired entries (free capacity, keeps the hot set intact).
+        foreach (var kvp in _cache)
+        {
+            if (kvp.Value.IsExpired)
+                _cache.TryRemove(kvp.Key, out _);
+        }
+
+        if (_cache.Count < _maxCacheSize) return;
+
+        // Phase 2: still full -- evict the single entry closest to expiry.
+        string? oldestKey = null;
+        DateTime oldestExpiry = DateTime.MaxValue;
+        foreach (var kvp in _cache)
+        {
+            if (kvp.Value.ExpiresAt < oldestExpiry)
+            {
+                oldestExpiry = kvp.Value.ExpiresAt;
+                oldestKey = kvp.Key;
+            }
+        }
+        if (oldestKey is not null)
+            _cache.TryRemove(oldestKey, out _);
     }
 
     private static readonly System.Reflection.PropertyInfo[] CachedProperties =

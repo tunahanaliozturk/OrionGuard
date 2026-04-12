@@ -204,7 +204,6 @@ OrionGuard v6.0 is the foundation. Here's what's coming:
 - **OrionGuard Studio** — A visual dashboard for managing Dynamic Rule Engine configurations
 - **More Roslyn Analyzers** — IDE suggestions like "this null check could use Ensure.That()"
 - **Template Pack** — `dotnet new orionguard-api` for instant project scaffolding
-- **More languages** — Hindi, Vietnamese, Thai, and more
 
 ---
 

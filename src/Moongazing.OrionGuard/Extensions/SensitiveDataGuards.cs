@@ -1,6 +1,3 @@
-using System.Collections.Frozen;
-using System.Text.RegularExpressions;
-
 namespace Moongazing.OrionGuard.Extensions;
 
 /// <summary>
@@ -9,35 +6,63 @@ namespace Moongazing.OrionGuard.Extensions;
 /// </summary>
 public static class SensitiveDataGuards
 {
-    // Common credit card prefixes (BIN ranges) for pattern detection
-    private static readonly FrozenSet<string> CardPrefixes = new HashSet<string>
-    {
-        "4", // Visa
-        "51", "52", "53", "54", "55", // Mastercard
-        "34", "37", // Amex
-        "6011", "65", // Discover
-        "35", // JCB
-        "30", "36", "38" // Diners
-    }.ToFrozenSet();
+    private const int MinCardDigits = 13;
+    private const int MaxCardDigits = 19;
+
+    // Common credit card BIN prefixes (kept as a small static list since StartsWith checks are O(k))
+    private static readonly string[] CardPrefixes =
+    [
+        "4",                               // Visa
+        "51", "52", "53", "54", "55",      // Mastercard
+        "34", "37",                        // Amex
+        "6011", "65",                      // Discover
+        "35",                              // JCB
+        "30", "36", "38"                   // Diners
+    ];
 
     /// <summary>
     /// Validates that a string does not contain a credit card number pattern.
-    /// Detects 13-19 digit sequences that pass basic Luhn check.
+    /// Detects 13-19 digit sequences that match a known BIN prefix and pass the Luhn check.
     /// Use this to prevent logging/storing raw card numbers (PCI-DSS).
     /// </summary>
+    /// <remarks>
+    /// Span-based zero-allocation scan: the input is walked once using
+    /// <see cref="ReadOnlySpan{T}"/>, and each candidate digit sequence is validated in-place
+    /// via a stack buffer (<c>stackalloc</c>). No <see cref="System.Text.StringBuilder"/> or
+    /// intermediate <see cref="List{T}"/> is allocated on the happy path.
+    /// </remarks>
     public static void AgainstContainsCreditCardNumber(this string value, string parameterName)
     {
         if (string.IsNullOrWhiteSpace(value)) return;
 
-        // Strip non-digits to find potential card numbers
-        var digitsOnly = ExtractDigitSequences(value);
-        foreach (var sequence in digitsOnly)
+        ReadOnlySpan<char> input = value.AsSpan();
+        Span<char> buffer = stackalloc char[MaxCardDigits];
+
+        int start = 0;
+        while (start < input.Length)
         {
-            if (sequence.Length >= 13 && sequence.Length <= 19 && StartsWithCardPrefix(sequence) && IsValidLuhn(sequence))
+            // Skip to the next digit run
+            while (start < input.Length && !char.IsDigit(input[start]))
+                start++;
+
+            // Collect consecutive digits into the stack buffer, capped at MaxCardDigits
+            int len = 0;
+            while (start < input.Length && char.IsDigit(input[start]))
             {
-                throw new ArgumentException(
-                    $"{parameterName} contains what appears to be a credit card number. Mask or encrypt before storing.",
-                    parameterName);
+                if (len < MaxCardDigits)
+                    buffer[len++] = input[start];
+                start++;
+            }
+
+            if (len >= MinCardDigits && len <= MaxCardDigits)
+            {
+                ReadOnlySpan<char> candidate = buffer[..len];
+                if (HasKnownCardPrefix(candidate) && IsValidLuhn(candidate))
+                {
+                    throw new ArgumentException(
+                        $"{parameterName} contains what appears to be a credit card number. Mask or encrypt before storing.",
+                        parameterName);
+                }
             }
         }
     }
@@ -145,24 +170,27 @@ public static class SensitiveDataGuards
 
     #region Helpers
 
-    private static bool StartsWithCardPrefix(string digits)
+    private static bool HasKnownCardPrefix(ReadOnlySpan<char> digits)
     {
         foreach (var prefix in CardPrefixes)
         {
-            if (digits.StartsWith(prefix, StringComparison.Ordinal))
+            if (digits.StartsWith(prefix.AsSpan(), StringComparison.Ordinal))
                 return true;
         }
         return false;
     }
 
-    private static bool IsValidLuhn(string digits)
+    /// <summary>
+    /// Luhn checksum validation on a digit span. Assumes all elements are ASCII digits;
+    /// the caller guarantees this by using <see cref="char.IsDigit(char)"/> during extraction.
+    /// </summary>
+    private static bool IsValidLuhn(ReadOnlySpan<char> digits)
     {
         int sum = 0;
         bool alternate = false;
         for (int i = digits.Length - 1; i >= 0; i--)
         {
             int digit = digits[i] - '0';
-            if (digit < 0 || digit > 9) return false;
             if (alternate)
             {
                 digit *= 2;
@@ -172,28 +200,6 @@ public static class SensitiveDataGuards
             alternate = !alternate;
         }
         return sum % 10 == 0;
-    }
-
-    private static List<string> ExtractDigitSequences(string input)
-    {
-        var results = new List<string>();
-        var current = new System.Text.StringBuilder();
-        foreach (var c in input)
-        {
-            if (char.IsDigit(c))
-            {
-                current.Append(c);
-            }
-            else
-            {
-                if (current.Length >= 13)
-                    results.Add(current.ToString());
-                current.Clear();
-            }
-        }
-        if (current.Length >= 13)
-            results.Add(current.ToString());
-        return results;
     }
 
     #endregion

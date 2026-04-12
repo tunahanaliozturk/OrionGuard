@@ -122,6 +122,23 @@ public interface IValidator<T>
     /// Validates the specified value asynchronously.
     /// </summary>
     Task<Core.GuardResult> ValidateAsync(T value, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Validates the specified value with a <see cref="Core.ValidationContext"/> that rules
+    /// can consult for contextual data (tenant id, user role, feature flags, etc.).
+    /// </summary>
+    /// <remarks>
+    /// Default interface implementation delegates to the context-less overload so existing
+    /// implementations remain source-compatible. Implementations that want to honor the
+    /// context should override this method.
+    /// </remarks>
+    Core.GuardResult Validate(T value, Core.ValidationContext context) => Validate(value);
+
+    /// <summary>
+    /// Asynchronously validates the specified value with a <see cref="Core.ValidationContext"/>.
+    /// </summary>
+    Task<Core.GuardResult> ValidateAsync(T value, Core.ValidationContext context, CancellationToken cancellationToken = default)
+        => ValidateAsync(value, cancellationToken);
 }
 
 /// <summary>
@@ -134,13 +151,129 @@ public interface IValidator<T>
 /// </summary>
 public abstract class AbstractValidator<T> : IValidator<T>
 {
-    private readonly Dictionary<string, Core.RuleSet> _ruleSets = new(StringComparer.OrdinalIgnoreCase);
+    // Single source of truth: rule-set name -> typed rule lists.
+    // Keeps rules as Func<T, ...> so no object/T cast closures are allocated per rule.
+    private readonly Dictionary<string, TypedRuleSet> _ruleSets =
+        new(StringComparer.OrdinalIgnoreCase);
+
     private string? _currentRuleSet;
 
-    // Legacy flat lists kept as views into the default rule set for backward compatibility
-    // with any subclass that may have referenced them via reflection (defensive).
-    private readonly List<Func<T, Core.ValidationError?>> _rules = new();
-    private readonly List<Func<T, Task<Core.ValidationError?>>> _asyncRules = new();
+    private sealed class TypedRuleSet
+    {
+        public List<RuleEntry> Sync { get; } = new();
+        public List<AsyncRuleEntry> Async { get; } = new();
+    }
+
+    /// <summary>
+    /// A sync rule: the predicate returns a <see cref="Core.ValidationError"/> when failing,
+    /// or <c>null</c> when passing. The <see cref="RuleBuilder"/> post-processes the returned
+    /// error to apply severity/error-code overrides.
+    /// </summary>
+    private sealed class RuleEntry
+    {
+        public Func<T, Core.ValidationContext, Core.ValidationError?> Predicate { get; }
+        public RuleBuilder Builder { get; }
+        public RuleEntry(
+            Func<T, Core.ValidationContext, Core.ValidationError?> predicate,
+            RuleBuilder builder)
+        {
+            Predicate = predicate;
+            Builder = builder;
+        }
+
+        public Core.ValidationError? Invoke(T value, Core.ValidationContext ctx) =>
+            Builder.Apply(Predicate(value, ctx));
+    }
+
+    private sealed class AsyncRuleEntry
+    {
+        public Func<T, Core.ValidationContext, Task<Core.ValidationError?>> Predicate { get; }
+        public RuleBuilder Builder { get; }
+        public AsyncRuleEntry(
+            Func<T, Core.ValidationContext, Task<Core.ValidationError?>> predicate,
+            RuleBuilder builder)
+        {
+            Predicate = predicate;
+            Builder = builder;
+        }
+
+        /// <summary>
+        /// Invokes the predicate and never propagates exceptions. Unexpected throws are
+        /// converted into a <see cref="Core.ValidationError"/> with error code
+        /// <c>RULE_EXECUTION_FAILED</c>. Rationale: validators should collect <i>all</i> errors
+        /// in a single pass -- a throw from one rule must not short-circuit sibling rules
+        /// running concurrently, nor lose their errors via <see cref="Task.WhenAll(Task[])"/>
+        /// exception unwrapping. <see cref="OperationCanceledException"/> is the one
+        /// exception: it is allowed to propagate so cooperative cancellation still works.
+        /// </summary>
+        public async Task<Core.ValidationError?> InvokeAsync(T value, Core.ValidationContext ctx)
+        {
+            Core.ValidationError? raw;
+            try
+            {
+                raw = await Predicate(value, ctx).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                // Exception observed here; surface as a first-class validation error so
+                // callers see it alongside other errors collected in the same run.
+                raw = new Core.ValidationError(
+                    ParameterName: "",
+                    Message: $"Async validation rule threw: {ex.GetType().Name}: {ex.Message}",
+                    ErrorCode: "RULE_EXECUTION_FAILED");
+            }
+            return Builder.Apply(raw);
+        }
+    }
+
+    /// <summary>
+    /// Mutable per-rule metadata. Returned from <c>RuleFor</c> so callers can chain
+    /// modifiers. The builder is captured by its <see cref="RuleEntry"/> so that any
+    /// overrides applied later are picked up when the rule runs.
+    /// </summary>
+    private sealed class RuleBuilder : Core.IRuleBuilder
+    {
+        public Core.Severity Severity { get; private set; } = Core.Severity.Error;
+        public string? ErrorCode { get; private set; }
+        public bool IsParallel { get; private set; }
+
+        public Core.IRuleBuilder WithSeverity(Core.Severity severity)
+        {
+            Severity = severity;
+            return this;
+        }
+
+        public Core.IRuleBuilder WithErrorCode(string errorCode)
+        {
+            ArgumentException.ThrowIfNullOrEmpty(errorCode);
+            ErrorCode = errorCode;
+            return this;
+        }
+
+        public Core.IRuleBuilder Parallel()
+        {
+            IsParallel = true;
+            return this;
+        }
+
+        /// <summary>
+        /// Applies the builder's overrides to a raw <see cref="Core.ValidationError"/>.
+        /// When the predicate produced no error, returns <c>null</c> unchanged.
+        /// </summary>
+        public Core.ValidationError? Apply(Core.ValidationError? error)
+        {
+            if (error is null) return null;
+            return error with
+            {
+                Severity = Severity,
+                ErrorCode = ErrorCode ?? error.ErrorCode
+            };
+        }
+    }
 
     /// <summary>
     /// Defines a named rule set. All <c>RuleFor</c> / <c>RuleForAsync</c> calls inside
@@ -175,17 +308,14 @@ public abstract class AbstractValidator<T> : IValidator<T>
         }
     }
 
-    /// <summary>
-    /// Gets or creates the <see cref="Core.RuleSet"/> for the given name.
-    /// </summary>
-    private Core.RuleSet GetOrCreateRuleSet(string name)
+    private TypedRuleSet GetOrCreateRuleSet(string name)
     {
-        if (!_ruleSets.TryGetValue(name, out var ruleSet))
+        if (!_ruleSets.TryGetValue(name, out var set))
         {
-            ruleSet = new Core.RuleSet(name);
-            _ruleSets[name] = ruleSet;
+            set = new TypedRuleSet();
+            _ruleSets[name] = set;
         }
-        return ruleSet;
+        return set;
     }
 
     /// <summary>
@@ -197,7 +327,12 @@ public abstract class AbstractValidator<T> : IValidator<T>
     /// <summary>
     /// Adds a validation rule for a property using the fluent property validator.
     /// </summary>
-    protected void RuleFor<TProperty>(
+    /// <returns>
+    /// An <see cref="Core.IRuleBuilder"/> for chaining modifiers like
+    /// <see cref="Core.IRuleBuilder.WithSeverity(Core.Severity)"/> or
+    /// <see cref="Core.IRuleBuilder.WithErrorCode(string)"/>.
+    /// </returns>
+    protected Core.IRuleBuilder RuleFor<TProperty>(
         Func<T, TProperty> selector,
         string propertyName,
         Action<PropertyValidator<TProperty>> configure)
@@ -205,197 +340,330 @@ public abstract class AbstractValidator<T> : IValidator<T>
         var propertyValidator = new PropertyValidator<TProperty>(propertyName);
         configure(propertyValidator);
 
-        Func<T, Core.ValidationError?> rule = value =>
-        {
-            var propertyValue = selector(value);
-            return propertyValidator.Validate(propertyValue);
-        };
-
-        // Add to the active rule set
-        var ruleSet = GetOrCreateRuleSet(ActiveRuleSetName);
-        ruleSet.Rules.Add(obj => rule((T)obj));
-
-        // Also keep in flat list for backward compatibility
-        _rules.Add(rule);
+        return AddSyncRule((value, _) => propertyValidator.Validate(selector(value)));
     }
 
     /// <summary>
     /// Adds a custom validation rule using a predicate.
     /// </summary>
-    protected void RuleFor(Func<T, bool> predicate, string message, string propertyName)
+    protected Core.IRuleBuilder RuleFor(Func<T, bool> predicate, string message, string propertyName)
     {
-        Func<T, Core.ValidationError?> rule = value =>
-        {
-            if (!predicate(value))
-            {
-                return new Core.ValidationError(propertyName, message);
-            }
-            return null;
-        };
+        return AddSyncRule((value, _) =>
+            predicate(value) ? null : new Core.ValidationError(propertyName, message));
+    }
 
-        var ruleSet = GetOrCreateRuleSet(ActiveRuleSetName);
-        ruleSet.Rules.Add(obj => rule((T)obj));
-
-        _rules.Add(rule);
+    /// <summary>
+    /// Adds a custom validation rule that can consult the <see cref="Core.ValidationContext"/>.
+    /// Useful for authorization-aware rules, tenant-scoped checks, or feature-flag-gated logic.
+    /// </summary>
+    protected Core.IRuleBuilder RuleFor(
+        Func<T, Core.ValidationContext, bool> predicate,
+        string message,
+        string propertyName)
+    {
+        return AddSyncRule((value, ctx) =>
+            predicate(value, ctx) ? null : new Core.ValidationError(propertyName, message));
     }
 
     /// <summary>
     /// Adds an async validation rule using an async predicate.
     /// </summary>
-    protected void RuleForAsync(Func<T, Task<bool>> predicate, string message, string propertyName)
+    protected Core.IRuleBuilder RuleForAsync(Func<T, Task<bool>> predicate, string message, string propertyName)
     {
-        Func<T, Task<Core.ValidationError?>> rule = async value =>
-        {
-            if (!await predicate(value).ConfigureAwait(false))
-            {
-                return new Core.ValidationError(propertyName, message);
-            }
-            return null;
-        };
-
-        var ruleSet = GetOrCreateRuleSet(ActiveRuleSetName);
-        ruleSet.AsyncRules.Add(async obj => await rule((T)obj).ConfigureAwait(false));
-
-        _asyncRules.Add(rule);
+        return AddAsyncRule(async (value, _) =>
+            await predicate(value).ConfigureAwait(false)
+                ? null
+                : new Core.ValidationError(propertyName, message));
     }
 
     /// <summary>
-    /// Validates the value by running <b>all</b> rule sets (default + every named group).
-    /// This preserves full backward compatibility with the original parameterless overload.
+    /// Adds an async validation rule that can consult the <see cref="Core.ValidationContext"/>.
     /// </summary>
-    public Core.GuardResult Validate(T value)
+    protected Core.IRuleBuilder RuleForAsync(
+        Func<T, Core.ValidationContext, Task<bool>> predicate,
+        string message,
+        string propertyName)
     {
-        var errors = new List<Core.ValidationError>();
+        return AddAsyncRule(async (value, ctx) =>
+            await predicate(value, ctx).ConfigureAwait(false)
+                ? null
+                : new Core.ValidationError(propertyName, message));
+    }
 
-        foreach (var rule in _rules)
+    private RuleBuilder AddSyncRule(Func<T, Core.ValidationContext, Core.ValidationError?> predicate)
+    {
+        var builder = new RuleBuilder();
+        GetOrCreateRuleSet(ActiveRuleSetName).Sync.Add(new RuleEntry(predicate, builder));
+        return builder;
+    }
+
+    private RuleBuilder AddAsyncRule(Func<T, Core.ValidationContext, Task<Core.ValidationError?>> predicate)
+    {
+        var builder = new RuleBuilder();
+        GetOrCreateRuleSet(ActiveRuleSetName).Async.Add(new AsyncRuleEntry(predicate, builder));
+        return builder;
+    }
+
+    /// <summary>
+    /// Validates the value by running <b>all</b> rule sets (default + every named group)
+    /// using <see cref="Core.ValidationContext.Empty"/>.
+    /// </summary>
+    public Core.GuardResult Validate(T value) => Validate(value, Core.ValidationContext.Empty);
+
+    /// <summary>
+    /// Validates the value with a context by running <b>all</b> rule sets.
+    /// </summary>
+    /// <param name="value">The object to validate.</param>
+    /// <param name="context">Contextual data rules may consult (tenant id, user role, etc.).</param>
+    public Core.GuardResult Validate(T value, Core.ValidationContext context)
+    {
+        List<Core.ValidationError>? errors = null;
+
+        foreach (var set in _ruleSets.Values)
         {
-            var error = rule(value);
-            if (error != null)
+            foreach (var rule in set.Sync)
             {
-                errors.Add(error);
+                var error = rule.Invoke(value, context);
+                if (error is not null)
+                {
+                    (errors ??= new()).Add(error);
+                }
             }
         }
 
-        return errors.Count == 0 ? Core.GuardResult.Success() : Core.GuardResult.Failure(errors);
+        return errors is null ? Core.GuardResult.Success() : Core.GuardResult.Failure(errors);
     }
 
     /// <summary>
     /// Validates the value by running only the specified rule sets.
     /// </summary>
-    /// <param name="value">The object to validate.</param>
-    /// <param name="ruleSets">
-    /// One or more rule set names to execute. Use <see cref="Core.RuleSet"/> constants
-    /// for well-known names. If a requested rule set does not exist, it is silently skipped.
-    /// </param>
-    /// <returns>A <see cref="Core.GuardResult"/> containing any validation errors found.</returns>
-    public Core.GuardResult Validate(T value, params string[] ruleSets)
+    public Core.GuardResult Validate(T value, params string[] ruleSets) =>
+        Validate(value, Core.ValidationContext.Empty, ruleSets);
+
+    /// <summary>
+    /// Validates the value with a context by running only the specified rule sets.
+    /// </summary>
+    public Core.GuardResult Validate(T value, Core.ValidationContext context, params string[] ruleSets)
     {
         if (ruleSets is null || ruleSets.Length == 0)
         {
-            return Validate(value);
+            return Validate(value, context);
         }
 
-        var errors = new List<Core.ValidationError>();
+        List<Core.ValidationError>? errors = null;
 
-        foreach (var ruleSetName in ruleSets)
+        foreach (var name in ruleSets)
         {
-            if (_ruleSets.TryGetValue(ruleSetName, out var ruleSet))
+            if (!_ruleSets.TryGetValue(name, out var set)) continue;
+
+            foreach (var rule in set.Sync)
             {
-                foreach (var rule in ruleSet.Rules)
+                var error = rule.Invoke(value, context);
+                if (error is not null)
                 {
-                    var error = rule(value!);
-                    if (error != null)
-                    {
-                        errors.Add(error);
-                    }
+                    (errors ??= new()).Add(error);
                 }
             }
         }
 
-        return errors.Count == 0 ? Core.GuardResult.Success() : Core.GuardResult.Failure(errors);
+        return errors is null ? Core.GuardResult.Success() : Core.GuardResult.Failure(errors);
     }
 
     /// <summary>
     /// Validates the value asynchronously by running <b>all</b> rule sets.
     /// </summary>
-    public async Task<Core.GuardResult> ValidateAsync(T value, CancellationToken cancellationToken = default)
+    public Task<Core.GuardResult> ValidateAsync(T value, CancellationToken cancellationToken = default) =>
+        ValidateAsync(value, Core.ValidationContext.Empty, cancellationToken);
+
+    /// <summary>
+    /// Validates the value asynchronously with a context by running <b>all</b> rule sets.
+    /// Async rules marked <see cref="Core.IRuleBuilder.Parallel"/> are batched and awaited
+    /// concurrently via <see cref="Task.WhenAll(Task[])"/>.
+    /// </summary>
+    public async Task<Core.GuardResult> ValidateAsync(
+        T value, Core.ValidationContext context, CancellationToken cancellationToken = default)
     {
-        var errors = new List<Core.ValidationError>();
+        List<Core.ValidationError>? errors = null;
 
-        // Run sync rules first
-        foreach (var rule in _rules)
+        foreach (var set in _ruleSets.Values)
         {
-            var error = rule(value);
-            if (error != null)
+            RunSyncRules(set.Sync, value, context, ref errors);
+            await RunAsyncRules(set.Async, value, context, e =>
             {
-                errors.Add(error);
-            }
+                (errors ??= new()).Add(e);
+            }, cancellationToken).ConfigureAwait(false);
         }
 
-        // Then async rules
-        foreach (var rule in _asyncRules)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            var error = await rule(value).ConfigureAwait(false);
-            if (error != null)
-            {
-                errors.Add(error);
-            }
-        }
-
-        return errors.Count == 0 ? Core.GuardResult.Success() : Core.GuardResult.Failure(errors);
+        return errors is null ? Core.GuardResult.Success() : Core.GuardResult.Failure(errors);
     }
 
     /// <summary>
     /// Validates the value asynchronously by running only the specified rule sets.
     /// </summary>
-    /// <param name="value">The object to validate.</param>
-    /// <param name="cancellationToken">Cancellation token.</param>
-    /// <param name="ruleSets">
-    /// One or more rule set names to execute. If empty or null, all rule sets run.
-    /// </param>
-    /// <returns>A <see cref="Core.GuardResult"/> containing any validation errors found.</returns>
-    public async Task<Core.GuardResult> ValidateAsync(T value, CancellationToken cancellationToken, params string[] ruleSets)
+    public Task<Core.GuardResult> ValidateAsync(T value, CancellationToken cancellationToken, params string[] ruleSets) =>
+        ValidateAsync(value, Core.ValidationContext.Empty, cancellationToken, ruleSets);
+
+    /// <summary>
+    /// Validates the value asynchronously with a context by running only the specified rule sets.
+    /// </summary>
+    public async Task<Core.GuardResult> ValidateAsync(
+        T value,
+        Core.ValidationContext context,
+        CancellationToken cancellationToken,
+        params string[] ruleSets)
     {
         if (ruleSets is null || ruleSets.Length == 0)
         {
-            return await ValidateAsync(value, cancellationToken).ConfigureAwait(false);
+            return await ValidateAsync(value, context, cancellationToken).ConfigureAwait(false);
         }
 
-        var errors = new List<Core.ValidationError>();
+        List<Core.ValidationError>? errors = null;
 
-        foreach (var ruleSetName in ruleSets)
+        foreach (var name in ruleSets)
         {
-            if (_ruleSets.TryGetValue(ruleSetName, out var ruleSet))
-            {
-                foreach (var rule in ruleSet.Rules)
-                {
-                    var error = rule(value!);
-                    if (error != null)
-                    {
-                        errors.Add(error);
-                    }
-                }
+            if (!_ruleSets.TryGetValue(name, out var set)) continue;
 
-                foreach (var rule in ruleSet.AsyncRules)
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    var error = await rule(value!).ConfigureAwait(false);
-                    if (error != null)
-                    {
-                        errors.Add(error);
-                    }
-                }
+            RunSyncRules(set.Sync, value, context, ref errors);
+            await RunAsyncRules(set.Async, value, context, e =>
+            {
+                (errors ??= new()).Add(e);
+            }, cancellationToken).ConfigureAwait(false);
+        }
+
+        return errors is null ? Core.GuardResult.Success() : Core.GuardResult.Failure(errors);
+    }
+
+    private static void RunSyncRules(
+        List<RuleEntry> rules,
+        T value,
+        Core.ValidationContext context,
+        ref List<Core.ValidationError>? errors)
+    {
+        foreach (var rule in rules)
+        {
+            var error = rule.Invoke(value, context);
+            if (error is not null)
+            {
+                (errors ??= new()).Add(error);
             }
         }
+    }
 
-        return errors.Count == 0 ? Core.GuardResult.Success() : Core.GuardResult.Failure(errors);
+    /// <summary>
+    /// Runs async rules with parallel-batching semantics: consecutive rules whose builder
+    /// is flagged <see cref="RuleBuilder.IsParallel"/> are awaited concurrently via
+    /// <see cref="Task.WhenAll(Task[])"/>. A non-parallel rule flushes any pending batch
+    /// and runs sequentially. Preserves definition-order side effects for sequential rules
+    /// while unlocking parallelism where the author opted in.
+    /// </summary>
+    private static async Task RunAsyncRules(
+        List<AsyncRuleEntry> rules,
+        T value,
+        Core.ValidationContext context,
+        Action<Core.ValidationError> emit,
+        CancellationToken cancellationToken)
+    {
+        List<Task<Core.ValidationError?>>? batch = null;
+
+        foreach (var rule in rules)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (rule.Builder.IsParallel)
+            {
+                (batch ??= new()).Add(rule.InvokeAsync(value, context));
+                continue;
+            }
+
+            // Flush any pending parallel batch before running the sequential rule.
+            if (batch is { Count: > 0 })
+            {
+                await FlushBatch(batch, emit).ConfigureAwait(false);
+                batch.Clear();
+            }
+
+            var error = await rule.InvokeAsync(value, context).ConfigureAwait(false);
+            if (error is not null) emit(error);
+        }
+
+        if (batch is { Count: > 0 })
+        {
+            await FlushBatch(batch, emit).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Awaits a batch of concurrent rule tasks and emits any non-null results.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Exception safety.</b> By contract, <see cref="AsyncRuleEntry.InvokeAsync"/>
+    /// only ever throws <see cref="OperationCanceledException"/> -- every other exception
+    /// is converted into a <see cref="Core.ValidationError"/> before the task completes.
+    /// This sidesteps <see cref="Task.WhenAll(Task[])"/>'s most dangerous behaviour:
+    /// <see cref="AggregateException"/> unwrapping that surfaces only the first fault and
+    /// silently discards the rest. Here, a misbehaving rule adds one error; siblings keep
+    /// going; nothing is lost.
+    /// </para>
+    /// <para>
+    /// <b>Cancellation.</b> If any task is canceled, <see cref="Task.WhenAll(Task[])"/>
+    /// throws <see cref="TaskCanceledException"/> and propagates upward -- the outer
+    /// <c>ValidateAsync</c> caller observes a clean cancellation boundary.
+    /// </para>
+    /// </remarks>
+    private static async Task FlushBatch(
+        List<Task<Core.ValidationError?>> batch,
+        Action<Core.ValidationError> emit)
+    {
+        var results = await Task.WhenAll(batch).ConfigureAwait(false);
+        foreach (var error in results)
+        {
+            if (error is not null) emit(error);
+        }
     }
 
     /// <summary>
     /// Gets the names of all registered rule sets.
     /// </summary>
     public IReadOnlyCollection<string> GetRuleSetNames() => _ruleSets.Keys.ToList().AsReadOnly();
+
+    /// <summary>
+    /// Imports all rules from another <see cref="AbstractValidator{T}"/> of the same type.
+    /// Rules from the included validator preserve their original rule-set grouping;
+    /// rules that belonged to <c>"default"</c> in the child validator become part of the
+    /// current validator's <c>"default"</c> set as well.
+    /// </summary>
+    /// <param name="other">The validator whose rules should be imported.</param>
+    /// <remarks>
+    /// <para>
+    /// <b>Use case.</b> Share common rules (e.g., a base <c>UserValidator</c> with email and
+    /// password rules) across multiple operation-specific validators (<c>CreateUserValidator</c>,
+    /// <c>UpdateUserValidator</c>) without re-declaring them.
+    /// </para>
+    /// <para>
+    /// <b>Semantics.</b> Rules are imported <i>by reference</i> -- they share the same
+    /// <see cref="RuleBuilder"/> as in the source validator. Modifying severity on the
+    /// child after <c>Include</c> is called will also affect the parent. If you need
+    /// independent copies, clone your rules manually.
+    /// </para>
+    /// <para>
+    /// <b>Ordering.</b> Imported rules run <i>after</i> rules declared directly in this
+    /// validator, in the order they were defined in the source. This makes composition
+    /// behave like standard inheritance: local rules first, base rules second.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="other"/> is null.</exception>
+    protected void Include(AbstractValidator<T> other)
+    {
+        ArgumentNullException.ThrowIfNull(other);
+
+        foreach (var (name, source) in other._ruleSets)
+        {
+            var target = GetOrCreateRuleSet(name);
+            target.Sync.AddRange(source.Sync);
+            target.Async.AddRange(source.Async);
+        }
+    }
 }
 
 /// <summary>
