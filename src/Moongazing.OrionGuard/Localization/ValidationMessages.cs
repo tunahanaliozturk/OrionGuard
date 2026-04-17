@@ -46,7 +46,10 @@ public static class ValidationMessages
                 ["WeakPassword"] = "{0} does not meet password strength requirements.",
                 ["TurkishId"] = "{0} is not a valid Turkish ID number.",
                 ["TaxNumber"] = "{0} is not a valid tax number.",
-                ["LicensePlate"] = "{0} is not a valid license plate."
+                ["LicensePlate"] = "{0} is not a valid license plate.",
+                ["DefaultStronglyTypedId"] = "{0} must not be the default value.",
+                ["BusinessRuleBroken"] = "Business rule broken: {0}.",
+                ["DomainInvariantViolated"] = "Domain invariant violated: {0}."
             }),
             ["tr"] = new(new Dictionary<string, string>
             {
@@ -79,7 +82,10 @@ public static class ValidationMessages
                 ["WeakPassword"] = "{0} şifre güvenlik gereksinimlerini karşılamıyor.",
                 ["TurkishId"] = "{0} geçerli bir TC Kimlik Numarası değil.",
                 ["TaxNumber"] = "{0} geçerli bir vergi numarası değil.",
-                ["LicensePlate"] = "{0} geçerli bir plaka değil."
+                ["LicensePlate"] = "{0} geçerli bir plaka değil.",
+                ["DefaultStronglyTypedId"] = "{0} varsayılan değer olmamalıdır.",
+                ["BusinessRuleBroken"] = "İş kuralı ihlal edildi: {0}.",
+                ["DomainInvariantViolated"] = "Alan değişmezi ihlal edildi: {0}."
             }),
             ["de"] = new(new Dictionary<string, string>
             {
@@ -112,7 +118,10 @@ public static class ValidationMessages
                 ["WeakPassword"] = "{0} erfüllt nicht die Anforderungen an die Passwortstärke.",
                 ["TurkishId"] = "{0} ist keine gültige türkische ID-Nummer.",
                 ["TaxNumber"] = "{0} ist keine gültige Steuernummer.",
-                ["LicensePlate"] = "{0} ist kein gültiges Kennzeichen."
+                ["LicensePlate"] = "{0} ist kein gültiges Kennzeichen.",
+                ["DefaultStronglyTypedId"] = "{0} darf nicht der Standardwert sein.",
+                ["BusinessRuleBroken"] = "Geschäftsregel verletzt: {0}.",
+                ["DomainInvariantViolated"] = "Domäneninvariante verletzt: {0}."
             }),
             ["fr"] = new(new Dictionary<string, string>
             {
@@ -145,7 +154,10 @@ public static class ValidationMessages
                 ["WeakPassword"] = "{0} ne répond pas aux exigences de robustesse du mot de passe.",
                 ["TurkishId"] = "{0} n'est pas un numéro d'identité turc valide.",
                 ["TaxNumber"] = "{0} n'est pas un numéro fiscal valide.",
-                ["LicensePlate"] = "{0} n'est pas une plaque d'immatriculation valide."
+                ["LicensePlate"] = "{0} n'est pas une plaque d'immatriculation valide.",
+                ["DefaultStronglyTypedId"] = "{0} ne doit pas être la valeur par défaut.",
+                ["BusinessRuleBroken"] = "Règle métier violée : {0}.",
+                ["DomainInvariantViolated"] = "Invariant de domaine violé : {0}."
             }),
             ["es"] = new(new Dictionary<string, string>
             {
@@ -178,7 +190,10 @@ public static class ValidationMessages
                 ["WeakPassword"] = "{0} no cumple los requisitos de seguridad de la contraseña.",
                 ["TurkishId"] = "{0} no es un número de identidad turco válido.",
                 ["TaxNumber"] = "{0} no es un número fiscal válido.",
-                ["LicensePlate"] = "{0} no es una matrícula válida."
+                ["LicensePlate"] = "{0} no es una matrícula válida.",
+                ["DefaultStronglyTypedId"] = "{0} no debe ser el valor predeterminado.",
+                ["BusinessRuleBroken"] = "Regla de negocio infringida: {0}.",
+                ["DomainInvariantViolated"] = "Invariante de dominio infringida: {0}."
             }),
             ["pt"] = new(new Dictionary<string, string>
             {
@@ -211,7 +226,10 @@ public static class ValidationMessages
                 ["WeakPassword"] = "{0} não atende aos requisitos de força da senha.",
                 ["TurkishId"] = "{0} não é um número de identidade turco válido.",
                 ["TaxNumber"] = "{0} não é um número fiscal válido.",
-                ["LicensePlate"] = "{0} não é uma placa válida."
+                ["LicensePlate"] = "{0} não é uma placa válida.",
+                ["DefaultStronglyTypedId"] = "{0} não pode ser o valor padrão.",
+                ["BusinessRuleBroken"] = "Regra de negócio violada: {0}.",
+                ["DomainInvariantViolated"] = "Invariante de domínio violada: {0}."
             }),
             ["ar"] = new(new Dictionary<string, string>
             {
@@ -244,7 +262,10 @@ public static class ValidationMessages
                 ["WeakPassword"] = "{0} لا يستوفي متطلبات قوة كلمة المرور.",
                 ["TurkishId"] = "{0} ليس رقم هوية تركي صالح.",
                 ["TaxNumber"] = "{0} ليس رقم ضريبي صالح.",
-                ["LicensePlate"] = "{0} ليست لوحة ترخيص صالحة."
+                ["LicensePlate"] = "{0} ليست لوحة ترخيص صالحة.",
+                ["DefaultStronglyTypedId"] = "{0} يجب ألا يكون القيمة الافتراضية.",
+                ["BusinessRuleBroken"] = "تم انتهاك قاعدة عمل: {0}.",
+                ["DomainInvariantViolated"] = "تم انتهاك ثابت النطاق: {0}."
             }),
             ["ja"] = new(new Dictionary<string, string>
             {
@@ -277,7 +298,10 @@ public static class ValidationMessages
                 ["WeakPassword"] = "{0} はパスワード強度の要件を満たしていません。",
                 ["TurkishId"] = "{0} は有効なトルコIDナンバーではありません。",
                 ["TaxNumber"] = "{0} は有効な税番号ではありません。",
-                ["LicensePlate"] = "{0} は有効なナンバープレートではありません。"
+                ["LicensePlate"] = "{0} は有効なナンバープレートではありません。",
+                ["DefaultStronglyTypedId"] = "{0} は既定値であってはなりません。",
+                ["BusinessRuleBroken"] = "ビジネスルール違反: {0}。",
+                ["DomainInvariantViolated"] = "ドメイン不変条件違反: {0}。"
             }),
             ["zh"] = new(new Dictionary<string, string>
             {
@@ -310,7 +334,10 @@ public static class ValidationMessages
                 ["WeakPassword"] = "{0} 不符合密码强度要求。",
                 ["TurkishId"] = "{0} 不是有效的土耳其身份证号。",
                 ["TaxNumber"] = "{0} 不是有效的税号。",
-                ["LicensePlate"] = "{0} 不是有效的车牌号。"
+                ["LicensePlate"] = "{0} 不是有效的车牌号。",
+                ["DefaultStronglyTypedId"] = "{0} 不能为默认值。",
+                ["BusinessRuleBroken"] = "业务规则被破坏：{0}。",
+                ["DomainInvariantViolated"] = "领域不变式被破坏：{0}。"
             }),
             ["ko"] = new(new Dictionary<string, string>
             {
@@ -343,7 +370,10 @@ public static class ValidationMessages
                 ["WeakPassword"] = "{0}이(가) 비밀번호 강도 요구 사항을 충족하지 않습니다.",
                 ["TurkishId"] = "{0}은(는) 유효한 터키 신분증 번호가 아닙니다.",
                 ["TaxNumber"] = "{0}은(는) 유효한 세금 번호가 아닙니다.",
-                ["LicensePlate"] = "{0}은(는) 유효한 번호판이 아닙니다."
+                ["LicensePlate"] = "{0}은(는) 유효한 번호판이 아닙니다.",
+                ["DefaultStronglyTypedId"] = "{0}은(는) 기본값이 아니어야 합니다.",
+                ["BusinessRuleBroken"] = "비즈니스 규칙 위반: {0}.",
+                ["DomainInvariantViolated"] = "도메인 불변식 위반: {0}."
             }),
             ["ru"] = new(new Dictionary<string, string>
             {
@@ -376,7 +406,10 @@ public static class ValidationMessages
                 ["WeakPassword"] = "{0} не соответствует требованиям к надёжности пароля.",
                 ["TurkishId"] = "{0} не является действительным турецким идентификационным номером.",
                 ["TaxNumber"] = "{0} не является действительным налоговым номером.",
-                ["LicensePlate"] = "{0} не является действительным номерным знаком."
+                ["LicensePlate"] = "{0} не является действительным номерным знаком.",
+                ["DefaultStronglyTypedId"] = "{0} не должен быть значением по умолчанию.",
+                ["BusinessRuleBroken"] = "Нарушено бизнес-правило: {0}.",
+                ["DomainInvariantViolated"] = "Нарушен инвариант домена: {0}."
             }),
             ["nl"] = new(new Dictionary<string, string>
             {
@@ -409,7 +442,10 @@ public static class ValidationMessages
                 ["WeakPassword"] = "{0} voldoet niet aan de wachtwoordsterkte-eisen.",
                 ["TurkishId"] = "{0} is geen geldig Turks identiteitsnummer.",
                 ["TaxNumber"] = "{0} is geen geldig belastingnummer.",
-                ["LicensePlate"] = "{0} is geen geldig kenteken."
+                ["LicensePlate"] = "{0} is geen geldig kenteken.",
+                ["DefaultStronglyTypedId"] = "{0} mag niet de standaardwaarde zijn.",
+                ["BusinessRuleBroken"] = "Bedrijfsregel geschonden: {0}.",
+                ["DomainInvariantViolated"] = "Domein-invariant geschonden: {0}."
             }),
             ["pl"] = new(new Dictionary<string, string>
             {
@@ -442,7 +478,10 @@ public static class ValidationMessages
                 ["WeakPassword"] = "{0} nie spełnia wymagań dotyczących siły hasła.",
                 ["TurkishId"] = "{0} nie jest prawidłowym tureckim numerem identyfikacyjnym.",
                 ["TaxNumber"] = "{0} nie jest prawidłowym numerem podatkowym.",
-                ["LicensePlate"] = "{0} nie jest prawidłową tablicą rejestracyjną."
+                ["LicensePlate"] = "{0} nie jest prawidłową tablicą rejestracyjną.",
+                ["DefaultStronglyTypedId"] = "{0} nie może być wartością domyślną.",
+                ["BusinessRuleBroken"] = "Naruszono regułę biznesową: {0}.",
+                ["DomainInvariantViolated"] = "Naruszono niezmiennik domeny: {0}."
             }),
             ["it"] = new(new Dictionary<string, string>
             {
@@ -475,7 +514,10 @@ public static class ValidationMessages
                 ["WeakPassword"] = "{0} non soddisfa i requisiti di complessità della password.",
                 ["TurkishId"] = "{0} non è un numero di documento turco valido.",
                 ["TaxNumber"] = "{0} non è un numero di identificazione fiscale valido.",
-                ["LicensePlate"] = "{0} non è una targa valida."
+                ["LicensePlate"] = "{0} non è una targa valida.",
+                ["DefaultStronglyTypedId"] = "{0} non deve essere il valore predefinito.",
+                ["BusinessRuleBroken"] = "Regola di business violata: {0}.",
+                ["DomainInvariantViolated"] = "Invariante di dominio violata: {0}."
             })
         });
 
