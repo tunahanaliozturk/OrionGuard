@@ -4,7 +4,7 @@ namespace Moongazing.OrionGuard.Domain.Primitives;
 /// Marker interface for value objects in the Domain-Driven Design sense.
 /// <para>
 /// Apply to <see langword="record"/> types to get structural equality for free, or inherit from
-/// <c>ValueObject</c> for behavior-rich value objects with explicit equality components.
+/// <see cref="ValueObject"/> for behavior-rich value objects with explicit equality components.
 /// </para>
 /// </summary>
 public interface IValueObject
