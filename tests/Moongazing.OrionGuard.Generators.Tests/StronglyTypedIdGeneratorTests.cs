@@ -65,4 +65,29 @@ public class StronglyTypedIdGeneratorTests
         Assert.NotEqual(default, attributeSource);
         Assert.Contains("StronglyTypedIdAttribute", attributeSource.SourceText.ToString());
     }
+
+    [Fact]
+    public void Generator_ShouldEmitEfCoreValueConverter_ForGuidBackedId()
+    {
+        const string source = """
+            using Moongazing.OrionGuard.Domain.Primitives;
+
+            namespace App
+            {
+                [StronglyTypedId<System.Guid>]
+                public readonly partial struct CustomerId { }
+            }
+            """;
+
+        var result = RunGenerator(source);
+
+        var converterSource = result.Results
+            .SelectMany(r => r.GeneratedSources)
+            .FirstOrDefault(s => s.HintName.Contains("CustomerIdEfCoreValueConverter"));
+
+        Assert.NotEqual(default, converterSource);
+        var text = converterSource.SourceText.ToString();
+        Assert.Contains("CustomerIdEfCoreValueConverter", text);
+        Assert.Contains("Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter", text);
+    }
 }

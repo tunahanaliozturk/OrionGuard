@@ -36,12 +36,17 @@ namespace Moongazing.OrionGuard.Generators.StronglyTypedIds
             {
                 if (target is null) return;
 
-                var source = StronglyTypedIdEmitter.EmitPartial(
-                    target.Namespace, target.TypeName, target.ValueType);
-
                 spc.AddSource(
                     $"{target.TypeName}.StronglyTypedId.g.cs",
-                    SourceText.From(source, Encoding.UTF8));
+                    SourceText.From(
+                        StronglyTypedIdEmitter.EmitPartial(target.Namespace, target.TypeName, target.ValueType),
+                        Encoding.UTF8));
+
+                spc.AddSource(
+                    EfCoreConverterEmitter.HintName(target.TypeName),
+                    SourceText.From(
+                        EfCoreConverterEmitter.Emit(target.Namespace, target.TypeName, target.ValueType),
+                        Encoding.UTF8));
             });
         }
 
