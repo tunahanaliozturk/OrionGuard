@@ -24,12 +24,12 @@ namespace Moongazing.OrionGuard.Generators.StronglyTypedIds
                     SourceText.From(StronglyTypedIdAttributeSource.Source, Encoding.UTF8)));
 
             var targets = context.SyntaxProvider
-                .CreateSyntaxProvider(
+                .ForAttributeWithMetadataName(
+                    StronglyTypedIdAttributeSource.FullName + "`1",
                     predicate: static (node, _) => node is StructDeclarationSyntax sds
                         && sds.Modifiers.Any(m => m.ValueText == "partial")
-                        && sds.Modifiers.Any(m => m.ValueText == "readonly")
-                        && HasStronglyTypedIdAttribute(sds),
-                    transform: static (ctx, _) => TransformSyntax(ctx))
+                        && sds.Modifiers.Any(m => m.ValueText == "readonly"),
+                    transform: static (ctx, _) => Transform(ctx))
                 .Where(static t => t is not null);
 
             context.RegisterSourceOutput(targets, static (spc, target) =>
@@ -45,28 +45,12 @@ namespace Moongazing.OrionGuard.Generators.StronglyTypedIds
             });
         }
 
-        private static bool HasStronglyTypedIdAttribute(StructDeclarationSyntax sds)
+        private static StronglyTypedIdTarget? Transform(GeneratorAttributeSyntaxContext ctx)
         {
-            return sds.AttributeLists
-                .SelectMany(al => al.Attributes)
-                .Any(a =>
-                {
-                    var nameStr = a.Name.ToString();
-                    return nameStr.Contains("StronglyTypedId");
-                });
-        }
+            if (ctx.TargetSymbol is not INamedTypeSymbol symbol) return null;
 
-        private static StronglyTypedIdTarget? TransformSyntax(GeneratorSyntaxContext ctx)
-        {
-            if (ctx.Node is not StructDeclarationSyntax sds) return null;
-
-            var symbol = ctx.SemanticModel.GetDeclaredSymbol(sds) as INamedTypeSymbol;
-            if (symbol is null) return null;
-
-            var attribute = symbol.GetAttributes()
-                .FirstOrDefault(a => a.AttributeClass?.Name == "StronglyTypedIdAttribute");
-
-            if (attribute?.AttributeClass is null) return null;
+            var attribute = ctx.Attributes.FirstOrDefault();
+            if (attribute is null || attribute.AttributeClass is null) return null;
 
             var typeArg = attribute.AttributeClass.TypeArguments.FirstOrDefault();
             if (typeArg is null) return null;
@@ -82,19 +66,18 @@ namespace Moongazing.OrionGuard.Generators.StronglyTypedIds
                 mapped);
         }
 
-
         private sealed class StronglyTypedIdTarget
         {
-            public string Namespace { get; }
-            public string TypeName { get; }
-            public SupportedValueType ValueType { get; }
-
             public StronglyTypedIdTarget(string @namespace, string typeName, SupportedValueType valueType)
             {
                 Namespace = @namespace;
                 TypeName = typeName;
                 ValueType = valueType;
             }
+
+            public string Namespace { get; }
+            public string TypeName { get; }
+            public SupportedValueType ValueType { get; }
         }
     }
 }
