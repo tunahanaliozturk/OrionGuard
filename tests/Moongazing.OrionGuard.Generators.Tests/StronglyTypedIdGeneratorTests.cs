@@ -116,4 +116,30 @@ public class StronglyTypedIdGeneratorTests
         Assert.Contains("Read(", text);
         Assert.Contains("Write(", text);
     }
+
+    [Fact]
+    public void Generator_ShouldEmitTypeConverter_ForGuidBackedId()
+    {
+        const string source = """
+            using Moongazing.OrionGuard.Domain.Primitives;
+
+            namespace App
+            {
+                [StronglyTypedId<System.Guid>]
+                public readonly partial struct InvoiceId { }
+            }
+            """;
+
+        var result = RunGenerator(source);
+
+        var tcSource = result.Results
+            .SelectMany(r => r.GeneratedSources)
+            .FirstOrDefault(s => s.HintName.Contains("InvoiceIdTypeConverter"));
+
+        Assert.NotEqual(default, tcSource);
+        var text = tcSource.SourceText.ToString();
+        Assert.Contains("System.ComponentModel.TypeConverter", text);
+        Assert.Contains("ConvertFrom", text);
+        Assert.Contains("ConvertTo", text);
+    }
 }
