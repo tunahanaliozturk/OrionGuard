@@ -90,4 +90,30 @@ public class StronglyTypedIdGeneratorTests
         Assert.Contains("CustomerIdEfCoreValueConverter", text);
         Assert.Contains("Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter", text);
     }
+
+    [Fact]
+    public void Generator_ShouldEmitJsonConverter_ForGuidBackedId()
+    {
+        const string source = """
+            using Moongazing.OrionGuard.Domain.Primitives;
+
+            namespace App
+            {
+                [StronglyTypedId<System.Guid>]
+                public readonly partial struct ProductId { }
+            }
+            """;
+
+        var result = RunGenerator(source);
+
+        var jsonSource = result.Results
+            .SelectMany(r => r.GeneratedSources)
+            .FirstOrDefault(s => s.HintName.Contains("ProductIdJsonConverter"));
+
+        Assert.NotEqual(default, jsonSource);
+        var text = jsonSource.SourceText.ToString();
+        Assert.Contains("System.Text.Json.Serialization.JsonConverter<App.ProductId>", text);
+        Assert.Contains("Read(", text);
+        Assert.Contains("Write(", text);
+    }
 }

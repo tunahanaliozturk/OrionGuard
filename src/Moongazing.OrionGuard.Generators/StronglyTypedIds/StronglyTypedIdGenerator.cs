@@ -47,6 +47,12 @@ namespace Moongazing.OrionGuard.Generators.StronglyTypedIds
                     SourceText.From(
                         EfCoreConverterEmitter.Emit(target.Namespace, target.TypeName, target.ValueType),
                         Encoding.UTF8));
+
+                spc.AddSource(
+                    JsonConverterEmitter.HintName(target.TypeName),
+                    SourceText.From(
+                        JsonConverterEmitter.Emit(target.Namespace, target.TypeName, target.ValueType),
+                        Encoding.UTF8));
             });
         }
 
