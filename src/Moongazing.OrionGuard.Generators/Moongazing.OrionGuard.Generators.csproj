@@ -8,10 +8,10 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>CS1591</NoWarn>
     <PackageId>Moongazing.OrionGuard.Generators</PackageId>
-    <Version>6.0.0</Version>
+    <Version>6.1.0</Version>
     <Authors>Tunahan Ali Ozturk</Authors>
-    <Description>Source generator for OrionGuard validation library. Generates compile-time validation code from attributes, enabling reflection-free NativeAOT-compatible validation.</Description>
-    <PackageTags>guard;validation;source-generator;roslyn;nativeaot;codegen</PackageTags>
+    <Description>Source generator for OrionGuard. Generates [GenerateValidator] validators, [StronglyTypedId&lt;TValue&gt;] strongly-typed id types (EF Core ValueConverter, System.Text.Json JsonConverter, TypeConverter companions), and supports NativeAOT-compatible reflection-free workflows.</Description>
+    <PackageTags>guard;validation;source-generator;roslyn;nativeaot;codegen;ddd;strongly-typed-id</PackageTags>
     <RepositoryUrl>https://github.com/Moongazing/OrionGuard</RepositoryUrl>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <IncludeBuildOutput>false</IncludeBuildOutput>

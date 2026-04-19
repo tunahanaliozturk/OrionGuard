@@ -209,6 +209,57 @@ var validator = DynamicValidator.FromJson(json);
 var result = validator.Validate(userDto);
 ```
 
+### DDD Primitives (NEW in v6.1)
+
+```csharp
+// Hybrid ValueObject — abstract class or record-based marker
+public sealed class Money : ValueObject
+{
+    public decimal Amount { get; }
+    public string Currency { get; }
+
+    public Money(decimal amount, string currency)
+    {
+        Ensure.That(amount).GreaterThanOrEqualTo(0);
+        Amount = amount; Currency = currency;
+    }
+
+    protected override IEnumerable<object?> GetEqualityComponents()
+    {
+        yield return Amount; yield return Currency;
+    }
+}
+
+// Record-based value object — structural equality from the compiler
+public sealed record Address(string Street, string City, string PostalCode) : IValueObject;
+
+// Strongly-typed id via source generator (EF Core + JSON + TypeConverter all auto-generated)
+[StronglyTypedId<Guid>]
+public readonly partial struct OrderId;
+
+// Aggregate root with domain events and invariant enforcement
+public sealed class Order : AggregateRoot<OrderId>
+{
+    public Order(OrderId id) : base(id)
+    {
+        id.AgainstDefaultStronglyTypedId(nameof(id));
+    }
+
+    public void Ship()
+    {
+        CheckRule(new OrderMustBePaidRule(this));
+        RaiseEvent(new OrderShippedEvent(Id));
+    }
+}
+
+// Wire up DI (registers all generated EF Core converters in the calling assembly)
+services.AddOrionGuardStronglyTypedIds();
+```
+
+> v6.2.0 will add `IDomainEventDispatcher` + MediatR bridge + EF Core `SaveChanges` interceptor. v6.3.0 will add the `BusinessRule` base class, `Guard.Against.BrokenRule`, `Validate.Rule`, and ASP.NET Core ProblemDetails mapping.
+
+---
+
 ### RuleSets (NEW in v6.0)
 
 ```csharp

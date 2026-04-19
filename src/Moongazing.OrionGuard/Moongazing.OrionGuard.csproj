@@ -16,7 +16,7 @@
 		<OutputType>Library</OutputType>
 
 		<PackageId>OrionGuard</PackageId>
-		<Version>6.0.0</Version>
+		<Version>6.1.0</Version>
 		<Authors>Tunahan Ali Ozturk</Authors>
 		<Company>Tunahan Ali Ozturk</Company>
 		<GeneratePackageOnBuild>false</GeneratePackageOnBuild>
@@ -35,6 +35,22 @@
 		<PackageProjectUrl>https://github.com/Moongazing/OrionGuard</PackageProjectUrl>
 		<PackageTags>guard;validation;fluent;exceptions;.NET;input-validation;guard-clauses;defensive-programming;security;localization;format-validation;nativeaot;source-generator;aspnetcore;mediatr</PackageTags>
 		<PackageReleaseNotes>
+v6.1.0 — Release Notes
+
+NEW: DDD Domain Primitives — ValueObject (hybrid: abstract base + IValueObject marker for records), Entity&lt;TId&gt; with identity equality and CheckRule / CheckRuleAsync helpers, AggregateRoot&lt;TId&gt; with IAggregateRoot marker and PullDomainEvents() dispatching buffer.
+
+NEW: StronglyTypedId&lt;TValue&gt; — abstract record base for manual ids, plus [StronglyTypedId&lt;TValue&gt;] incremental source generator (Moongazing.OrionGuard.Generators) that emits the partial struct body, EF Core ValueConverter, System.Text.Json JsonConverter, and TypeConverter for Guid, int, long, string, and Ulid (net9.0+).
+
+NEW: AgainstDefaultStronglyTypedId — extension method that throws when a strongly-typed id is null or wraps the default of its underlying type.
+
+NEW: services.AddOrionGuardStronglyTypedIds() — scans assemblies for generated EF Core converters and registers them.
+
+NEW: IDomainEvent, IBusinessRule, IAsyncBusinessRule, BusinessRuleValidationException, DomainInvariantException — abstractions landing in v6.1.0 so primitives are immediately usable; full base classes and dispatcher arrive in v6.2.0 and v6.3.0.
+
+NEW: Localization — DefaultStronglyTypedId, BusinessRuleBroken, DomainInvariantViolated keys added for all 14 bundled languages.
+
+Full changelog: https://github.com/Moongazing/OrionGuard/blob/master/CHANGELOG.md
+
 v6.0.0 — Release Notes
 
 NEW: GeneratedRegex Migration — All 20+ regex patterns migrated to .NET 8+ [GeneratedRegex] source-generated code. Zero runtime compilation, NativeAOT compatible.

@@ -5,6 +5,60 @@ All notable changes to OrionGuard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.1.0] - 2026-04-19
+
+### Added
+
+#### DDD Domain Primitives (`Moongazing.OrionGuard.Domain`)
+
+- `ValueObject` abstract base class with component-wise equality via `GetEqualityComponents()`.
+- `IValueObject` marker interface for record-based value objects (records get structural equality from the compiler).
+- `Entity<TId>` base class with identity equality and `protected static CheckRule` / `CheckRuleAsync` helpers that throw `BusinessRuleValidationException` when a rule is broken.
+- `IAggregateRoot` non-generic marker interface — enables consumers (e.g., EF Core interceptors) to discover aggregates without knowing `TId`.
+- `AggregateRoot<TId>` base class with `RaiseEvent` (protected) and `PullDomainEvents` (public, atomically returns and clears the buffer).
+- `StronglyTypedId<TValue>` abstract positional record (manual-use base; constraint `where TValue : notnull, IEquatable<TValue>`).
+
+#### Abstractions for v6.2.0 / v6.3.0
+
+- `IDomainEvent` interface (`EventId`, `OccurredOnUtc`). Dispatcher abstraction arrives in v6.2.0.
+- `IBusinessRule` and `IAsyncBusinessRule` interfaces (`IsBroken`/`IsBrokenAsync`, `MessageKey`, `DefaultMessage`, optional `MessageArgs`). Full `BusinessRule` base class + `Guard.Against.BrokenRule` helpers arrive in v6.3.0.
+- `BusinessRuleValidationException` — resolves messages through the existing `ValidationMessages` subsystem with fallback to `DefaultMessage`.
+- `DomainInvariantException` — for raw invariant violations outside named rules.
+
+#### `[StronglyTypedId<TValue>]` Source Generator (`Moongazing.OrionGuard.Generators`)
+
+- Incremental generator using `ForAttributeWithMetadataName` with `RegisterPostInitializationOutput` to inject the attribute.
+- Supported value types: `System.Guid`, `int`, `long`, `string`, `System.Ulid` (net9.0+).
+- For each decorated `readonly partial struct`, emits four companion sources:
+  - Partial body: `IEquatable<T>`, operators, `GetHashCode`, `ToString`, `Value` property + ctor, `New()` / `Empty` (for Guid and Ulid).
+  - EF Core `ValueConverter<TId, TValue>` (namespace `Microsoft.EntityFrameworkCore.Storage.ValueConversion`).
+  - `System.Text.Json.Serialization.JsonConverter<TId>` with proper per-type reader/writer methods.
+  - `System.ComponentModel.TypeConverter` for ASP.NET Core route/query/form binding.
+
+#### Guard Extensions
+
+- `AgainstDefaultStronglyTypedId<TValue>(this StronglyTypedId<TValue> id, ...)` — throws `NullValueException` when `id` is null or `ZeroValueException` when its wrapped value equals the default of `TValue` (including empty string).
+
+#### Dependency Injection
+
+- `services.AddOrionGuardStronglyTypedIds(params Assembly[] assemblies)` — scans assemblies for source-generated `*EfCoreValueConverter` types and registers each as a singleton.
+
+#### Localization
+
+- 3 new keys added to all 14 bundled languages (42 new translations):
+  - `DefaultStronglyTypedId`
+  - `BusinessRuleBroken`
+  - `DomainInvariantViolated`
+
+#### Benchmarks
+
+- `DomainPrimitivesBenchmark` — compares `ValueObject` class equality vs record equality, and measures `AggregateRoot.RaiseEvent` + `PullDomainEvents` overhead on net8.0 and net9.0.
+
+### Notes
+
+- The DDD toolkit is the first of a three-phase rollout. v6.2.0 will add the domain-event dispatcher + MediatR bridge + EF Core `SaveChanges` interceptor. v6.3.0 will add the full `BusinessRule` base class, `Guard.Against.BrokenRule`, `Validate.Rule` / `Validate.Rules`, and ASP.NET Core `BusinessRuleValidationException` → RFC 9457 ProblemDetails mapping.
+- No new NuGet packages — all additions land in existing packages (`Moongazing.OrionGuard` core, `Moongazing.OrionGuard.Generators`).
+
 ## [6.0.0] - 2026-04-05
 
 ### Added
