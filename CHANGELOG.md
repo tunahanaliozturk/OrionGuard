@@ -5,6 +5,173 @@ All notable changes to OrionGuard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.1.0] - 2026-04-19
+
+### Added
+
+#### DDD Domain Primitives (`Moongazing.OrionGuard.Domain`)
+
+- `ValueObject` abstract base class with component-wise equality via `GetEqualityComponents()`.
+- `IValueObject` marker interface for record-based value objects (records get structural equality from the compiler).
+- `Entity<TId>` base class with identity equality and `protected static CheckRule` / `CheckRuleAsync` helpers that throw `BusinessRuleValidationException` when a rule is broken.
+- `IAggregateRoot` non-generic marker interface — enables consumers (e.g., EF Core interceptors) to discover aggregates without knowing `TId`.
+- `AggregateRoot<TId>` base class with `RaiseEvent` (protected) and `PullDomainEvents` (public, atomically returns and clears the buffer).
+- `StronglyTypedId<TValue>` abstract positional record (manual-use base; constraint `where TValue : notnull, IEquatable<TValue>`).
+
+#### Abstractions for v6.2.0 / v6.3.0
+
+- `IDomainEvent` interface (`EventId`, `OccurredOnUtc`). Dispatcher abstraction arrives in v6.2.0.
+- `IBusinessRule` and `IAsyncBusinessRule` interfaces (`IsBroken`/`IsBrokenAsync`, `MessageKey`, `DefaultMessage`, optional `MessageArgs`). Full `BusinessRule` base class + `Guard.Against.BrokenRule` helpers arrive in v6.3.0.
+- `BusinessRuleValidationException` — resolves messages through the existing `ValidationMessages` subsystem with fallback to `DefaultMessage`.
+- `DomainInvariantException` — for raw invariant violations outside named rules.
+
+#### `[StronglyTypedId<TValue>]` Source Generator (`Moongazing.OrionGuard.Generators`)
+
+- Incremental generator using `ForAttributeWithMetadataName` with `RegisterPostInitializationOutput` to inject the attribute.
+- Supported value types: `System.Guid`, `int`, `long`, `string`, `System.Ulid` (net9.0+).
+- For each decorated `readonly partial struct`, emits four companion sources:
+  - Partial body: `IEquatable<T>`, operators, `GetHashCode`, `ToString`, `Value` property + ctor, `New()` / `Empty` (for Guid and Ulid).
+  - EF Core `ValueConverter<TId, TValue>` (namespace `Microsoft.EntityFrameworkCore.Storage.ValueConversion`).
+  - `System.Text.Json.Serialization.JsonConverter<TId>` with proper per-type reader/writer methods.
+  - `System.ComponentModel.TypeConverter` for ASP.NET Core route/query/form binding.
+
+#### Guard Extensions
+
+- `AgainstDefaultStronglyTypedId<TValue>(this StronglyTypedId<TValue> id, ...)` — throws `NullValueException` when `id` is null or `ZeroValueException` when its wrapped value equals the default of `TValue` (including empty string).
+
+#### Dependency Injection
+
+- `services.AddOrionGuardStronglyTypedIds(params Assembly[] assemblies)` — scans assemblies for source-generated `*EfCoreValueConverter` types and registers each as a singleton.
+
+#### Localization
+
+- 3 new keys added to all 14 bundled languages (42 new translations):
+  - `DefaultStronglyTypedId`
+  - `BusinessRuleBroken`
+  - `DomainInvariantViolated`
+
+#### Benchmarks
+
+- `DomainPrimitivesBenchmark` — compares `ValueObject` class equality vs record equality, and measures `AggregateRoot.RaiseEvent` + `PullDomainEvents` overhead on net8.0 and net9.0.
+
+### Notes
+
+- The DDD toolkit is the first of a three-phase rollout. v6.2.0 will add the domain-event dispatcher + MediatR bridge + EF Core `SaveChanges` interceptor. v6.3.0 will add the full `BusinessRule` base class, `Guard.Against.BrokenRule`, `Validate.Rule` / `Validate.Rules`, and ASP.NET Core `BusinessRuleValidationException` → RFC 9457 ProblemDetails mapping.
+- No new NuGet packages — all additions land in existing packages (`Moongazing.OrionGuard` core, `Moongazing.OrionGuard.Generators`).
+
+## [6.0.0] - 2026-04-05
+
+### Added
+
+#### GeneratedRegex Migration
+- All 24 regex patterns migrated to .NET 8+ `[GeneratedRegex]` for NativeAOT compatibility. Zero runtime compilation overhead.
+
+#### 14-Language Localization
+- Added Chinese (zh), Korean (ko), Russian (ru), Dutch (nl), Polish (pl).
+- Completed all 30 message keys for German, French, Spanish, Portuguese, Arabic, Japanese.
+- Total: 14 languages x 30 keys = 420 messages.
+
+#### Rate Limit Guards
+- `AgainstRateLimitExceeded()` -- general rate limit validation.
+- `AgainstTooManyRequests()` -- HTTP 429-style request throttling.
+- `AgainstSlidingWindowExceeded()` -- sliding window rate limit check.
+- `AgainstConcurrentLimitExceeded()` -- concurrent request limit validation.
+- `AgainstDailyQuotaExceeded()` -- daily quota enforcement.
+- New `RateLimitExceededException` exception type.
+
+#### International Guards
+- `AgainstInvalidSwiftCode()` -- SWIFT/BIC code validation.
+- `AgainstInvalidIsbn()` -- ISBN-10/ISBN-13 validation.
+- `AgainstInvalidVin()` -- Vehicle Identification Number validation.
+- `AgainstInvalidEan()` -- European Article Number (barcode) validation.
+- `AgainstInvalidVatNumber()` -- VAT number format validation.
+- `AgainstInvalidImei()` -- IMEI device identifier validation.
+
+#### Business Guards
+- `AgainstExpired()` -- token/subscription/license expiration check.
+- `AgainstNotYetActive()` -- validates that an activation date has been reached.
+
+#### Dynamic Rule Engine
+- JSON-configurable runtime validation with 14 rule types: NotNull, NotEmpty, Length, Range, Email, Regex, In, NotIn, and more.
+- `DynamicValidator.FromJson()` for loading rules from JSON configuration.
+- `DynamicValidatorFactory` for creating validators from rule definitions.
+
+#### Custom Exception Factory
+- `IExceptionFactory` interface for pluggable exception creation.
+- `DefaultExceptionFactory` implementation.
+- `ExceptionFactoryProvider` for registering and resolving custom factories.
+
+#### Deep Nested Validation
+- `Validate.Nested(obj)` with unlimited depth traversal.
+- `.Nested()` for validating child objects.
+- `.Collection()` for validating collection items with indexed paths (e.g., `Items[0].Name`).
+
+#### Cross-Property DSL
+- `Validate.CrossProperties(obj)` entry point.
+- `.AreEqual()`, `.AreNotEqual()` -- property equality comparisons.
+- `.IsGreaterThan()`, `.IsLessThan()` -- relational comparisons.
+- `.AtLeastOneRequired()` -- ensures at least one of the specified properties has a value.
+
+#### Polymorphic Validation
+- `Validate.Polymorphic<TBase>()` with `.When<TDerived>()` for type-discriminated validation rules.
+
+#### Validation Result Caching
+- `CachedValidator<T>` decorator with configurable TTL.
+- `.WithCaching()` extension method for wrapping any validator.
+
+#### RuleSets
+- `RuleSet("create", () => ...)` for grouping validation rules.
+- Execute selectively: `validator.Validate(obj, RuleSet.Create)`.
+
+#### IRequestValidator<T>
+- Pipeline-ready validator interface for middleware/MediatR integration.
+
+#### GuardResult.SuggestedHttpStatusCode
+- HTTP status code hints on `GuardResult` for ProblemDetails mapping.
+
+### New Packages
+
+#### Moongazing.OrionGuard.AspNetCore
+- Validation middleware and `[ValidateRequest]` attribute.
+- `.WithValidation<T>()` Minimal API filter.
+- MVC action filter for automatic model validation.
+- RFC 9457 ProblemDetails response formatting.
+- `IExceptionHandler` integration.
+- IOptions validation with `.ValidateWithOrionGuard()`.
+
+#### Moongazing.OrionGuard.MediatR
+- `ValidationBehavior<TRequest, TResponse>` pipeline behavior.
+- Assembly scanning for automatic validator registration.
+
+#### Moongazing.OrionGuard.Generators
+- `[GenerateValidator]` source generator for compile-time, reflection-free, NativeAOT-compatible validation.
+
+#### Moongazing.OrionGuard.Swagger
+- `OrionGuardSchemaFilter` for automatic OpenAPI constraint generation from validation attributes.
+
+#### Moongazing.OrionGuard.OpenTelemetry
+- `InstrumentedValidator<T>` decorator with metrics (total/failures/duration) and distributed tracing.
+
+#### Moongazing.OrionGuard.Blazor
+- `<OrionGuardValidator />` EditForm component.
+- `<OrionGuardFluentValidator TModel="..." />` EditForm component.
+
+#### Moongazing.OrionGuard.Grpc
+- `OrionGuardInterceptor` server interceptor with streaming support.
+
+#### Moongazing.OrionGuard.SignalR
+- `OrionGuardHubFilter` for automatic hub method parameter validation.
+
+### Deprecated
+
+- `RegexPatterns` class -- use `GeneratedRegexPatterns` instead. Will be removed in v7.0.
+
+### Internal
+
+- Benchmark suite with BenchmarkDotNet (NullCheck, Email, Regex, Security, ObjectValidator comparisons).
+
+---
+
 ## [5.0.0] - 2026-04-02
 
 ### Breaking Changes

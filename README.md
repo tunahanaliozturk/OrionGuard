@@ -5,78 +5,71 @@
 <h1 align="center">OrionGuard</h1>
 
 <p align="center">
-  A modern, fluent, and extensible guard clause &amp; validation library for .NET
+  The most comprehensive guard clause &amp; validation ecosystem for .NET
 </p>
 
 <p align="center">
   <a href="https://www.nuget.org/packages/OrionGuard"><img src="https://img.shields.io/nuget/v/OrionGuard?style=flat-square&color=blue" alt="NuGet" /></a>
   <a href="https://www.nuget.org/packages/OrionGuard"><img src="https://img.shields.io/nuget/dt/OrionGuard?style=flat-square&color=green" alt="Downloads" /></a>
-  <a href="https://github.com/Moongazing/OrionGuard/blob/master/src/Moongazing.OrionGuard/docs/LICENSE.txt"><img src="https://img.shields.io/badge/license-MIT-yellow?style=flat-square" alt="License" /></a>
+  <a href="https://github.com/tunahanaliozturk/OrionGuard/blob/master/src/Moongazing.OrionGuard/docs/LICENSE.txt"><img src="https://img.shields.io/badge/license-MIT-yellow?style=flat-square" alt="License" /></a>
   <img src="https://img.shields.io/badge/.NET-8.0%20%7C%209.0%20%7C%2010.0-purple?style=flat-square" alt="Target" />
 </p>
 
 ---
 
-> **v5.0.1 is out!** Security Guards, Format Guards, ThrowHelper, span-based FastGuard, and 8-language localization.
-> [See what's new in this release.](https://github.com/tunahanaliozturk/OrionGuard/releases/tag/v5.0.1)
+> **v6.0.0 is here!** 9 ecosystem packages, 14-language localization, Dynamic Rule Engine, source generators, ASP.NET Core / MediatR / Blazor / gRPC / SignalR integration, and much more.
+> [See what's new in this release.](CHANGELOG.md)
 
 ---
 
-## Features
+## Why OrionGuard?
 
-- **Fluent API** — `Ensure.That(email).NotNull().Email()` with automatic parameter name capture
-- **Security Guards** — SQL injection, XSS, path traversal, command injection, LDAP, XXE detection
-- **Format Guards** — Coordinates, MAC, CIDR, hostname, JWT, country codes, time zones, Base64
-- **FastGuard** — Span-based zero-allocation validation with aggressive inlining
-- **ThrowHelper** — JIT-optimized exception throwing for near-zero happy-path overhead
-- **Result Pattern** — Collect all validation errors instead of throwing on the first failure
-- **Async Validation** — Database lookups, API calls, and external service checks
-- **Object Validation** — Property expressions, cross-property rules, compiled expression caching
-- **Business Guards** — Money, currency, SKU, coupon, scheduling, status transitions
-- **Conditional Validation** — `When` / `Unless` / `Always` control flow
-- **Attribute-Based** — `[NotNull]`, `[Email]`, `[Range]`, `[Length]` on model properties
-- **Dependency Injection** — `services.AddOrionGuard()` with `AbstractValidator<T>` support
-- **Localization** — Thread-safe, 8 languages (EN, TR, DE, FR, ES, PT, AR, JA), per-request culture
-- **Common Profiles** — Pre-built validators for email, password, username, phone, money, etc.
+| Feature | OrionGuard | FluentValidation | Ardalis.GuardClauses | Dawn.Guard |
+|---------|:----------:|:----------------:|:--------------------:|:----------:|
+| Fluent guard clauses | Yes | - | Yes | Yes |
+| Object validation | Yes | Yes | - | - |
+| ASP.NET Core middleware | Yes | Yes | - | - |
+| Minimal API filters | Yes | Yes | - | - |
+| MediatR pipeline | Yes | Yes | - | - |
+| Source generators | Yes | - | - | - |
+| Blazor integration | Yes | Yes | - | - |
+| gRPC interceptor | Yes | - | - | - |
+| SignalR hub filter | Yes | - | - | - |
+| OpenTelemetry | Yes | - | - | - |
+| Security guards (SQL/XSS) | Yes | - | - | - |
+| Dynamic JSON rules | Yes | - | - | - |
+| Span-based (zero alloc) | Yes | - | - | - |
+| 14 languages | Yes | 20+ | - | - |
+| NativeAOT ready | Yes | - | - | - |
+| Polymorphic validation | Yes | Yes | - | - |
+| Deep nested validation | Yes | Yes | - | - |
+| Validation caching | Yes | - | - | - |
 
 ---
 
-## Installation
+## Quick Start (30 seconds)
 
 ```bash
 dotnet add package OrionGuard
 ```
 
----
-
-## Quick Start
-
 ```csharp
 using Moongazing.OrionGuard.Core;
 using Moongazing.OrionGuard.Extensions;
 
-// Fluent guard clauses
+// Guard clauses — throw on invalid
 Ensure.That(email).NotNull().NotEmpty().Email();
 Ensure.That(age).InRange(18, 120);
 
-// High-performance path
+// High-performance — zero allocation
 FastGuard.NotNullOrEmpty(name, nameof(name));
 FastGuard.Email(email, nameof(email));
 
-// Security checks
+// Security — O(1) FrozenSet lookups
 userInput.AgainstSqlInjection(nameof(userInput));
 userInput.AgainstXss(nameof(userInput));
-filePath.AgainstPathTraversal(nameof(filePath));
 
-// Or all security checks at once
-userInput.AgainstInjection(nameof(userInput));
-
-// Format validation
-"US".AgainstInvalidCountryCode(nameof(country));
-"Europe/Istanbul".AgainstInvalidTimeZoneId(nameof(tz));
-token.AgainstInvalidJwtFormat(nameof(token));
-
-// Collect all errors
+// Collect all errors — don't throw
 var result = GuardResult.Combine(
     Ensure.Accumulate(email, "Email").NotNull().Email().ToResult(),
     Ensure.Accumulate(password, "Password").MinLength(8).ToResult()
@@ -87,325 +80,386 @@ if (result.IsInvalid)
 
 ---
 
-## Fluent API
+## Ecosystem Packages
+
+| Package | Install | Purpose |
+|---------|---------|---------|
+| `OrionGuard` | `dotnet add package OrionGuard` | Core validation library |
+| `Moongazing.OrionGuard.AspNetCore` | `dotnet add package Moongazing.OrionGuard.AspNetCore` | Middleware, filters, ProblemDetails, IOptions |
+| `Moongazing.OrionGuard.MediatR` | `dotnet add package Moongazing.OrionGuard.MediatR` | CQRS pipeline validation |
+| `Moongazing.OrionGuard.Generators` | `dotnet add package Moongazing.OrionGuard.Generators` | Compile-time source generator |
+| `Moongazing.OrionGuard.Swagger` | `dotnet add package Moongazing.OrionGuard.Swagger` | OpenAPI schema generation |
+| `Moongazing.OrionGuard.OpenTelemetry` | `dotnet add package Moongazing.OrionGuard.OpenTelemetry` | Metrics & tracing |
+| `Moongazing.OrionGuard.Blazor` | `dotnet add package Moongazing.OrionGuard.Blazor` | EditForm validation |
+| `Moongazing.OrionGuard.Grpc` | `dotnet add package Moongazing.OrionGuard.Grpc` | Server interceptor |
+| `Moongazing.OrionGuard.SignalR` | `dotnet add package Moongazing.OrionGuard.SignalR` | Hub method validation |
+
+---
+
+## Core Features
+
+### Fluent API
 
 ```csharp
 // Automatic parameter name capture via CallerArgumentExpression
 Ensure.That(email).NotNull().NotEmpty().Email();
-Ensure.That(password).NotNull().MinLength(8).Matches(@"^(?=.*[A-Z])");
-
-// Shorthand — returns validated value
-string validEmail = Ensure.NotNull(email);
-int validAge = Ensure.InRange(age, 18, 120);
+Ensure.That(password).NotNull().MinLength(8);
 
 // Transform and default
 var cleaned = Ensure.That(rawEmail)
     .Transform(e => e.Trim().ToLowerInvariant())
     .Default("unknown@example.com")
-    .NotEmpty()
     .Email()
     .Value;
+
+// Conditional validation
+Ensure.That(age)
+    .When(requireAge).InRange(18, 120)
+    .Unless(isAdmin).Positive()
+    .Always().NotZero();
 ```
 
-**Available validations:** `NotNull`, `NotEmpty`, `Email`, `Url`, `Matches`, `Length`, `MinLength`, `MaxLength`, `GreaterThan`, `LessThan`, `InRange`, `Positive`, `NotNegative`, `InPast`, `InFuture`, `MinCount`, `MaxCount`, `NoNullItems`, `Must`
-
----
-
-## Security Guards
-
-Built-in protection against common attack vectors. All patterns stored in `FrozenSet<string>` for O(1) lookups.
+### Security Guards
 
 ```csharp
-// Individual checks
 userInput.AgainstSqlInjection(nameof(userInput));     // 28 SQL patterns
 userInput.AgainstXss(nameof(userInput));               // 28 XSS vectors
-filePath.AgainstPathTraversal(nameof(filePath));       // Traversal sequences + encoded variants
-command.AgainstCommandInjection(nameof(command));      // Shell metacharacters + interpreters
-ldapFilter.AgainstLdapInjection(nameof(ldapFilter));   // LDAP-special characters
-xmlInput.AgainstXxe(nameof(xmlInput));                 // DOCTYPE/ENTITY declarations
-fileName.AgainstUnsafeFileName(nameof(fileName));      // Traversal + invalid OS characters
-redirectUrl.AgainstOpenRedirect(nameof(redirectUrl), trustedDomains);
-
-// Combined — runs SQL, XSS, path traversal, and command injection
-userInput.AgainstInjection(nameof(userInput));
+filePath.AgainstPathTraversal(nameof(filePath));       // Encoded variants
+command.AgainstCommandInjection(nameof(command));      // Shell metacharacters
+userInput.AgainstInjection(nameof(userInput));         // All combined
 ```
 
----
-
-## Format Guards
-
-Universal format validation for internationally applicable data.
+### International Guards (NEW in v6.0)
 
 ```csharp
-// Geographic
-latitude.AgainstInvalidLatitude(nameof(latitude));           // -90 to 90
-longitude.AgainstInvalidLongitude(nameof(longitude));         // -180 to 180
-FormatGuards.AgainstInvalidCoordinates(lat, lng, "location");
-
-// Network
-"AA:BB:CC:DD:EE:FF".AgainstInvalidMacAddress(nameof(mac));   // Colon, hyphen, or dot notation
-"api.example.com".AgainstInvalidHostname(nameof(host));       // RFC 1123
-"192.168.1.0/24".AgainstInvalidCidr(nameof(cidr));            // IPv4 and IPv6
-
-// International standards
-"US".AgainstInvalidCountryCode(nameof(country));              // ISO 3166-1 alpha-2 (249 codes)
-"Europe/Istanbul".AgainstInvalidTimeZoneId(nameof(tz));       // IANA/Windows time zones
-"en-US".AgainstInvalidLanguageTag(nameof(lang));              // BCP 47
-
-// Tokens and encoding
-token.AgainstInvalidJwtFormat(nameof(token));                 // Three Base64URL segments
-connStr.AgainstInvalidConnectionString(nameof(connStr));      // Key=value format
-encoded.AgainstInvalidBase64String(nameof(encoded));          // Structure + padding
+"DEUTDEFF".AgainstInvalidSwiftCode(nameof(swift));     // SWIFT/BIC
+"978-3-16-148410-0".AgainstInvalidIsbn(nameof(isbn));  // ISBN-10/13
+"1HGCM82633A004352".AgainstInvalidVin(nameof(vin));    // Vehicle ID
+"4006381333931".AgainstInvalidEan(nameof(ean));         // EAN-13
+"DE123456789".AgainstInvalidVatNumber(nameof(vat));     // EU VAT
+"490154203237518".AgainstInvalidImei(nameof(imei));     // IMEI
 ```
 
----
-
-## FastGuard (High Performance)
-
-Aggressively inlined guards with `ThrowHelper` pattern for maximum JIT optimization. Span-based methods for zero-allocation validation.
+### Deep Nested Validation (NEW in v6.0)
 
 ```csharp
-// Standard guards
-FastGuard.NotNull(user, nameof(user));
-FastGuard.NotNullOrEmpty(email, nameof(email));
-FastGuard.InRange(age, 0, 150, nameof(age));
-FastGuard.Positive(quantity, nameof(quantity));
-
-// Span-based — zero allocation
-FastGuard.Email(email, nameof(email));                    // No regex, pure span parsing
-FastGuard.Ascii(input.AsSpan(), nameof(input));
-FastGuard.AlphaNumeric(code.AsSpan(), nameof(code));
-FastGuard.NumericString(digits.AsSpan(), nameof(digits));
-FastGuard.MaxLength(name.AsSpan(), 100, nameof(name));
-FastGuard.ValidGuid(id.AsSpan(), nameof(id));
-FastGuard.Finite(price, nameof(price));                   // Rejects NaN/Infinity
+var result = Validate.Nested(order)
+    .Property(o => o.OrderNumber, p => p.NotEmpty())
+    .Property(o => o.Total, p => p.GreaterThan(0))
+    .Nested(o => o.Customer, customer => customer
+        .Property(c => c.Name, p => p.NotEmpty().Length(2, 100))
+        .Property(c => c.Email, p => p.NotEmpty().Email())
+        .Nested(c => c.Address, address => address
+            .Property(a => a.City, p => p.NotEmpty())
+            .Property(a => a.ZipCode, p => p.NotEmpty().Length(5, 10))))
+    .Collection(o => o.Items, (item, index) => item
+        .Property(i => i.ProductName, p => p.NotEmpty())
+        .Property(i => i.Quantity, p => p.GreaterThan(0)))
+    .ToResult();
+// Errors: "Customer.Address.City", "Items[2].ProductName", etc.
 ```
 
----
-
-## Result Pattern
-
-Collect all errors for API-friendly responses.
+### Cross-Property Validation (NEW in v6.0)
 
 ```csharp
-var result = GuardResult.Combine(
-    Ensure.Accumulate(email, "Email").NotNull().Email().ToResult(),
-    Ensure.Accumulate(password, "Password").MinLength(8).ToResult(),
-    Ensure.Accumulate(age, "Age").InRange(18, 120).ToResult()
-);
-
-if (result.IsInvalid)
-{
-    Dictionary<string, string[]> errors = result.ToErrorDictionary();
-    // { "Email": ["Email must be a valid email address."], ... }
-}
-
-// Or throw all at once
-result.ThrowIfInvalid();
-```
-
----
-
-## Async Validation
-
-```csharp
-var result = await EnsureAsync.That(email, "Email")
-    .UniqueAsync(async e => await db.IsEmailUniqueAsync(e))
-    .ExistsAsync(async e => await emailService.IsDeliverableAsync(e))
-    .MustAsync(async e => await IsNotBlacklistedAsync(e), "Email is blacklisted")
-    .ValidateAsync();
-```
-
----
-
-## Object Validation
-
-```csharp
-var result = Validate.For(userDto)
-    .Property(u => u.Email, g => g.NotNull().Email())
-    .Property(u => u.Password, g => g.NotNull().MinLength(8))
-    .Property(u => u.Age, g => g.InRange(18, 120))
-    .CrossProperty<DateTime, DateTime>(
-        o => o.StartDate, o => o.EndDate,
-        (start, end) => start < end,
-        "StartDate must be before EndDate")
-    .When(order.IsExpress, v =>
-        v.Property(o => o.Priority, g => g.InRange(1, 3)))
+var result = Validate.CrossProperties(booking)
+    .IsGreaterThan(b => b.EndDate, b => b.StartDate, "End date must be after start date")
+    .AreNotEqual(b => b.Email, b => b.Username)
+    .AtLeastOneRequired(b => b.Phone, b => b.Email)
+    .When(b => b.IsInternational, v => v
+        .Must(b => !string.IsNullOrEmpty(b.PassportNumber), "PassportNumber", "Passport required for international bookings"))
     .ToResult();
 ```
 
----
-
-## Conditional Validation
+### Polymorphic Validation (NEW in v6.0)
 
 ```csharp
-Ensure.That(alternateEmail)
-    .When(isPrimaryEmailInvalid)
-    .NotNull()
-    .Email()
-    .Unless(isGuestUser)
-    .MinLength(5)
-    .Always()
-    .NotEmpty();
+var validator = Validate.Polymorphic<Payment>()
+    .When<CreditCardPayment>(p => Validate.Nested(p)
+        .Property(x => x.CardNumber, v => v.NotEmpty().Length(16, 16))
+        .Property(x => x.Cvv, v => v.NotEmpty().Length(3, 4))
+        .ToResult())
+    .When<BankTransferPayment>(p => Validate.Nested(p)
+        .Property(x => x.Iban, v => v.NotEmpty())
+        .ToResult())
+    .Otherwise(p => GuardResult.Failure("Payment", "Unknown payment type."));
+
+var result = validator.Validate(payment);
 ```
 
----
-
-## Business Domain Guards
+### Dynamic Rule Engine (NEW in v6.0)
 
 ```csharp
-// Financial
-price.AgainstInvalidMonetaryAmount("amount", maxDecimalPlaces: 2);
-"USD".AgainstInvalidCurrencyCode("currency");
-discount.AgainstInvalidPercentage("discount");
-
-// E-commerce
-"PROD-12345-XL".AgainstInvalidSku("sku");
-total.AgainstOrderBelowMinimum(50m, "orderTotal");
-"SUMMER2025".AgainstInvalidCouponCode("coupon");
-
-// Scheduling
-orderDate.AgainstWeekend("deliveryDate");
-appointmentTime.AgainstOutsideBusinessHours("time", startHour: 9, endHour: 17);
-
-// Advanced formats
-"4111111111111111".AgainstInvalidCreditCard("card");       // Luhn algorithm
-"DE89370400440532013000".AgainstInvalidIban("iban");
-"1.2.3-beta.1".AgainstInvalidSemVer("version");
-```
-
----
-
-## Attribute-Based Validation
-
-```csharp
-public class CreateUserRequest
+// Load rules from JSON (e.g., from database, config file, API)
+var json = """
 {
-    [NotNull, Email]
-    public string Email { get; set; }
-
-    [NotEmpty, Length(8, 128)]
-    public string Password { get; set; }
-
-    [Range(18, 120), Positive]
-    public int Age { get; set; }
+  "Name": "CreateUser",
+  "Rules": [
+    { "PropertyName": "Email", "RuleType": "NotEmpty" },
+    { "PropertyName": "Email", "RuleType": "Email" },
+    { "PropertyName": "Age", "RuleType": "Range", "Parameters": { "Min": 18, "Max": 120 } },
+    { "PropertyName": "Country", "RuleType": "In", "Parameters": { "Values": ["US", "UK", "TR"] } },
+    { "PropertyName": "Password", "RuleType": "MinLength", "Parameters": { "Min": 8 },
+      "WhenProperty": "IsNewUser", "WhenValue": true }
+  ]
 }
+""";
 
-var result = AttributeValidator.Validate(request);
-if (result.IsInvalid)
-    return BadRequest(result.ToErrorDictionary());
+var validator = DynamicValidator.FromJson(json);
+var result = validator.Validate(userDto);
 ```
 
----
-
-## Dependency Injection
+### DDD Primitives (NEW in v6.1)
 
 ```csharp
-// Registration
-services.AddOrionGuard();
-services.AddValidator<CreateUserRequest, CreateUserRequestValidator>();
-
-// Validator
-public class CreateUserRequestValidator : AbstractValidator<CreateUserRequest>
+// Hybrid ValueObject — abstract class or record-based marker
+public sealed class Money : ValueObject
 {
-    public CreateUserRequestValidator(IUserRepository userRepo)
+    public decimal Amount { get; }
+    public string Currency { get; }
+
+    public Money(decimal amount, string currency)
     {
-        RuleFor(x => x.Email, "Email", v => v.NotNull().Email());
-        RuleForAsync(
-            async x => await userRepo.IsEmailUniqueAsync(x.Email),
-            "Email already registered", "Email");
+        Ensure.That(amount).GreaterThanOrEqualTo(0);
+        Amount = amount; Currency = currency;
+    }
+
+    protected override IEnumerable<object?> GetEqualityComponents()
+    {
+        yield return Amount; yield return Currency;
     }
 }
 
-// Controller
-[HttpPost]
-public async Task<IActionResult> Create(CreateUserRequest request)
+// Record-based value object — structural equality from the compiler
+public sealed record Address(string Street, string City, string PostalCode) : IValueObject;
+
+// Strongly-typed id via source generator (EF Core + JSON + TypeConverter all auto-generated)
+[StronglyTypedId<Guid>]
+public readonly partial struct OrderId;
+
+// Aggregate root with domain events and invariant enforcement
+public sealed class Order : AggregateRoot<OrderId>
 {
-    var result = await _validator.ValidateAsync(request);
-    if (result.IsInvalid) return BadRequest(result.ToErrorDictionary());
-    return Ok();
+    public Order(OrderId id) : base(id)
+    {
+        id.AgainstDefaultStronglyTypedId(nameof(id));
+    }
+
+    public void Ship()
+    {
+        CheckRule(new OrderMustBePaidRule(this));
+        RaiseEvent(new OrderShippedEvent(Id));
+    }
+}
+
+// Wire up DI (registers all generated EF Core converters in the calling assembly)
+services.AddOrionGuardStronglyTypedIds();
+```
+
+> v6.2.0 will add `IDomainEventDispatcher` + MediatR bridge + EF Core `SaveChanges` interceptor. v6.3.0 will add the `BusinessRule` base class, `Guard.Against.BrokenRule`, `Validate.Rule`, and ASP.NET Core ProblemDetails mapping.
+
+---
+
+### RuleSets (NEW in v6.0)
+
+```csharp
+public class UserValidator : AbstractValidator<User>
+{
+    public UserValidator()
+    {
+        RuleFor(u => u.Email, "Email", p => p.NotEmpty().Email());
+
+        RuleSet("create", () =>
+        {
+            RuleFor(u => u.Password, "Password", p => p.NotEmpty().Length(8, 100));
+        });
+
+        RuleSet("update", () =>
+        {
+            RuleFor(u => u.Id, "Id", p => p.NotNull());
+        });
+    }
+}
+
+// Execute selectively
+validator.Validate(user, RuleSet.Default, RuleSet.Create);
+validator.Validate(user, RuleSet.Update);
+```
+
+---
+
+## ASP.NET Core Integration
+
+```bash
+dotnet add package Moongazing.OrionGuard.AspNetCore
+```
+
+```csharp
+// Program.cs
+builder.Services.AddOrionGuardAspNetCore();
+
+// Minimal API with automatic validation
+app.MapPost("/api/users", (CreateUserRequest req) => { ... })
+   .WithValidation<CreateUserRequest>();
+
+// IOptions validation
+builder.Services.AddOptions<AppSettings>()
+    .BindConfiguration("App")
+    .ValidateWithOrionGuardOnStart();
+
+// Health check
+builder.Services.AddHealthChecks().AddOrionGuardCheck();
+
+// MVC controller with attribute
+[ValidateRequest]
+public IActionResult Create([FromBody] CreateUserRequest request) { ... }
+```
+
+---
+
+## MediatR Integration
+
+```bash
+dotnet add package Moongazing.OrionGuard.MediatR
+```
+
+```csharp
+builder.Services.AddOrionGuardMediatR(typeof(Program).Assembly);
+
+// Any IValidator<TRequest> is automatically executed before the handler
+public class CreateUserValidator : AbstractValidator<CreateUserCommand>
+{
+    public CreateUserValidator()
+    {
+        RuleFor(x => x.Email, "Email", p => p.NotEmpty().Email());
+    }
 }
 ```
 
 ---
 
-## Localization
+## Source Generator (NativeAOT)
 
-Thread-safe, per-request culture scoping with `AsyncLocal<CultureInfo>`. 8 built-in languages with English fallback.
-
-```csharp
-// Per-request scope (thread-safe)
-ValidationMessages.SetCultureForCurrentScope(new CultureInfo("de"));
-
-// Global
-ValidationMessages.SetCulture("tr");
-
-// Custom translations
-ValidationMessages.AddMessages("es", new Dictionary<string, string>
-{
-    ["NotNull"] = "{0} no puede ser nulo.",
-    ["Email"]   = "{0} debe ser una direccion de correo valida."
-});
+```bash
+dotnet add package Moongazing.OrionGuard.Generators
 ```
 
-**Supported:** English, Turkish, German, French, Spanish, Portuguese, Arabic, Japanese, Italian
-
----
-
-## Code Contracts
-
 ```csharp
-public decimal CalculateDiscount(decimal price, decimal percent)
+[GenerateValidator]
+public sealed class CreateUserRequest
 {
-    Contract.Requires(price >= 0, "Price must be non-negative");
-    Contract.Requires(percent is >= 0 and <= 100, "Invalid percentage");
+    [NotNull, NotEmpty, Length(3, 50)]
+    public string Name { get; set; }
 
-    var result = price * (1 - percent / 100);
+    [NotNull, Email]
+    public string Email { get; set; }
 
-    Contract.Ensures(result >= 0, "Result cannot be negative");
-    return result;
+    [Range(13, 120)]
+    public int Age { get; set; }
 }
+
+// Auto-generated at compile time — no reflection!
+var result = CreateUserRequestValidator.Validate(request);
 ```
 
 ---
 
-## Common Profiles
+## Blazor Integration
+
+```bash
+dotnet add package Moongazing.OrionGuard.Blazor
+```
+
+```razor
+<EditForm Model="@user" OnValidSubmit="HandleSubmit">
+    <OrionGuardValidator />
+    <InputText @bind-Value="user.Name" />
+    <ValidationMessage For="() => user.Name" />
+</EditForm>
+```
+
+---
+
+## gRPC & SignalR
 
 ```csharp
-CommonProfiles.Email("user@example.com");
-CommonProfiles.Password("SecureP@ss1", requireUppercase: true, requireSpecialChar: true);
-CommonProfiles.Username("john_doe", minLength: 3, maxLength: 30);
-CommonProfiles.BirthDate(birthDate, minAge: 18);
-CommonProfiles.MonetaryAmount(99.99m, min: 0, max: 10000);
-CommonProfiles.GuidId(userId);
-CommonProfiles.Slug("my-article-title");
+// gRPC — automatic protobuf message validation
+services.AddOrionGuardGrpc();
+services.AddGrpc(o => o.Interceptors.Add<OrionGuardInterceptor>());
+
+// SignalR — automatic hub method parameter validation
+services.AddOrionGuardSignalR();
+```
+
+---
+
+## Localization (14 Languages)
+
+English, Turkish, German, French, Spanish, Portuguese, Arabic, Japanese, Italian, Chinese, Korean, Russian, Dutch, Polish
+
+```csharp
+ValidationMessages.SetCulture("zh");
+var msg = ValidationMessages.Get("NotNull", "Email");
+// Output: "Email 不能为空。"
 ```
 
 ---
 
 ## Performance
 
-- **ThrowHelper pattern** — Smaller method bodies for better JIT inlining
-- **FrozenSet** — O(1) pattern matching for security and business guards
-- **Compiled expression caching** — No repeated reflection in ObjectValidator
-- **RegexCache** — Bounded at 1,000 entries, no recompilation
-- **ReadOnlySpan** — Zero-allocation FastGuard methods
-- **Explicit StringComparison** — No culture-sensitive overhead
+- **GeneratedRegex** — All 24 regex patterns are source-generated. Zero runtime compilation.
+- **FastGuard** — Span-based zero-allocation validation with `[MethodImpl(AggressiveInlining)]`
+- **FrozenSet** — O(1) lookups for security patterns (SQL, XSS, path traversal)
+- **ThrowHelper** — `[DoesNotReturn]` + `[StackTraceHidden]` for minimal JIT footprint
+- **Validation Caching** — Cache results with TTL for identical inputs
+- **NativeAOT** — Source generator enables reflection-free validation
 
 ---
 
-## Changelog
+## FluentValidation Migration
 
-See [CHANGELOG.md](CHANGELOG.md) for the full history of changes.
+OrionGuard provides a compatibility layer for easy migration:
+
+```csharp
+// Change: using FluentValidation;
+// To:     using Moongazing.OrionGuard.Compatibility;
+
+public class UserValidator : FluentStyleValidator<User>
+{
+    public UserValidator()
+    {
+        RuleFor(x => x.Name).NotEmpty().MaximumLength(100);
+        RuleFor(x => x.Email).NotEmpty().EmailAddress();
+        RuleFor(x => x.Age).InclusiveBetween(18, 120);
+    }
+}
+```
+
+---
+
+## Custom Exception Factory
+
+```csharp
+public class MyExceptionFactory : IExceptionFactory
+{
+    public Exception CreateException(string errorCode, string parameterName, string message, Exception? inner)
+        => new MyCustomException(errorCode, parameterName, message);
+}
+
+services.AddOrionGuardExceptionFactory<MyExceptionFactory>();
+// Or globally: ExceptionFactoryProvider.Configure(new MyExceptionFactory());
+```
+
+---
 
 ## Contributing
 
-Contributions are welcome! Please open an issue or submit a pull request.
+Contributions are welcome! Please read our [Contributing Guide](CONTRIBUTING.md) before submitting a pull request.
 
 ## License
 
-[MIT](src/Moongazing.OrionGuard/docs/LICENSE.txt)
+This project is licensed under the [MIT License](src/Moongazing.OrionGuard/docs/LICENSE.txt).
 
 ## Author
 
-**Tunahan Ali Ozturk** — [GitHub](https://github.com/Moongazing) · [LinkedIn](https://www.linkedin.com/in/tunahanaliozturk/) · [NuGet](https://www.nuget.org/packages/OrionGuard)
+**Tunahan Ali Ozturk** - [GitHub](https://github.com/tunahanaliozturk)

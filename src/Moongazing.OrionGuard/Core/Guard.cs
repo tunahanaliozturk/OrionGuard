@@ -9,6 +9,11 @@ namespace Moongazing.OrionGuard.Core;
 
 public static class Guard
 {
+    private static class PropertyCache<T>
+    {
+        internal static readonly System.Reflection.PropertyInfo[] Properties = typeof(T).GetProperties();
+    }
+
     public static GuardBuilder<T> For<T>(T value, string parameterName)
     {
         ArgumentNullException.ThrowIfNull(parameterName);
@@ -77,7 +82,7 @@ public static class Guard
 
     public static void AgainstUninitializedProperties<T>(this T obj, string parameterName)
     {
-        var properties = typeof(T).GetProperties();
+        var properties = PropertyCache<T>.Properties;
         foreach (var property in properties)
         {
             if (property.GetValue(obj) is null)
@@ -90,7 +95,7 @@ public static class Guard
     public static void AgainstInvalidEmail(string email, string parameterName)
     {
         if (string.IsNullOrWhiteSpace(email) ||
-            !RegexCache.IsMatch(email, Utilities.RegexPatterns.Email))
+            !Utilities.GeneratedRegexPatterns.Email().IsMatch(email))
             ThrowHelper.ThrowInvalidEmail(parameterName);
     }
 
@@ -147,13 +152,13 @@ public static class Guard
 
     public static void AgainstNonAlphanumericCharacters(string value, string parameterName)
     {
-        if (!RegexCache.IsMatch(value, @"^[a-zA-Z0-9]+$"))
+        if (!Utilities.GeneratedRegexPatterns.AlphaNumeric().IsMatch(value))
             throw new OnlyAlphanumericCharacterException(parameterName);
     }
 
     public static void AgainstWeakPassword(string value, string parameterName)
     {
-        if (!RegexCache.IsMatch(value, @"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$"))
+        if (!Utilities.GeneratedRegexPatterns.StrongPassword().IsMatch(value))
             ThrowHelper.ThrowWeakPassword(parameterName);
     }
 

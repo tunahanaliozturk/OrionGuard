@@ -26,7 +26,11 @@ public sealed class FluentGuard<T>
     /// <summary>
     /// Gets the validated value.
     /// </summary>
-    public T Value => _value;
+    public T Value
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => _value;
+    }
 
     /// <summary>
     /// Gets the parameter name being validated.
@@ -38,6 +42,7 @@ public sealed class FluentGuard<T>
     /// <summary>
     /// Only applies subsequent validations when the condition is true.
     /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public FluentGuard<T> When(bool condition)
     {
         _shouldValidate = condition;
@@ -61,7 +66,11 @@ public sealed class FluentGuard<T>
     /// <summary>
     /// Only applies subsequent validations when the condition is false.
     /// </summary>
-    public FluentGuard<T> Unless(Func<T, bool> condition) => When(v => !condition(v));
+    public FluentGuard<T> Unless(Func<T, bool> condition)
+    {
+        _shouldValidate = !condition(_value);
+        return this;
+    }
 
     /// <summary>
     /// Resets conditional validation - all subsequent validations will run.
@@ -147,7 +156,7 @@ public sealed class FluentGuard<T>
         {
             AddError(message ?? $"{_parameterName} cannot be empty or whitespace.", "NOT_EMPTY");
         }
-        else if (_value is System.Collections.IEnumerable enumerable && !enumerable.Cast<object>().Any())
+        else if (_value is System.Collections.IEnumerable enumerable && !HasAnyItems(enumerable))
         {
             AddError(message ?? $"{_parameterName} cannot be empty.", "NOT_EMPTY");
         }
@@ -215,7 +224,13 @@ public sealed class FluentGuard<T>
     /// </summary>
     public FluentGuard<T> Email(string? message = null)
     {
-        return Matches(Utilities.RegexPatterns.Email, message ?? $"{_parameterName} must be a valid email address.");
+        if (!_shouldValidate) return this;
+
+        if (_value is string str && !Utilities.GeneratedRegexPatterns.Email().IsMatch(str))
+        {
+            AddError(message ?? $"{_parameterName} must be a valid email address.", "INVALID_EMAIL");
+        }
+        return this;
     }
 
     /// <summary>
@@ -405,7 +420,7 @@ public sealed class FluentGuard<T>
 
         if (_value is System.Collections.IEnumerable enumerable)
         {
-            var count = enumerable.Cast<object>().Count();
+            var count = CountItems(enumerable);
             if (count != expected)
             {
                 AddError(message ?? $"{_parameterName} must have exactly {expected} items.", "COUNT");
@@ -423,7 +438,7 @@ public sealed class FluentGuard<T>
 
         if (_value is System.Collections.IEnumerable enumerable)
         {
-            var count = enumerable.Cast<object>().Count();
+            var count = CountItems(enumerable);
             if (count < min)
             {
                 AddError(message ?? $"{_parameterName} must have at least {min} items.", "MIN_COUNT");
@@ -441,7 +456,7 @@ public sealed class FluentGuard<T>
 
         if (_value is System.Collections.IEnumerable enumerable)
         {
-            var count = enumerable.Cast<object>().Count();
+            var count = CountItems(enumerable);
             if (count > max)
             {
                 AddError(message ?? $"{_parameterName} must have at most {max} items.", "MAX_COUNT");
@@ -471,7 +486,7 @@ public sealed class FluentGuard<T>
     {
         if (!_shouldValidate) return this;
 
-        if (_value is System.Collections.IEnumerable enumerable && enumerable.Cast<object>().Any(x => x is null))
+        if (_value is System.Collections.IEnumerable enumerable && HasNullItem(enumerable))
         {
             AddError(message ?? $"{_parameterName} cannot contain null items.", "NO_NULL_ITEMS");
         }
@@ -620,6 +635,37 @@ public sealed class FluentGuard<T>
         {
             throw new GuardException(message);
         }
+    }
+
+    private static bool HasAnyItems(System.Collections.IEnumerable enumerable)
+    {
+        var enumerator = enumerable.GetEnumerator();
+        try { return enumerator.MoveNext(); }
+        finally { (enumerator as IDisposable)?.Dispose(); }
+    }
+
+    private static int CountItems(System.Collections.IEnumerable enumerable)
+    {
+        if (enumerable is System.Collections.ICollection collection) return collection.Count;
+        int count = 0;
+        var enumerator = enumerable.GetEnumerator();
+        try { while (enumerator.MoveNext()) count++; }
+        finally { (enumerator as IDisposable)?.Dispose(); }
+        return count;
+    }
+
+    private static bool HasNullItem(System.Collections.IEnumerable enumerable)
+    {
+        var enumerator = enumerable.GetEnumerator();
+        try
+        {
+            while (enumerator.MoveNext())
+            {
+                if (enumerator.Current is null) return true;
+            }
+            return false;
+        }
+        finally { (enumerator as IDisposable)?.Dispose(); }
     }
 
     #endregion

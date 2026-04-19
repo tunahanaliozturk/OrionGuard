@@ -57,7 +57,7 @@ public static class StringGuards
     /// </summary>
     public static void AgainstNonAlphabeticCharacters(this string value, string parameterName)
     {
-        if (!RegexCache.IsMatch(value, @"^[a-zA-Z]+$"))
+        if (!Utilities.GeneratedRegexPatterns.Alphabetic().IsMatch(value))
         {
             throw new ArgumentException($"{parameterName} must contain only alphabetic characters.", parameterName);
         }
@@ -68,7 +68,7 @@ public static class StringGuards
     /// </summary>
     public static void AgainstNonNumericCharacters(this string value, string parameterName)
     {
-        if (!RegexCache.IsMatch(value, @"^\d+$"))
+        if (!Utilities.GeneratedRegexPatterns.Numeric().IsMatch(value))
         {
             throw new ArgumentException($"{parameterName} must contain only numeric characters.", parameterName);
         }
@@ -79,7 +79,7 @@ public static class StringGuards
     /// </summary>
     public static void AgainstNonAlphanumericCharacters(this string value, string parameterName)
     {
-        if (!RegexCache.IsMatch(value, @"^[a-zA-Z0-9]+$"))
+        if (!Utilities.GeneratedRegexPatterns.AlphaNumeric().IsMatch(value))
         {
             throw new ArgumentException($"{parameterName} must contain only alphanumeric characters.", parameterName);
         }
@@ -112,7 +112,7 @@ public static class StringGuards
     /// </summary>
     public static void AgainstNonAsciiCharacters(this string value, string parameterName)
     {
-        if (!RegexCache.IsMatch(value, @"^[\x00-\x7F]+$"))
+        if (!Utilities.GeneratedRegexPatterns.Ascii().IsMatch(value))
         {
             throw new ArgumentException($"{parameterName} must contain only ASCII characters.", parameterName);
         }
@@ -123,7 +123,7 @@ public static class StringGuards
     /// </summary>
     public static void AgainstNonUnicodeCharacters(this string value, string parameterName)
     {
-        if (!RegexCache.IsMatch(value, @"^\P{C}+$"))
+        if (!Utilities.GeneratedRegexPatterns.Unicode().IsMatch(value))
         {
             throw new ArgumentException($"{parameterName} must contain only Unicode characters.", parameterName);
         }
@@ -181,7 +181,7 @@ public static class StringGuards
     public static void AgainstInvalidEmail(this string email, string parameterName)
     {
         if (string.IsNullOrWhiteSpace(email) ||
-            !RegexCache.IsMatch(email, Utilities.RegexPatterns.Email))
+            !Utilities.GeneratedRegexPatterns.Email().IsMatch(email))
         {
             throw new InvalidEmailException(parameterName);
         }
@@ -243,14 +243,16 @@ public static class StringGuards
     }
     public static void AgainstInvalidPhoneNumber(this string value, string parameterName)
     {
-        if (!RegexCache.IsMatch(value, Utilities.RegexPatterns.PhoneNumber))
+        if (!Utilities.GeneratedRegexPatterns.PhoneNumber().IsMatch(value))
         {
             throw new ArgumentException($"{parameterName} must be a valid phone number.", parameterName);
         }
     }
     public static void AgainstExceedingCharacterCount(this string value, char character, int maxCount, string parameterName)
     {
-        int count = value.Count(c => c == character);
+        int count = 0;
+        foreach (var c in value.AsSpan())
+            if (c == character) count++;
         if (count > maxCount)
         {
             throw new ArgumentException($"{parameterName} must not contain more than {maxCount} occurrences of '{character}'.", parameterName);
@@ -266,7 +268,7 @@ public static class StringGuards
     }
     public static void AgainstNonEmojiCharacters(this string value, string parameterName)
     {
-        if (!RegexCache.IsMatch(value, @"^[\u1F600-\u1F64F\u1F300-\u1F5FF\u1F680-\u1F6FF\u2600-\u26FF\u2700-\u27BF]+$"))
+        if (!Utilities.GeneratedRegexPatterns.Emoji().IsMatch(value))
         {
             throw new ArgumentException($"{parameterName} must only contain emoji characters.", parameterName);
         }
@@ -274,7 +276,9 @@ public static class StringGuards
 
     public static void AgainstCharacterCountMismatch(this string value, char character, int exactCount, string parameterName)
     {
-        int count = value.Count(c => c == character);
+        int count = 0;
+        foreach (var c in value.AsSpan())
+            if (c == character) count++;
         if (count != exactCount)
         {
             throw new ArgumentException($"{parameterName} must contain exactly {exactCount} occurrences of '{character}'.", parameterName);
@@ -282,7 +286,7 @@ public static class StringGuards
     }
     public static void AgainstNonUppercaseAlphanumeric(this string value, string parameterName)
     {
-        if (!RegexCache.IsMatch(value, @"^[A-Z0-9]+$"))
+        if (!Utilities.GeneratedRegexPatterns.UppercaseAlphanumeric().IsMatch(value))
         {
             throw new ArgumentException($"{parameterName} must contain only uppercase letters and numbers.", parameterName);
         }
@@ -290,7 +294,7 @@ public static class StringGuards
 
     public static void AgainstNonLowercaseUnderscore(this string value, string parameterName)
     {
-        if (!RegexCache.IsMatch(value, @"^[a-z_]+$"))
+        if (!Utilities.GeneratedRegexPatterns.LowercaseUnderscore().IsMatch(value))
         {
             throw new ArgumentException($"{parameterName} must contain only lowercase letters and underscores.", parameterName);
         }
@@ -298,14 +302,32 @@ public static class StringGuards
 
     public static void AgainstNotStartingWithAny(this string value, string[] prefixes, string parameterName)
     {
-        if (!prefixes.Any(prefix => value.StartsWith(prefix, StringComparison.Ordinal)))
+        bool found = false;
+        for (int i = 0; i < prefixes.Length; i++)
+        {
+            if (value.StartsWith(prefixes[i], StringComparison.Ordinal))
+            {
+                found = true;
+                break;
+            }
+        }
+        if (!found)
         {
             throw new ArgumentException($"{parameterName} must start with one of the following prefixes: {string.Join(", ", prefixes)}.", parameterName);
         }
     }
     public static void AgainstNotEndingWithAny(this string value, string[] suffixes, string parameterName)
     {
-        if (!suffixes.Any(suffix => value.EndsWith(suffix, StringComparison.Ordinal)))
+        bool found = false;
+        for (int i = 0; i < suffixes.Length; i++)
+        {
+            if (value.EndsWith(suffixes[i], StringComparison.Ordinal))
+            {
+                found = true;
+                break;
+            }
+        }
+        if (!found)
         {
             throw new ArgumentException($"{parameterName} must end with one of the following suffixes: {string.Join(", ", suffixes)}.", parameterName);
         }
@@ -333,7 +355,7 @@ public static class StringGuards
     }
     public static void AgainstWeakPassword(this string value, string parameterName)
     {
-        if (!RegexCache.IsMatch(value, @"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$"))
+        if (!Utilities.GeneratedRegexPatterns.StrongPassword().IsMatch(value))
         {
             throw new ArgumentException($"{parameterName} must be a strong password (minimum 8 characters, including uppercase, lowercase, number, and special character).", parameterName);
         }

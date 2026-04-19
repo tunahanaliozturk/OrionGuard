@@ -1,26 +1,118 @@
 using System.Collections.Immutable;
+using System.Runtime.CompilerServices;
 
 namespace Moongazing.OrionGuard.Core;
 
 /// <summary>
+/// Severity level for a <see cref="ValidationError"/>. Allows validation results to carry
+/// non-blocking information (warnings, informational notices) alongside blocking errors.
+/// </summary>
+public enum Severity
+{
+    /// <summary>Blocks the operation. Contributes to <see cref="GuardResult.IsInvalid"/>.</summary>
+    Error = 0,
+
+    /// <summary>Non-blocking advisory. Surfaced via <see cref="GuardResult.Warnings"/>.</summary>
+    Warning = 1,
+
+    /// <summary>Informational only. Surfaced via <see cref="GuardResult.Infos"/>.</summary>
+    Info = 2,
+}
+
+/// <summary>
 /// Represents the result of a validation operation with error accumulation support.
 /// </summary>
+/// <remarks>
+/// <para>
+/// A <see cref="GuardResult"/> holds a flat list of <see cref="ValidationError"/> entries,
+/// each tagged with a <see cref="Severity"/>. Convenience properties filter the list:
+/// </para>
+/// <list type="bullet">
+/// <item><description><see cref="Errors"/> -- entries with <see cref="Severity.Error"/> only (backward-compatible).</description></item>
+/// <item><description><see cref="Warnings"/> -- entries with <see cref="Severity.Warning"/>.</description></item>
+/// <item><description><see cref="Infos"/> -- entries with <see cref="Severity.Info"/>.</description></item>
+/// <item><description><see cref="AllIssues"/> -- everything regardless of severity.</description></item>
+/// </list>
+/// <para>
+/// <see cref="IsInvalid"/> is driven by <see cref="Severity.Error"/> entries only, so a
+/// result carrying only warnings is still considered valid.
+/// </para>
+/// </remarks>
 public sealed class GuardResult
 {
-    private readonly List<ValidationError> _errors;
+    private readonly List<ValidationError> _issues;
 
-    public IReadOnlyList<ValidationError> Errors => _errors.AsReadOnly();
-    public bool IsValid => _errors.Count == 0;
-    public bool IsInvalid => !IsValid;
+    /// <summary>
+    /// Errors that block the operation (<see cref="Severity.Error"/> only).
+    /// </summary>
+    public IReadOnlyList<ValidationError> Errors =>
+        _issues.Where(e => e.Severity == Severity.Error).ToList().AsReadOnly();
+
+    /// <summary>
+    /// Non-blocking advisories (<see cref="Severity.Warning"/>).
+    /// </summary>
+    public IReadOnlyList<ValidationError> Warnings =>
+        _issues.Where(e => e.Severity == Severity.Warning).ToList().AsReadOnly();
+
+    /// <summary>
+    /// Informational notices (<see cref="Severity.Info"/>).
+    /// </summary>
+    public IReadOnlyList<ValidationError> Infos =>
+        _issues.Where(e => e.Severity == Severity.Info).ToList().AsReadOnly();
+
+    /// <summary>
+    /// All issues regardless of severity.
+    /// </summary>
+    public IReadOnlyList<ValidationError> AllIssues => _issues.AsReadOnly();
+
+    public bool IsValid
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => !HasErrorSeverity();
+    }
+
+    public bool IsInvalid
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => HasErrorSeverity();
+    }
+
+    /// <summary>
+    /// Returns <c>true</c> if any <see cref="Severity.Warning"/> entries are present.
+    /// </summary>
+    public bool HasWarnings
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get
+        {
+            foreach (var issue in _issues)
+                if (issue.Severity == Severity.Warning) return true;
+            return false;
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool HasErrorSeverity()
+    {
+        foreach (var issue in _issues)
+            if (issue.Severity == Severity.Error) return true;
+        return false;
+    }
+
+    /// <summary>
+    /// Optional HTTP status code hint for ASP.NET Core ProblemDetails responses.
+    /// Default is null (middleware will use 422 Unprocessable Entity).
+    /// </summary>
+    public int? SuggestedHttpStatusCode { get; init; }
 
     private GuardResult()
     {
-        _errors = new List<ValidationError>();
+        _issues = new List<ValidationError>();
     }
 
-    private GuardResult(IEnumerable<ValidationError> errors)
+    private GuardResult(IEnumerable<ValidationError> issues)
     {
-        _errors = errors.ToList();
+        _issues = issues.ToList();
     }
 
     /// <summary>
@@ -40,24 +132,42 @@ public sealed class GuardResult
     public static GuardResult Failure(IEnumerable<ValidationError> errors) => new(errors);
 
     /// <summary>
-    /// Combines multiple validation results into one.
+    /// Creates a failed validation result with a suggested HTTP status code
+    /// for ASP.NET Core ProblemDetails integration.
+    /// </summary>
+    public static GuardResult FailureWithStatus(int httpStatusCode, string parameterName, string message, string? errorCode = null)
+        => new(new[] { new ValidationError(parameterName, message, errorCode) })
+        {
+            SuggestedHttpStatusCode = httpStatusCode
+        };
+
+    /// <summary>
+    /// Combines multiple validation results into one. All issues (errors, warnings, infos)
+    /// from every input are preserved.
     /// </summary>
     public static GuardResult Combine(params GuardResult[] results)
     {
-        var allErrors = results.SelectMany(r => r.Errors).ToList();
-        return allErrors.Count == 0 ? Success() : new GuardResult(allErrors);
+        int total = 0;
+        foreach (var result in results)
+            total += result._issues.Count;
+
+        if (total == 0) return Success();
+
+        var all = new List<ValidationError>(total);
+        foreach (var result in results)
+            all.AddRange(result._issues);
+
+        return new GuardResult(all);
     }
 
     /// <summary>
     /// Combines this result with another.
     /// </summary>
-    public GuardResult Merge(GuardResult other)
-    {
-        return Combine(this, other);
-    }
+    public GuardResult Merge(GuardResult other) => Combine(this, other);
 
     /// <summary>
-    /// Throws an AggregateException if validation failed.
+    /// Throws an <see cref="AggregateValidationException"/> if validation produced any
+    /// <see cref="Severity.Error"/> entries. Warnings and infos do not throw.
     /// </summary>
     public void ThrowIfInvalid()
     {
@@ -68,26 +178,33 @@ public sealed class GuardResult
     }
 
     /// <summary>
-    /// Returns formatted error messages.
+    /// Returns a formatted summary of error messages (warnings/infos excluded by default).
     /// </summary>
     public string GetErrorSummary(string separator = "; ")
-        => string.Join(separator, _errors.Select(e => e.Message));
+        => string.Join(separator, _issues
+            .Where(e => e.Severity == Severity.Error)
+            .Select(e => e.Message));
 
     /// <summary>
-    /// Converts to dictionary format (useful for API responses).
+    /// Converts errors into a dictionary format suitable for API responses. Only
+    /// <see cref="Severity.Error"/> entries are included (backward-compatible).
     /// </summary>
     public Dictionary<string, string[]> ToErrorDictionary()
-        => _errors.GroupBy(e => e.ParameterName)
+        => _issues.Where(e => e.Severity == Severity.Error)
+                  .GroupBy(e => e.ParameterName)
                   .ToDictionary(g => g.Key, g => g.Select(e => e.Message).ToArray());
 }
 
 /// <summary>
-/// Represents a single validation error.
+/// Represents a single validation issue. Defaults to <see cref="Core.Severity.Error"/>
+/// for backward compatibility -- rules that want to emit non-blocking advisories should
+/// set <see cref="Severity"/> to <see cref="Core.Severity.Warning"/> or <see cref="Core.Severity.Info"/>.
 /// </summary>
 public sealed record ValidationError(
     string ParameterName,
     string Message,
-    string? ErrorCode = null
+    string? ErrorCode = null,
+    Severity Severity = Severity.Error
 );
 
 /// <summary>

@@ -5,11 +5,32 @@ namespace Moongazing.OrionGuard.Core;
 
 /// <summary>
 /// Object validator that validates all properties of an object at once.
-/// Uses compiled expression caching to avoid repeated compilation overhead.
 /// </summary>
+/// <remarks>
+/// <para>
+/// <b>Accessor caching.</b> Compiled property accessors are cached in a nested generic
+/// <see cref="AccessorCache{TProperty}"/> keyed only by property name. Because the outer
+/// <typeparamref name="T"/> and the inner <c>TProperty</c> are both bound through the
+/// generic type system, the CLR naturally partitions the cache per <c>(T, TProperty)</c>
+/// pair without any runtime string concatenation.
+/// </para>
+/// <para>
+/// Cache hits have zero allocation on the key path -- no <c>typeof().FullName</c> lookups,
+/// no string interpolation, and no <see cref="Delegate"/> cast.
+/// </para>
+/// </remarks>
 public sealed class ObjectValidator<T> where T : class
 {
-    private static readonly ConcurrentDictionary<string, Delegate> _compiledAccessors = new();
+    /// <summary>
+    /// Per-<typeparamref name="T"/>, per-<c>TProperty</c> compiled-accessor cache.
+    /// A nested generic static class gives us free partitioning: each closed generic type
+    /// gets its own cache. No need to include <c>typeof(T)</c>/<c>typeof(TProperty)</c> in the key.
+    /// </summary>
+    private static class AccessorCache<TProperty>
+    {
+        public static readonly ConcurrentDictionary<string, Func<T, TProperty>> Instances =
+            new(StringComparer.Ordinal);
+    }
 
     private readonly T _instance;
     private readonly List<ValidationError> _errors = new();
@@ -147,11 +168,15 @@ public sealed class ObjectValidator<T> where T : class
     public T Build() => ThrowIfInvalid();
 
     private static Func<T, TProperty> GetOrCompileAccessor<TProperty>(
-        Expression<Func<T, TProperty>> selector, string cacheKey)
+        Expression<Func<T, TProperty>> selector, string propertyName)
     {
-        var key = $"{typeof(T).FullName}.{cacheKey}.{typeof(TProperty).FullName}";
-        var cached = _compiledAccessors.GetOrAdd(key, _ => selector.Compile());
-        return (Func<T, TProperty>)cached;
+        // Property name is a stable key within (T, TProperty) because the CLR partitions the
+        // AccessorCache<TProperty> static class per closed generic type.
+        var cache = AccessorCache<TProperty>.Instances;
+        if (cache.TryGetValue(propertyName, out var cached))
+            return cached;
+
+        return cache.GetOrAdd(propertyName, static (_, sel) => sel.Compile(), selector);
     }
 
     private static string GetPropertyName<TProperty>(Expression<Func<T, TProperty>> expression)
@@ -191,6 +216,73 @@ public static class Validate
     {
         return new ObjectValidator<T>(instance, throwOnFirstError: true);
     }
+
+    /// <summary>
+    /// Creates a nested validator for deep hierarchical object graph validation.
+    /// Supports unlimited-depth validation with full property path tracking.
+    /// </summary>
+    /// <typeparam name="T">The type of the root object to validate.</typeparam>
+    /// <param name="instance">The object instance to validate.</param>
+    /// <returns>A <see cref="NestedValidator{T}"/> for fluent configuration.</returns>
+    /// <example>
+    /// <code>
+    /// var result = Validate.Nested(order)
+    ///     .Property(o => o.OrderNumber, p => p.NotEmpty())
+    ///     .Nested(o => o.Customer, customer => customer
+    ///         .Property(c => c.Email, p => p.Email())
+    ///         .Nested(c => c.Address, address => address
+    ///             .Property(a => a.City, p => p.NotEmpty())))
+    ///     .Collection(o => o.Items, (item, index) => item
+    ///         .Property(i => i.ProductName, p => p.NotEmpty())
+    ///         .Property(i => i.Quantity, p => p.GreaterThan(0)))
+    ///     .ToResult();
+    /// </code>
+    /// </example>
+    public static NestedValidator<T> Nested<T>(T instance) where T : class
+    {
+        return new NestedValidator<T>(instance);
+    }
+
+    /// <summary>
+    /// Creates a fluent cross-property validator for the specified instance.
+    /// Usage: Validate.CrossProperties(order).IsGreaterThan(o => o.EndDate, o => o.StartDate).ThrowIfInvalid();
+    /// </summary>
+    public static CrossPropertyValidator<T> CrossProperties<T>(T instance) where T : class => new(instance);
+
+    /// <summary>
+    /// Creates a <see cref="DeltaValidator{T}"/> that validates only properties changed
+    /// between the two snapshots -- ideal for PATCH operations where the caller should
+    /// not have to revalidate untouched fields.
+    /// </summary>
+    /// <typeparam name="T">The type of the patched object.</typeparam>
+    /// <param name="original">
+    /// The pre-change snapshot. Pass <c>null</c> to treat every property as changed
+    /// (useful when validating newly created entities with the delta API).
+    /// </param>
+    /// <param name="updated">The post-change snapshot.</param>
+    /// <example>
+    /// <code>
+    /// var result = Validate.Delta(originalUser, updatedUser)
+    ///     .ForChanged(u => u.Email, g => g.NotNull().Email())
+    ///     .ForChanged(u => u.Age, g => g.InRange(18, 120))
+    ///     .WhenChanged(u => u.Password, d => d
+    ///         .ForChanged(u => u.Password, g => g.MinLength(8)))
+    ///     .ToResult();
+    /// </code>
+    /// </example>
+    public static DeltaValidator<T> Delta<T>(T? original, T updated) where T : class =>
+        new(new Delta<T>(original, updated));
+
+    /// <summary>
+    /// Creates a <see cref="DeltaValidator{T}"/> from a pre-constructed <c>Delta&lt;T&gt;</c>.
+    /// </summary>
+    public static DeltaValidator<T> Delta<T>(Delta<T> delta) where T : class => new(delta);
+
+    /// <summary>
+    /// Creates a polymorphic validator for the specified base type.
+    /// Usage: Validate.Polymorphic&lt;PaymentBase&gt;().When&lt;CreditCard&gt;(cc => ...).Validate(payment);
+    /// </summary>
+    public static PolymorphicValidator<T> Polymorphic<T>() where T : class => new();
 
     /// <summary>
     /// Validates multiple objects and combines their results.
