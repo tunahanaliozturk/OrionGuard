@@ -13,6 +13,7 @@
     <Description>Source generator for OrionGuard. Generates [GenerateValidator] validators, [StronglyTypedId&lt;TValue&gt;] strongly-typed id types (EF Core ValueConverter, System.Text.Json JsonConverter, TypeConverter companions), and supports NativeAOT-compatible reflection-free workflows.</Description>
     <PackageTags>guard;validation;source-generator;roslyn;nativeaot;codegen;ddd;strongly-typed-id</PackageTags>
     <PackageReadmeFile>docs/README.md</PackageReadmeFile>
+    <PackageIcon>docs/logo.png</PackageIcon>
     <RepositoryUrl>https://github.com/tunahanaliozturk/OrionGuard</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageProjectUrl>https://github.com/tunahanaliozturk/OrionGuard</PackageProjectUrl>
@@ -29,6 +30,7 @@
   <ItemGroup>
     <None Include="$(OutputPath)\$(AssemblyName).dll" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
     <None Include="docs\README.md" Pack="true" PackagePath="docs/" />
+    <None Include="docs\logo.png" Pack="true" PackagePath="docs/" />
     <AdditionalFiles Include="AnalyzerReleases.Shipped.md" />
     <AdditionalFiles Include="AnalyzerReleases.Unshipped.md" />
   </ItemGroup>

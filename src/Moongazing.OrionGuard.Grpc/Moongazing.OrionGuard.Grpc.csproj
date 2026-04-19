@@ -13,6 +13,7 @@
     <Description>gRPC integration for OrionGuard validation library. Provides server interceptor for automatic request validation in gRPC services.</Description>
     <PackageTags>guard;validation;grpc;interceptor;protobuf;microservices</PackageTags>
     <PackageReadmeFile>docs/README.md</PackageReadmeFile>
+    <PackageIcon>docs/logo.png</PackageIcon>
     <RepositoryUrl>https://github.com/tunahanaliozturk/OrionGuard</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageProjectUrl>https://github.com/tunahanaliozturk/OrionGuard</PackageProjectUrl>
@@ -24,5 +25,6 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="docs\README.md" Pack="true" PackagePath="docs/" />
+    <None Include="docs\logo.png" Pack="true" PackagePath="docs/" />
   </ItemGroup>
 </Project>

@@ -13,6 +13,7 @@
     <Description>SignalR integration for OrionGuard validation library. Provides Hub filter for automatic method parameter validation.</Description>
     <PackageTags>guard;validation;signalr;realtime;hub;filter</PackageTags>
     <PackageReadmeFile>docs/README.md</PackageReadmeFile>
+    <PackageIcon>docs/logo.png</PackageIcon>
     <RepositoryUrl>https://github.com/tunahanaliozturk/OrionGuard</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageProjectUrl>https://github.com/tunahanaliozturk/OrionGuard</PackageProjectUrl>
@@ -24,5 +25,6 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="docs\README.md" Pack="true" PackagePath="docs/" />
+    <None Include="docs\logo.png" Pack="true" PackagePath="docs/" />
   </ItemGroup>
 </Project>
