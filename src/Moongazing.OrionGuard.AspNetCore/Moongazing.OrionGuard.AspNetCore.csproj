@@ -13,6 +13,7 @@
     <Description>ASP.NET Core integration for OrionGuard validation library. Provides middleware, Minimal API endpoint filters, MVC action filters, and RFC 9457 ProblemDetails support.</Description>
     <PackageTags>guard;validation;aspnetcore;middleware;minimal-api;problemdetails</PackageTags>
     <PackageReadmeFile>docs/README.md</PackageReadmeFile>
+    <PackageIcon>docs/logo.png</PackageIcon>
     <RepositoryUrl>https://github.com/tunahanaliozturk/OrionGuard</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageProjectUrl>https://github.com/tunahanaliozturk/OrionGuard</PackageProjectUrl>
@@ -24,5 +25,6 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="docs\README.md" Pack="true" PackagePath="docs/" />
+    <None Include="docs\logo.png" Pack="true" PackagePath="docs/" />
   </ItemGroup>
 </Project>
