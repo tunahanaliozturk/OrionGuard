@@ -8,15 +8,21 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <NoWarn>CS1591;NU1900;NU1901;NU1902;NU1903;NU1904</NoWarn>
     <PackageId>Moongazing.OrionGuard.AspNetCore</PackageId>
-    <Version>6.0.0</Version>
+    <Version>6.1.0</Version>
     <Authors>Tunahan Ali Ozturk</Authors>
     <Description>ASP.NET Core integration for OrionGuard validation library. Provides middleware, Minimal API endpoint filters, MVC action filters, and RFC 9457 ProblemDetails support.</Description>
     <PackageTags>guard;validation;aspnetcore;middleware;minimal-api;problemdetails</PackageTags>
-    <RepositoryUrl>https://github.com/Moongazing/OrionGuard</RepositoryUrl>
+    <PackageReadmeFile>docs/README.md</PackageReadmeFile>
+    <RepositoryUrl>https://github.com/tunahanaliozturk/OrionGuard</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageProjectUrl>https://github.com/tunahanaliozturk/OrionGuard</PackageProjectUrl>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
   </PropertyGroup>
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <ProjectReference Include="..\Moongazing.OrionGuard\Moongazing.OrionGuard.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="docs\README.md" Pack="true" PackagePath="docs/" />
   </ItemGroup>
 </Project>
