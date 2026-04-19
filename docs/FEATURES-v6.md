@@ -1802,5 +1802,5 @@ if (result.IsInvalid)
 ---
 
 **License:** MIT
-**Author:** Tunahan Ali Ozturk -- [GitHub](https://github.com/Moongazing)
-**Repository:** [github.com/Moongazing/OrionGuard](https://github.com/Moongazing/OrionGuard)
+**Author:** Tunahan Ali Ozturk -- [GitHub](https://github.com/tunahanaliozturk)
+**Repository:** [github.com/tunahanaliozturk/OrionGuard](https://github.com/tunahanaliozturk/OrionGuard)

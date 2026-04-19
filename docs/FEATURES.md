@@ -557,7 +557,7 @@ ValidationMessages.SetCulture(new CultureInfo("tr-TR"));
 
 ```csharp
 var message = ValidationMessages.Get("Email", "E-posta");
-// TR: "E-posta geçerli bir e-posta adresi olmal?d?r."
+// TR: "E-posta geï¿½erli bir e-posta adresi olmal?d?r."
 // EN: "E-posta must be a valid email address."
 ```
 
@@ -576,8 +576,8 @@ var message = ValidationMessages.Get("Email", "E-posta");
 ValidationMessages.AddMessages("es", new Dictionary<string, string>
 {
     ["NotNull"] = "{0} no puede ser nulo.",
-    ["NotEmpty"] = "{0} no puede estar vacío.",
-    ["Email"] = "{0} debe ser una dirección de correo válida.",
+    ["NotEmpty"] = "{0} no puede estar vacï¿½o.",
+    ["Email"] = "{0} debe ser una direcciï¿½n de correo vï¿½lida.",
     ["MinLength"] = "{0} debe tener al menos {1} caracteres.",
     ["InRange"] = "{0} debe estar entre {1} y {2}."
 });
@@ -694,9 +694,9 @@ CommonProfiles.Email("user@example.com");
 
 ## Need Help?
 
-- ?? [Full Documentation](https://github.com/Moongazing/OrionGuard)
-- ?? [Report Issues](https://github.com/Moongazing/OrionGuard/issues)
-- ?? [Discussions](https://github.com/Moongazing/OrionGuard/discussions)
+- ?? [Full Documentation](https://github.com/tunahanaliozturk/OrionGuard)
+- ?? [Report Issues](https://github.com/tunahanaliozturk/OrionGuard/issues)
+- ?? [Discussions](https://github.com/tunahanaliozturk/OrionGuard/discussions)
 
 ---
 

@@ -55,7 +55,7 @@ namespace Moongazing.OrionGuard.Generators
             defaultSeverity: DiagnosticSeverity.Warning,
             isEnabledByDefault: true,
             description: Description,
-            helpLinkUri: "https://github.com/Moongazing/OrionGuard/blob/master/docs/FEATURES-v6.md");
+            helpLinkUri: "https://github.com/tunahanaliozturk/OrionGuard/blob/master/docs/FEATURES-v6.md");
 
         public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics { get; } =
             ImmutableArray.Create(Rule);

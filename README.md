@@ -11,7 +11,7 @@
 <p align="center">
   <a href="https://www.nuget.org/packages/OrionGuard"><img src="https://img.shields.io/nuget/v/OrionGuard?style=flat-square&color=blue" alt="NuGet" /></a>
   <a href="https://www.nuget.org/packages/OrionGuard"><img src="https://img.shields.io/nuget/dt/OrionGuard?style=flat-square&color=green" alt="Downloads" /></a>
-  <a href="https://github.com/Moongazing/OrionGuard/blob/master/src/Moongazing.OrionGuard/docs/LICENSE.txt"><img src="https://img.shields.io/badge/license-MIT-yellow?style=flat-square" alt="License" /></a>
+  <a href="https://github.com/tunahanaliozturk/OrionGuard/blob/master/src/Moongazing.OrionGuard/docs/LICENSE.txt"><img src="https://img.shields.io/badge/license-MIT-yellow?style=flat-square" alt="License" /></a>
   <img src="https://img.shields.io/badge/.NET-8.0%20%7C%209.0%20%7C%2010.0-purple?style=flat-square" alt="Target" />
 </p>
 
@@ -462,4 +462,4 @@ This project is licensed under the [MIT License](src/Moongazing.OrionGuard/docs/
 
 ## Author
 
-**Tunahan Ali Ozturk** - [GitHub](https://github.com/Moongazing)
+**Tunahan Ali Ozturk** - [GitHub](https://github.com/tunahanaliozturk)

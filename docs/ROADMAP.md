@@ -670,7 +670,7 @@ Things OrionGuard will deliberately not do:
 
 **Last updated.** 2026-04-12
 
-**Curator.** [Tunahan Ali Ozturk](https://github.com/Moongazing)
+**Curator.** [Tunahan Ali Ozturk](https://github.com/tunahanaliozturk)
 
 **Questions, feedback, proposals.** Open an issue, start a discussion, or reach out
 directly. This roadmap exists because the community shapes it.

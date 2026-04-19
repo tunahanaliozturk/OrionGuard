@@ -30,8 +30,8 @@ userInput.AgainstInjection(nameof(userInput));
 
 ## Links
 
-- [GitHub](https://github.com/Moongazing/OrionGuard)
-- [Changelog](https://github.com/Moongazing/OrionGuard/blob/master/CHANGELOG.md)
+- [GitHub](https://github.com/tunahanaliozturk/OrionGuard)
+- [Changelog](https://github.com/tunahanaliozturk/OrionGuard/blob/master/CHANGELOG.md)
 
 ## License
 

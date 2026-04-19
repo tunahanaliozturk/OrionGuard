@@ -30,9 +30,9 @@
 		<PackageLicenseFile>docs/LICENSE.txt</PackageLicenseFile>
 		<PackageReadmeFile>docs/README.md</PackageReadmeFile>
 		<PackageIcon>docs/logo.png</PackageIcon>
-		<RepositoryUrl>https://github.com/Moongazing/OrionGuard</RepositoryUrl>
+		<RepositoryUrl>https://github.com/tunahanaliozturk/OrionGuard</RepositoryUrl>
 		<RepositoryType>git</RepositoryType>
-		<PackageProjectUrl>https://github.com/Moongazing/OrionGuard</PackageProjectUrl>
+		<PackageProjectUrl>https://github.com/tunahanaliozturk/OrionGuard</PackageProjectUrl>
 		<PackageTags>guard;validation;fluent;exceptions;.NET;input-validation;guard-clauses;defensive-programming;security;localization;format-validation;nativeaot;source-generator;aspnetcore;mediatr</PackageTags>
 		<PackageReleaseNotes>
 v6.1.0 — Release Notes
@@ -49,7 +49,7 @@ NEW: IDomainEvent, IBusinessRule, IAsyncBusinessRule, BusinessRuleValidationExce
 
 NEW: Localization — DefaultStronglyTypedId, BusinessRuleBroken, DomainInvariantViolated keys added for all 14 bundled languages.
 
-Full changelog: https://github.com/Moongazing/OrionGuard/blob/master/CHANGELOG.md
+Full changelog: https://github.com/tunahanaliozturk/OrionGuard/blob/master/CHANGELOG.md
 
 v6.0.0 — Release Notes
 
@@ -75,7 +75,7 @@ NEW PACKAGE: Moongazing.OrionGuard.OpenTelemetry — Validation metrics and dist
 
 DEPRECATED: RegexPatterns class — Use GeneratedRegexPatterns instead.
 
-Full changelog: https://github.com/Moongazing/OrionGuard/blob/master/CHANGELOG.md
+Full changelog: https://github.com/tunahanaliozturk/OrionGuard/blob/master/CHANGELOG.md
 
 v5.0.1 — Previous Release Notes
 
@@ -103,7 +103,7 @@ FIXED: GuardBuilderExtensions was passing .Value instead of .ParameterName.
 
 BREAKING: Validate.Object renamed to Validate.For. FastGuard.Guid renamed to FastGuard.ValidGuid. TurkishGuards removed.
 
-Full changelog: https://github.com/Moongazing/OrionGuard/blob/master/CHANGELOG.md
+Full changelog: https://github.com/tunahanaliozturk/OrionGuard/blob/master/CHANGELOG.md
 		</PackageReleaseNotes>
 	</PropertyGroup>
 

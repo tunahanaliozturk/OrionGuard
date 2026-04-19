@@ -220,9 +220,9 @@ dotnet add package Moongazing.OrionGuard.MediatR
 dotnet add package Moongazing.OrionGuard.Generators
 ```
 
-- **GitHub:** [github.com/Moongazing/OrionGuard](https://github.com/Moongazing/OrionGuard)
+- **GitHub:** [github.com/tunahanaliozturk/OrionGuard](https://github.com/tunahanaliozturk/OrionGuard)
 - **NuGet:** [nuget.org/packages/OrionGuard](https://www.nuget.org/packages/OrionGuard)
-- **Changelog:** [CHANGELOG.md](https://github.com/Moongazing/OrionGuard/blob/master/CHANGELOG.md)
+- **Changelog:** [CHANGELOG.md](https://github.com/tunahanaliozturk/OrionGuard/blob/master/CHANGELOG.md)
 
 ---
 
