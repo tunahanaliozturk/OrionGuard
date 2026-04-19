@@ -42,7 +42,14 @@ namespace Moongazing.OrionGuard.Generators.StronglyTypedIds
             sb.AppendLine("        public override object? ConvertTo(global::System.ComponentModel.ITypeDescriptorContext? context, global::System.Globalization.CultureInfo? culture, object? value, global::System.Type destinationType)");
             sb.AppendLine("        {");
             sb.Append("            if (destinationType == typeof(string) && value is ").Append(typeName).AppendLine(" id)");
-            sb.AppendLine("                return id.Value?.ToString() ?? string.Empty;");
+            if (valueType == SupportedValueType.String)
+            {
+                sb.AppendLine("                return id.Value ?? string.Empty;");
+            }
+            else
+            {
+                sb.AppendLine("                return id.Value.ToString() ?? string.Empty;");
+            }
             sb.AppendLine("            return base.ConvertTo(context, culture, value, destinationType);");
             sb.AppendLine("        }");
             sb.AppendLine("    }");
