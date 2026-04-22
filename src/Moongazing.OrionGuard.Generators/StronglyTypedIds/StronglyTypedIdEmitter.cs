@@ -17,7 +17,8 @@ namespace Moongazing.OrionGuard.Generators.StronglyTypedIds
             sb.Append("namespace ").AppendLine(@namespace);
             sb.AppendLine("{");
             sb.Append("    public readonly partial struct ").Append(typeName)
-              .Append(" : global::System.IEquatable<").Append(typeName).AppendLine(">")
+              .Append(" : global::System.IEquatable<").Append(typeName).Append(">")
+              .Append(", global::Moongazing.OrionGuard.Domain.Primitives.IStronglyTypedId<").Append(valueCsKeyword).AppendLine(">")
               .AppendLine("    {");
             sb.Append("        public ").Append(valueCsKeyword).AppendLine(" Value { get; }");
             sb.AppendLine();

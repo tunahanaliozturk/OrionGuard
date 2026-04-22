@@ -142,4 +142,28 @@ public class StronglyTypedIdGeneratorTests
         Assert.Contains("ConvertFrom", text);
         Assert.Contains("ConvertTo", text);
     }
+
+    [Fact]
+    public void Generator_ShouldEmitIStronglyTypedIdInterface_OnGeneratedStruct()
+    {
+        const string source = """
+            using Moongazing.OrionGuard.Domain.Primitives;
+
+            namespace App
+            {
+                [StronglyTypedId<System.Guid>]
+                public readonly partial struct WarehouseId { }
+            }
+            """;
+
+        var result = RunGenerator(source);
+
+        var partialSource = result.Results
+            .SelectMany(r => r.GeneratedSources)
+            .FirstOrDefault(s => s.HintName.Contains("WarehouseId.StronglyTypedId"));
+
+        Assert.NotEqual(default, partialSource);
+        var text = partialSource.SourceText.ToString();
+        Assert.Contains("global::Moongazing.OrionGuard.Domain.Primitives.IStronglyTypedId<global::System.Guid>", text);
+    }
 }
