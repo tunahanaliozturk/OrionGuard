@@ -1,4 +1,4 @@
-# Moongazing.OrionGuard.Blazor
+# OrionGuard.Blazor
 
 Blazor integration for [**OrionGuard**](https://github.com/tunahanaliozturk/OrionGuard). Plugs OrionGuard into Blazor's `EditForm` so server-side validators drive the client UI without duplicating rules.
 
@@ -12,7 +12,7 @@ Blazor integration for [**OrionGuard**](https://github.com/tunahanaliozturk/Orio
 ## Install
 
 ```bash
-dotnet add package Moongazing.OrionGuard.Blazor
+dotnet add package OrionGuard.Blazor
 ```
 
 The core `OrionGuard` package is brought in transitively.

@@ -25,7 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `BusinessRuleValidationException` — resolves messages through the existing `ValidationMessages` subsystem with fallback to `DefaultMessage`.
 - `DomainInvariantException` — for raw invariant violations outside named rules.
 
-#### `[StronglyTypedId<TValue>]` Source Generator (`Moongazing.OrionGuard.Generators`)
+#### `[StronglyTypedId<TValue>]` Source Generator (`OrionGuard.Generators`)
 
 - Incremental generator using `ForAttributeWithMetadataName` with `RegisterPostInitializationOutput` to inject the attribute.
 - Supported value types: `System.Guid`, `int`, `long`, `string`, `System.Ulid` (net9.0+).
@@ -57,7 +57,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Notes
 
 - The DDD toolkit is the first of a three-phase rollout. v6.2.0 will add the domain-event dispatcher + MediatR bridge + EF Core `SaveChanges` interceptor. v6.3.0 will add the full `BusinessRule` base class, `Guard.Against.BrokenRule`, `Validate.Rule` / `Validate.Rules`, and ASP.NET Core `BusinessRuleValidationException` → RFC 9457 ProblemDetails mapping.
-- No new NuGet packages — all additions land in existing packages (`Moongazing.OrionGuard` core, `Moongazing.OrionGuard.Generators`).
+- No new NuGet packages — all additions land in existing packages (`Moongazing.OrionGuard` core, `OrionGuard.Generators`).
 
 ## [6.0.0] - 2026-04-05
 

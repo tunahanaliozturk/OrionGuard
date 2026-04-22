@@ -7,7 +7,7 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <NoWarn>CS1591;NU1900;NU1901;NU1902;NU1903;NU1904</NoWarn>
-    <PackageId>Moongazing.OrionGuard.Swagger</PackageId>
+    <PackageId>OrionGuard.Swagger</PackageId>
     <Version>6.1.0</Version>
     <Authors>Tunahan Ali Ozturk</Authors>
     <Description>Swagger/OpenAPI integration for OrionGuard. Auto-generates OpenAPI constraints from OrionGuard validation attributes.</Description>

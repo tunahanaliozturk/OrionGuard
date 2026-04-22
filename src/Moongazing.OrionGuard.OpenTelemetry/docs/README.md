@@ -1,4 +1,4 @@
-# Moongazing.OrionGuard.OpenTelemetry
+# OrionGuard.OpenTelemetry
 
 OpenTelemetry instrumentation for [**OrionGuard**](https://github.com/tunahanaliozturk/OrionGuard). Emits validation metrics and distributed tracing spans so you can see how your validators behave in production.
 
@@ -18,7 +18,7 @@ OpenTelemetry instrumentation for [**OrionGuard**](https://github.com/tunahanali
 ## Install
 
 ```bash
-dotnet add package Moongazing.OrionGuard.OpenTelemetry
+dotnet add package OrionGuard.OpenTelemetry
 ```
 
 Requires OpenTelemetry in your application. The core `OrionGuard` package is brought in transitively.

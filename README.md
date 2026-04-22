@@ -85,14 +85,14 @@ if (result.IsInvalid)
 | Package | Install | Purpose |
 |---------|---------|---------|
 | `OrionGuard` | `dotnet add package OrionGuard` | Core validation library |
-| `Moongazing.OrionGuard.AspNetCore` | `dotnet add package Moongazing.OrionGuard.AspNetCore` | Middleware, filters, ProblemDetails, IOptions |
-| `Moongazing.OrionGuard.MediatR` | `dotnet add package Moongazing.OrionGuard.MediatR` | CQRS pipeline validation |
-| `Moongazing.OrionGuard.Generators` | `dotnet add package Moongazing.OrionGuard.Generators` | Compile-time source generator |
-| `Moongazing.OrionGuard.Swagger` | `dotnet add package Moongazing.OrionGuard.Swagger` | OpenAPI schema generation |
-| `Moongazing.OrionGuard.OpenTelemetry` | `dotnet add package Moongazing.OrionGuard.OpenTelemetry` | Metrics & tracing |
-| `Moongazing.OrionGuard.Blazor` | `dotnet add package Moongazing.OrionGuard.Blazor` | EditForm validation |
-| `Moongazing.OrionGuard.Grpc` | `dotnet add package Moongazing.OrionGuard.Grpc` | Server interceptor |
-| `Moongazing.OrionGuard.SignalR` | `dotnet add package Moongazing.OrionGuard.SignalR` | Hub method validation |
+| `OrionGuard.AspNetCore` | `dotnet add package OrionGuard.AspNetCore` | Middleware, filters, ProblemDetails, IOptions |
+| `OrionGuard.MediatR` | `dotnet add package OrionGuard.MediatR` | CQRS pipeline validation |
+| `OrionGuard.Generators` | `dotnet add package OrionGuard.Generators` | Compile-time source generator |
+| `OrionGuard.Swagger` | `dotnet add package OrionGuard.Swagger` | OpenAPI schema generation |
+| `OrionGuard.OpenTelemetry` | `dotnet add package OrionGuard.OpenTelemetry` | Metrics & tracing |
+| `OrionGuard.Blazor` | `dotnet add package OrionGuard.Blazor` | EditForm validation |
+| `OrionGuard.Grpc` | `dotnet add package OrionGuard.Grpc` | Server interceptor |
+| `OrionGuard.SignalR` | `dotnet add package OrionGuard.SignalR` | Hub method validation |
 
 ---
 
@@ -291,7 +291,7 @@ validator.Validate(user, RuleSet.Update);
 ## ASP.NET Core Integration
 
 ```bash
-dotnet add package Moongazing.OrionGuard.AspNetCore
+dotnet add package OrionGuard.AspNetCore
 ```
 
 ```csharp
@@ -320,7 +320,7 @@ public IActionResult Create([FromBody] CreateUserRequest request) { ... }
 ## MediatR Integration
 
 ```bash
-dotnet add package Moongazing.OrionGuard.MediatR
+dotnet add package OrionGuard.MediatR
 ```
 
 ```csharp
@@ -341,7 +341,7 @@ public class CreateUserValidator : AbstractValidator<CreateUserCommand>
 ## Source Generator (NativeAOT)
 
 ```bash
-dotnet add package Moongazing.OrionGuard.Generators
+dotnet add package OrionGuard.Generators
 ```
 
 ```csharp
@@ -367,7 +367,7 @@ var result = CreateUserRequestValidator.Validate(request);
 ## Blazor Integration
 
 ```bash
-dotnet add package Moongazing.OrionGuard.Blazor
+dotnet add package OrionGuard.Blazor
 ```
 
 ```razor

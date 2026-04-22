@@ -1,4 +1,4 @@
-# Moongazing.OrionGuard.SignalR
+# OrionGuard.SignalR
 
 SignalR integration for [**OrionGuard**](https://github.com/tunahanaliozturk/OrionGuard). Plugs a hub filter into the SignalR pipeline so every hub method parameter is validated by your OrionGuard validators before the method body runs.
 
@@ -11,7 +11,7 @@ SignalR integration for [**OrionGuard**](https://github.com/tunahanaliozturk/Ori
 ## Install
 
 ```bash
-dotnet add package Moongazing.OrionGuard.SignalR
+dotnet add package OrionGuard.SignalR
 ```
 
 Requires `Microsoft.AspNetCore.SignalR` in your application. The core `OrionGuard` package is brought in transitively.
