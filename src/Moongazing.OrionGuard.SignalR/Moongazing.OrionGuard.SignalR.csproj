@@ -8,7 +8,7 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <NoWarn>CS1591;NU1900;NU1901;NU1902;NU1903;NU1904</NoWarn>
     <PackageId>OrionGuard.SignalR</PackageId>
-    <Version>6.1.0</Version>
+    <Version>6.2.0</Version>
     <Authors>Tunahan Ali Ozturk</Authors>
     <Description>SignalR integration for OrionGuard validation library. Provides Hub filter for automatic method parameter validation.</Description>
     <PackageTags>guard;validation;signalr;realtime;hub;filter</PackageTags>

@@ -8,7 +8,7 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>CS1591</NoWarn>
     <PackageId>OrionGuard.Generators</PackageId>
-    <Version>6.1.0</Version>
+    <Version>6.2.0</Version>
     <Authors>Tunahan Ali Ozturk</Authors>
     <Description>Source generator for OrionGuard. Generates [GenerateValidator] validators, [StronglyTypedId&lt;TValue&gt;] strongly-typed id types (EF Core ValueConverter, System.Text.Json JsonConverter, TypeConverter companions), and supports NativeAOT-compatible reflection-free workflows.</Description>
     <PackageTags>guard;validation;source-generator;roslyn;nativeaot;codegen;ddd;strongly-typed-id</PackageTags>

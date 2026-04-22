@@ -256,7 +256,9 @@ public sealed class Order : AggregateRoot<OrderId>
 services.AddOrionGuardStronglyTypedIds();
 ```
 
-> v6.2.0 will add `IDomainEventDispatcher` + MediatR bridge + EF Core `SaveChanges` interceptor. v6.3.0 will add the `BusinessRule` base class, `Guard.Against.BrokenRule`, `Validate.Rule`, and ASP.NET Core ProblemDetails mapping.
+> **v6.2 update:** `IStronglyTypedId<TValue>` marker interface unifies source-gen struct ids and manual record ids under one guard. `DomainEventBase` record spares you the `EventId`/`OccurredOnUtc` boilerplate. Generated ids implement `IParsable<TSelf>` / `ISpanParsable<TSelf>` for ASP.NET Core minimal API binding. EF Core converter emission is now conditional on the consumer referencing EF Core. Sub-package NuGet IDs dropped the `Moongazing.` prefix — install as `OrionGuard.AspNetCore`, `OrionGuard.Blazor`, etc. (C# namespaces unchanged).
+>
+> v6.3.0 (next) adds `IDomainEventDispatcher` + MediatR bridge + EF Core `SaveChanges` interceptor. v6.4.0 adds the `BusinessRule` base class, `Guard.Against.BrokenRule`, and ASP.NET Core ProblemDetails integration.
 
 ---
 
