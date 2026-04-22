@@ -68,6 +68,12 @@ namespace Moongazing.OrionGuard.Generators.StronglyTypedIds
                     SourceText.From(
                         TypeConverterEmitter.Emit(target.Namespace, target.TypeName, target.ValueType),
                         Encoding.UTF8));
+
+                spc.AddSource(
+                    ParsableEmitter.HintName(target.TypeName),
+                    SourceText.From(
+                        ParsableEmitter.Emit(target.Namespace, target.TypeName, target.ValueType),
+                        Encoding.UTF8));
             });
         }
 
