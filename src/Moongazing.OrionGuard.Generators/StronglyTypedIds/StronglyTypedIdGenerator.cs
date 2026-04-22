@@ -32,8 +32,20 @@ namespace Moongazing.OrionGuard.Generators.StronglyTypedIds
                     transform: static (ctx, _) => Transform(ctx))
                 .Where(static t => t is not null);
 
-            context.RegisterSourceOutput(targets, static (spc, target) =>
+            var hasEfCore = context.CompilationProvider
+                .Select(static (compilation, _) =>
+                {
+                    // Check if EF Core is available by examining external assembly references
+                    // We look for the EntityFrameworkCore assembly in the file path
+                    return compilation.ExternalReferences
+                        .OfType<PortableExecutableReference>()
+                        .Any(pexRef => pexRef.FilePath?.Contains("EntityFrameworkCore") ?? false);
+                });
+
+            context.RegisterSourceOutput(targets.Combine(hasEfCore), static (spc, pair) =>
             {
+                var target = pair.Left;
+                var efCoreAvailable = pair.Right;
                 if (target is null) return;
 
                 spc.AddSource(
@@ -42,11 +54,14 @@ namespace Moongazing.OrionGuard.Generators.StronglyTypedIds
                         StronglyTypedIdEmitter.EmitPartial(target.Namespace, target.TypeName, target.ValueType),
                         Encoding.UTF8));
 
-                spc.AddSource(
-                    EfCoreConverterEmitter.HintName(target.TypeName),
-                    SourceText.From(
-                        EfCoreConverterEmitter.Emit(target.Namespace, target.TypeName, target.ValueType),
-                        Encoding.UTF8));
+                if (efCoreAvailable)
+                {
+                    spc.AddSource(
+                        EfCoreConverterEmitter.HintName(target.TypeName),
+                        SourceText.From(
+                            EfCoreConverterEmitter.Emit(target.Namespace, target.TypeName, target.ValueType),
+                            Encoding.UTF8));
+                }
 
                 spc.AddSource(
                     JsonConverterEmitter.HintName(target.TypeName),
