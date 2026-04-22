@@ -34,13 +34,7 @@ namespace Moongazing.OrionGuard.Generators.StronglyTypedIds
 
             var hasEfCore = context.CompilationProvider
                 .Select(static (compilation, _) =>
-                {
-                    // Check if EF Core is available by examining external assembly references
-                    // We look for the EntityFrameworkCore assembly in the file path
-                    return compilation.ExternalReferences
-                        .OfType<PortableExecutableReference>()
-                        .Any(pexRef => pexRef.FilePath?.Contains("EntityFrameworkCore") ?? false);
-                });
+                    compilation.GetTypeByMetadataName("Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter") is not null);
 
             context.RegisterSourceOutput(targets.Combine(hasEfCore), static (spc, pair) =>
             {
