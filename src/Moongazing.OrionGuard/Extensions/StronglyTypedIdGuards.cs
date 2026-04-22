@@ -7,7 +7,9 @@ using Moongazing.OrionGuard.Exceptions;
 namespace Moongazing.OrionGuard.Extensions;
 
 /// <summary>
-/// Guard extensions for <see cref="StronglyTypedId{TValue}"/>-derived types.
+/// Guard extensions for <see cref="IStronglyTypedId{TValue}"/>-implementing types — covers
+/// both the <see cref="StronglyTypedId{TValue}"/> abstract record (manual style) and the
+/// source-generated readonly partial struct style.
 /// </summary>
 public static class StronglyTypedIdGuards
 {
@@ -22,8 +24,8 @@ public static class StronglyTypedIdGuards
     /// <exception cref="NullValueException">When <paramref name="id"/> is <see langword="null"/>.</exception>
     /// <exception cref="ZeroValueException">When the wrapped value is the default of <typeparamref name="TValue"/>
     /// (including empty string).</exception>
-    public static StronglyTypedId<TValue> AgainstDefaultStronglyTypedId<TValue>(
-        this StronglyTypedId<TValue> id,
+    public static IStronglyTypedId<TValue> AgainstDefaultStronglyTypedId<TValue>(
+        this IStronglyTypedId<TValue> id,
         [CallerArgumentExpression(nameof(id))] string? parameterName = null)
         where TValue : notnull, IEquatable<TValue>
     {
