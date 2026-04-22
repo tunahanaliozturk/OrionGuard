@@ -1,4 +1,4 @@
-# Moongazing.OrionGuard.AspNetCore
+# OrionGuard.AspNetCore
 
 ASP.NET Core integration package for [**OrionGuard**](https://github.com/tunahanaliozturk/OrionGuard) — the modern, fluent, and extensible validation ecosystem for .NET.
 
@@ -13,7 +13,7 @@ ASP.NET Core integration package for [**OrionGuard**](https://github.com/tunahan
 ## Install
 
 ```bash
-dotnet add package Moongazing.OrionGuard.AspNetCore
+dotnet add package OrionGuard.AspNetCore
 ```
 
 The core `OrionGuard` package is brought in transitively; you do not need to install it separately.

@@ -5,6 +5,34 @@ All notable changes to OrionGuard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.2.0] - 2026-04-19
+
+### Added
+
+- `Moongazing.OrionGuard.Domain.Primitives.IStronglyTypedId<TValue>` marker interface implemented by both the `StronglyTypedId<TValue>` abstract record and source-generated strongly-typed id structs.
+- `Moongazing.OrionGuard.Domain.Events.DomainEventBase` abstract record — auto-assigns `EventId` (new `Guid`) and `OccurredOnUtc` (UTC timestamp) at construction, with `init` accessors for test overrides via `with` expressions.
+- Source-generated strongly-typed ids now implement `IParsable<TSelf>` and `ISpanParsable<TSelf>` — ASP.NET Core minimal API route/query/form binding works out of the box.
+
+### Changed
+
+- `AgainstDefaultStronglyTypedId` guard receiver widened from `StronglyTypedId<TValue>` to `IStronglyTypedId<TValue>`. Source-compatible with v6.1.0 callers.
+- The `[StronglyTypedId<TValue>]` source generator no longer emits its EF Core `ValueConverter` companion when the consumer project does not reference `Microsoft.EntityFrameworkCore`. JSON and TypeConverter companions emit unconditionally.
+- **NuGet PackageIds for sub-packages** dropped the `Moongazing.` prefix. Install as `OrionGuard.AspNetCore`, `OrionGuard.Blazor`, `OrionGuard.Generators`, `OrionGuard.Grpc`, `OrionGuard.MediatR`, `OrionGuard.OpenTelemetry`, `OrionGuard.SignalR`, `OrionGuard.Swagger`. The v6.0.0 and v6.1.0 packages remain published under the old IDs; v6.2.0 ships under the new ones. **C# namespaces are unchanged** — `using Moongazing.OrionGuard.AspNetCore;` continues to work.
+
+### Migration from v6.1.0
+
+- Update package references:
+  ```bash
+  dotnet remove package Moongazing.OrionGuard.AspNetCore
+  dotnet add package OrionGuard.AspNetCore
+  ```
+  Repeat for each sub-package you use. Source code (`using` statements, type names) stays the same — only the NuGet ID changes.
+
+### Roadmap
+
+- v6.3.0 (next): Domain event dispatcher, MediatR bridge, EF Core `SaveChanges` interceptor.
+- v6.4.0: Full `BusinessRule` base class, `Guard.Against.BrokenRule`, ASP.NET Core ProblemDetails mapping.
+
 ## [6.1.0] - 2026-04-19
 
 ### Added
@@ -25,7 +53,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `BusinessRuleValidationException` — resolves messages through the existing `ValidationMessages` subsystem with fallback to `DefaultMessage`.
 - `DomainInvariantException` — for raw invariant violations outside named rules.
 
-#### `[StronglyTypedId<TValue>]` Source Generator (`Moongazing.OrionGuard.Generators`)
+#### `[StronglyTypedId<TValue>]` Source Generator (`OrionGuard.Generators`)
 
 - Incremental generator using `ForAttributeWithMetadataName` with `RegisterPostInitializationOutput` to inject the attribute.
 - Supported value types: `System.Guid`, `int`, `long`, `string`, `System.Ulid` (net9.0+).
@@ -57,7 +85,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Notes
 
 - The DDD toolkit is the first of a three-phase rollout. v6.2.0 will add the domain-event dispatcher + MediatR bridge + EF Core `SaveChanges` interceptor. v6.3.0 will add the full `BusinessRule` base class, `Guard.Against.BrokenRule`, `Validate.Rule` / `Validate.Rules`, and ASP.NET Core `BusinessRuleValidationException` → RFC 9457 ProblemDetails mapping.
-- No new NuGet packages — all additions land in existing packages (`Moongazing.OrionGuard` core, `Moongazing.OrionGuard.Generators`).
+- No new NuGet packages — all additions land in existing packages (`Moongazing.OrionGuard` core, `OrionGuard.Generators`).
 
 ## [6.0.0] - 2026-04-05
 

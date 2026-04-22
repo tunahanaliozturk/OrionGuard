@@ -51,6 +51,15 @@ Priority tiers roughly map to timing:
 
 ---
 
+### Current version map
+
+- **v6.1.0** — DDD tactical primitives (ValueObject, Entity, AggregateRoot, StronglyTypedId base + generator), guard extension, DI helper, 14-language localization keys.
+- **v6.2.0** — API polish: `IStronglyTypedId<TValue>` unification, `DomainEventBase`, `IParsable`/`ISpanParsable` on generated ids, conditional EF Core converter emission, sub-package NuGet ID rename (drop `Moongazing.` prefix).
+- **v6.3.0** (next) — Domain event dispatcher, MediatR bridge, EF Core `SaveChanges` interceptor.
+- **v6.4.0** — Full `BusinessRule` base class, `Guard.Against.BrokenRule`, ASP.NET Core ProblemDetails mapping.
+
+---
+
 ## Tier 0 -- Shipped in v6.0
 
 A quick reference so the rest of this document makes sense.

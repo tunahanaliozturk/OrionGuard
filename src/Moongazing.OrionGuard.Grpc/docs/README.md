@@ -1,4 +1,4 @@
-# Moongazing.OrionGuard.Grpc
+# OrionGuard.Grpc
 
 gRPC integration for [**OrionGuard**](https://github.com/tunahanaliozturk/OrionGuard). Adds a server-side interceptor that validates every incoming protobuf message with your OrionGuard validators before the service method runs.
 
@@ -11,7 +11,7 @@ gRPC integration for [**OrionGuard**](https://github.com/tunahanaliozturk/OrionG
 ## Install
 
 ```bash
-dotnet add package Moongazing.OrionGuard.Grpc
+dotnet add package OrionGuard.Grpc
 ```
 
 Requires `Grpc.AspNetCore` in your application. The core `OrionGuard` package is brought in transitively.

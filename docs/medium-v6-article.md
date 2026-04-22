@@ -215,9 +215,9 @@ dotnet add package OrionGuard
 
 For the full ecosystem:
 ```bash
-dotnet add package Moongazing.OrionGuard.AspNetCore
-dotnet add package Moongazing.OrionGuard.MediatR
-dotnet add package Moongazing.OrionGuard.Generators
+dotnet add package OrionGuard.AspNetCore
+dotnet add package OrionGuard.MediatR
+dotnet add package OrionGuard.Generators
 ```
 
 - **GitHub:** [github.com/tunahanaliozturk/OrionGuard](https://github.com/tunahanaliozturk/OrionGuard)

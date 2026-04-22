@@ -1219,7 +1219,7 @@ public class UsersController(IValidator<CreateUserRequest> validator)
 
 ## Roslyn Analyzer (OG0001)
 
-`Moongazing.OrionGuard.Generators` ships with a diagnostic analyzer that flags public
+`OrionGuard.Generators` ships with a diagnostic analyzer that flags public
 properties on `[GenerateValidator]` types that lack any validation attribute. Unvalidated
 input silently accepted by the generated validator is a common source of production bugs;
 OG0001 makes it visible at compile time.

@@ -264,3 +264,67 @@ builder.Services.AddOrionGuard();
 builder.Services.AddOrionGuardAspNetCore();
 builder.Services.AddOrionGuardStronglyTypedIds();
 ```
+
+---
+
+## v6.2 Additions (April 2026)
+
+### `IStronglyTypedId<TValue>` marker interface
+
+```csharp
+public interface IStronglyTypedId<TValue>
+    where TValue : notnull, IEquatable<TValue>
+{
+    TValue Value { get; }
+}
+```
+
+Both declaration styles now implement it — manual records via `StronglyTypedId<TValue> : IStronglyTypedId<TValue>`, and source-generated structs via the generator adding the interface to the emitted partial declaration. The `AgainstDefaultStronglyTypedId` guard receiver widens accordingly, so a single guard call works regardless of which style the id was declared in.
+
+### `DomainEventBase` record
+
+```csharp
+public abstract record DomainEventBase : IDomainEvent
+{
+    public Guid EventId { get; init; } = Guid.NewGuid();
+    public DateTime OccurredOnUtc { get; init; } = DateTime.UtcNow;
+}
+
+public sealed record OrderPlaced(OrderId Id) : DomainEventBase;   // EventId + OccurredOnUtc populated automatically
+var fixedEvent = new OrderPlaced(id) with { EventId = testId };   // init accessors enable test overrides
+```
+
+The dispatcher (v6.3.0) operates on the `IDomainEvent` abstraction — this record is a pure ergonomic shortcut.
+
+### `IParsable<TSelf>` + `ISpanParsable<TSelf>` on generated ids
+
+```csharp
+[StronglyTypedId<Guid>]
+public readonly partial struct OrderId;
+
+// Minimal API route binding now works without a custom TypeConverter hop:
+app.MapGet("/orders/{id}", (OrderId id) => $"Order {id}");
+```
+
+Failure semantics follow standard .NET — `Parse` throws `FormatException`, `TryParse` returns `false`. ASP.NET Core translates the exception to 400 Bad Request automatically.
+
+### Conditional EF Core converter emission
+
+The `[StronglyTypedId<TValue>]` generator inspects the consumer's `Compilation` for the `Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<,>` type and skips emitting the EF Core converter companion when it is absent. Console apps, Blazor WASM apps, and class libraries no longer need a spurious EF Core `PackageReference` purely to compile generated code. Adding EF Core to the project resumes emission automatically on the next incremental build.
+
+### Sub-package NuGet IDs simplified
+
+The eight sub-packages dropped the `Moongazing.` brand prefix from their NuGet IDs:
+
+| Before (v6.1.0) | After (v6.2.0) |
+|---|---|
+| `Moongazing.OrionGuard.AspNetCore` | `OrionGuard.AspNetCore` |
+| `Moongazing.OrionGuard.Blazor` | `OrionGuard.Blazor` |
+| `Moongazing.OrionGuard.Generators` | `OrionGuard.Generators` |
+| `Moongazing.OrionGuard.Grpc` | `OrionGuard.Grpc` |
+| `Moongazing.OrionGuard.MediatR` | `OrionGuard.MediatR` |
+| `Moongazing.OrionGuard.OpenTelemetry` | `OrionGuard.OpenTelemetry` |
+| `Moongazing.OrionGuard.SignalR` | `OrionGuard.SignalR` |
+| `Moongazing.OrionGuard.Swagger` | `OrionGuard.Swagger` |
+
+C# namespaces, assembly names, and code references all stay as `Moongazing.OrionGuard.X` — only the NuGet PackageId changed. Existing `using` statements continue to work unchanged. Old packages remain published on NuGet.org for v6.1.0 and earlier.

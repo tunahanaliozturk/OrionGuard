@@ -16,7 +16,7 @@
 		<OutputType>Library</OutputType>
 
 		<PackageId>OrionGuard</PackageId>
-		<Version>6.1.0</Version>
+		<Version>6.2.0</Version>
 		<Authors>Tunahan Ali Ozturk</Authors>
 		<Company>Tunahan Ali Ozturk</Company>
 		<GeneratePackageOnBuild>false</GeneratePackageOnBuild>
@@ -35,6 +35,24 @@
 		<PackageProjectUrl>https://github.com/tunahanaliozturk/OrionGuard</PackageProjectUrl>
 		<PackageTags>guard;validation;fluent;exceptions;.NET;input-validation;guard-clauses;defensive-programming;security;localization;format-validation;nativeaot;source-generator;aspnetcore;mediatr</PackageTags>
 		<PackageReleaseNotes>
+v6.2.0 — Release Notes
+
+NEW: IStronglyTypedId&lt;TValue&gt; marker interface — implemented by both the StronglyTypedId&lt;TValue&gt; abstract record (manual style) AND source-generated readonly partial struct ids. The AgainstDefaultStronglyTypedId guard now accepts this interface as its receiver, so both id styles work with the same guard.
+
+NEW: DomainEventBase abstract record — consumers can write `public sealed record OrderPlaced(OrderId Id) : DomainEventBase;` instead of hand-rolling EventId and OccurredOnUtc. Both properties use init accessors so tests can pin them via `with` expressions.
+
+NEW: Generated strongly-typed ids implement IParsable&lt;TSelf&gt; and ISpanParsable&lt;TSelf&gt; — ASP.NET Core minimal APIs bind them from route/query/form parameters without a custom TypeConverter hop. Standard .NET FormatException semantics on Parse failure.
+
+IMPROVED: The StronglyTypedId source generator now detects whether the consumer project references EF Core and skips emitting the ValueConverter companion when it does not — console apps, Blazor WASM, and class libraries no longer need a spurious EF Core PackageReference just to build.
+
+PACKAGE RENAME: Sub-package NuGet PackageIds drop the 'Moongazing.' brand prefix — install as OrionGuard.AspNetCore, OrionGuard.Blazor, OrionGuard.Generators, OrionGuard.Grpc, OrionGuard.MediatR, OrionGuard.OpenTelemetry, OrionGuard.SignalR, OrionGuard.Swagger. The old Moongazing.OrionGuard.* package IDs remain on NuGet.org for v6.1.0 and earlier; v6.2.0 ships under the new names. C# namespaces are unchanged (using Moongazing.OrionGuard.AspNetCore; still works) so source code does not break.
+
+MIGRATION: Source-compatible with v6.1.0 — no user code change required. Receiver and return type of AgainstDefaultStronglyTypedId widened to IStronglyTypedId&lt;TValue&gt; (manual records still implement this interface). Recompile recommended. Consumers should update their package references from Moongazing.OrionGuard.* to OrionGuard.* (same assemblies, same namespaces, new package IDs).
+
+ROADMAP: v6.3.0 = domain event dispatcher + MediatR bridge + EF Core SaveChanges interceptor. v6.4.0 = full BusinessRule base class + Guard.Against.BrokenRule + AspNetCore ProblemDetails mapping.
+
+Full changelog: https://github.com/tunahanaliozturk/OrionGuard/blob/master/CHANGELOG.md
+
 v6.1.0 — Release Notes
 
 NEW: DDD Domain Primitives — ValueObject (hybrid: abstract base + IValueObject marker for records), Entity&lt;TId&gt; with identity equality and CheckRule / CheckRuleAsync helpers, AggregateRoot&lt;TId&gt; with IAggregateRoot marker and PullDomainEvents() dispatching buffer.

@@ -11,5 +11,5 @@ namespace Moongazing.OrionGuard.Domain.Primitives;
 /// <typeparam name="TValue">The underlying primitive type (typically <see cref="Guid"/>,
 /// <see cref="int"/>, <see cref="long"/>, or <see cref="string"/>).</typeparam>
 /// <param name="Value">The underlying primitive value wrapped by this strongly-typed identifier.</param>
-public abstract record StronglyTypedId<TValue>(TValue Value)
+public abstract record StronglyTypedId<TValue>(TValue Value) : IStronglyTypedId<TValue>
     where TValue : notnull, IEquatable<TValue>;

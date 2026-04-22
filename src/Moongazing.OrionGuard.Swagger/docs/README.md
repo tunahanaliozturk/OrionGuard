@@ -1,4 +1,4 @@
-# Moongazing.OrionGuard.Swagger
+# OrionGuard.Swagger
 
 Swagger / OpenAPI integration for [**OrionGuard**](https://github.com/tunahanaliozturk/OrionGuard). Surfaces your validation attributes directly in the generated OpenAPI schema so API consumers see the same constraints your server enforces.
 
@@ -11,7 +11,7 @@ Swagger / OpenAPI integration for [**OrionGuard**](https://github.com/tunahanali
 ## Install
 
 ```bash
-dotnet add package Moongazing.OrionGuard.Swagger
+dotnet add package OrionGuard.Swagger
 ```
 
 Requires Swashbuckle in your application. The core `OrionGuard` package is brought in transitively.

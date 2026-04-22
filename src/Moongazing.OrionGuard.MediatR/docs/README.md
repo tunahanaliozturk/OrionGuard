@@ -1,4 +1,4 @@
-# Moongazing.OrionGuard.MediatR
+# OrionGuard.MediatR
 
 MediatR integration for [**OrionGuard**](https://github.com/tunahanaliozturk/OrionGuard) — runs your OrionGuard validators automatically inside the MediatR pipeline before each request handler.
 
@@ -11,7 +11,7 @@ MediatR integration for [**OrionGuard**](https://github.com/tunahanaliozturk/Ori
 ## Install
 
 ```bash
-dotnet add package Moongazing.OrionGuard.MediatR
+dotnet add package OrionGuard.MediatR
 ```
 
 Requires MediatR in your application; the core `OrionGuard` package is brought in transitively.
@@ -34,7 +34,7 @@ public sealed class CreateUserValidator : AbstractValidator<CreateUserCommand>
 }
 ```
 
-When validation fails, the pipeline short-circuits with a `ValidationException` carrying the full `GuardResult` — you can convert it to `ProblemDetails` with the companion `Moongazing.OrionGuard.AspNetCore` package.
+When validation fails, the pipeline short-circuits with a `ValidationException` carrying the full `GuardResult` — you can convert it to `ProblemDetails` with the companion `OrionGuard.AspNetCore` package.
 
 ## Targets
 

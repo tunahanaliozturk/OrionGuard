@@ -1,8 +1,8 @@
+namespace Moongazing.OrionGuard.Generators.Tests;
+
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Moongazing.OrionGuard.Generators.StronglyTypedIds;
-
-namespace Moongazing.OrionGuard.Generators.Tests;
 
 public class StronglyTypedIdGeneratorTests
 {
@@ -10,16 +10,39 @@ public class StronglyTypedIdGeneratorTests
     {
         var syntaxTree = CSharpSyntaxTree.ParseText(source);
 
-        var references = AppDomain.CurrentDomain.GetAssemblies()
-            .Where(a => !a.IsDynamic && !string.IsNullOrEmpty(a.Location))
-            .Select(a => MetadataReference.CreateFromFile(a.Location))
-            .Cast<MetadataReference>()
-            .ToArray();
+        var referencesList = new List<MetadataReference>();
+        var referencePaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        // Collect all AppDomain assemblies
+        foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+        {
+            if (assembly.IsDynamic || string.IsNullOrEmpty(assembly.Location))
+                continue;
+
+            if (referencePaths.Add(assembly.Location))
+            {
+                referencesList.Add(MetadataReference.CreateFromFile(assembly.Location));
+            }
+        }
+
+        // Ensure EF Core is included if it's available in the output directory
+        var testBinDir = Path.GetDirectoryName(typeof(StronglyTypedIdGeneratorTests).Assembly.Location);
+        if (testBinDir != null)
+        {
+            foreach (var efCoreFile in new[] { "Microsoft.EntityFrameworkCore.dll", "Microsoft.EntityFrameworkCore.Abstractions.dll" })
+            {
+                var efCorePath = Path.Combine(testBinDir, efCoreFile);
+                if (File.Exists(efCorePath) && referencePaths.Add(efCorePath))
+                {
+                    referencesList.Add(MetadataReference.CreateFromFile(efCorePath));
+                }
+            }
+        }
 
         var compilation = CSharpCompilation.Create(
             "TestAssembly",
             new[] { syntaxTree },
-            references,
+            referencesList.ToArray(),
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
 
         var generator = new StronglyTypedIdGenerator().AsSourceGenerator();
@@ -69,6 +92,13 @@ public class StronglyTypedIdGeneratorTests
     [Fact]
     public void Generator_ShouldEmitEfCoreValueConverter_ForGuidBackedId()
     {
+        // Ensure EF Core is loaded into AppDomain
+        try
+        {
+            _ = typeof(Microsoft.EntityFrameworkCore.DbContext);
+        }
+        catch { /* Already loaded or not available */ }
+
         const string source = """
             using Moongazing.OrionGuard.Domain.Primitives;
 
@@ -141,5 +171,29 @@ public class StronglyTypedIdGeneratorTests
         Assert.Contains("System.ComponentModel.TypeConverter", text);
         Assert.Contains("ConvertFrom", text);
         Assert.Contains("ConvertTo", text);
+    }
+
+    [Fact]
+    public void Generator_ShouldEmitIStronglyTypedIdInterface_OnGeneratedStruct()
+    {
+        const string source = """
+            using Moongazing.OrionGuard.Domain.Primitives;
+
+            namespace App
+            {
+                [StronglyTypedId<System.Guid>]
+                public readonly partial struct WarehouseId { }
+            }
+            """;
+
+        var result = RunGenerator(source);
+
+        var partialSource = result.Results
+            .SelectMany(r => r.GeneratedSources)
+            .FirstOrDefault(s => s.HintName.Contains("WarehouseId.StronglyTypedId"));
+
+        Assert.NotEqual(default, partialSource);
+        var text = partialSource.SourceText.ToString();
+        Assert.Contains("global::Moongazing.OrionGuard.Domain.Primitives.IStronglyTypedId<global::System.Guid>", text);
     }
 }

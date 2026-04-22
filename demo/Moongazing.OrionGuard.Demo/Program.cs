@@ -548,8 +548,8 @@ services.AddOrionGuardStronglyTypedIds(typeof(Program).Assembly);
 var provider = services.BuildServiceProvider();
 var registrationCount = services.Count(d => d.ServiceType.Name.EndsWith("EfCoreValueConverter", StringComparison.Ordinal));
 Console.WriteLine($"   ✅ Registered {registrationCount} generated EF Core ValueConverter(s) as singletons.");
-Console.WriteLine("   ℹ These are the ProductIdEfCoreValueConverter / SkuIdEfCoreValueConverter / CountryCodeEfCoreValueConverter types emitted by the generator.");
-Console.WriteLine("   ℹ EF Core's DbContext can now resolve and register these converters via DI.");
+Console.WriteLine("   ℹ The generator skips emitting EF Core ValueConverter companions when the consumer project does not reference Microsoft.EntityFrameworkCore (NEW in v6.2).");
+Console.WriteLine("   ℹ Add `<PackageReference Include=\"Microsoft.EntityFrameworkCore\" />` to resume emitting them. JSON + TypeConverter companions emit unconditionally.");
 
 #endregion
 

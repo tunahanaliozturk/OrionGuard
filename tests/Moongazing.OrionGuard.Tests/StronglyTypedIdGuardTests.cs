@@ -55,4 +55,14 @@ public class StronglyTypedIdGuardTests
         var returned = id.AgainstDefaultStronglyTypedId(nameof(id));
         Assert.Same(id, returned);
     }
+
+    [Fact]
+    public void DefaultStronglyTypedId_ShouldWork_WhenReceiverIsTypedAsInterface()
+    {
+        IStronglyTypedId<Guid> id = new OrderId(Guid.NewGuid());
+
+        var returned = id.AgainstDefaultStronglyTypedId(nameof(id));
+
+        Assert.Same(id, returned);
+    }
 }

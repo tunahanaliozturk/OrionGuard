@@ -1,4 +1,4 @@
-# Moongazing.OrionGuard.Generators
+# OrionGuard.Generators
 
 Roslyn incremental source generators for [**OrionGuard**](https://github.com/tunahanaliozturk/OrionGuard). Generates zero-reflection, NativeAOT-compatible validators and strongly-typed ID types from attributes.
 
@@ -45,7 +45,7 @@ Supported underlying types: `System.Guid`, `int`, `long`, `string`, `System.Ulid
 ## Install
 
 ```bash
-dotnet add package Moongazing.OrionGuard.Generators
+dotnet add package OrionGuard.Generators
 ```
 
 This package is an analyzer/source-generator reference — it contributes generated code at compile time and does not add runtime dependencies to your output.
