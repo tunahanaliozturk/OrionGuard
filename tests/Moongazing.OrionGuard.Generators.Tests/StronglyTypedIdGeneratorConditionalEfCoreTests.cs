@@ -19,27 +19,30 @@ public class StronglyTypedIdGeneratorConditionalEfCoreTests
                 !a.GetName().Name!.StartsWith("Microsoft.EntityFrameworkCore", StringComparison.Ordinal));
         }
 
-        var metadataRefsList = references
+        var metadataRefs = references
             .Select(a => MetadataReference.CreateFromFile(a.Location))
             .Cast<MetadataReference>()
             .ToList();
 
-        // If including EF Core but it's not loaded in AppDomain, add it explicitly from NuGet cache
-        if (includeEfCoreReference && !metadataRefsList.Any(mr => mr.Display?.Contains("EntityFrameworkCore") ?? false))
+        // The test csproj has a PackageReference to Microsoft.EntityFrameworkCore, but a referenced
+        // assembly is only loaded by the runtime when a type from it is actually used — on CI runners
+        // the test process never touches EF Core otherwise, so AppDomain.CurrentDomain.GetAssemblies()
+        // does not include it. Add the reference deterministically via typeof().Assembly.Location,
+        // which both forces the load and yields the exact file path for the metadata reference.
+        if (includeEfCoreReference)
         {
-            var efCoreAssemblyPath = System.IO.Path.Combine(
-                System.Environment.GetFolderPath(System.Environment.SpecialFolder.UserProfile),
-                ".nuget", "packages", "microsoft.entityframeworkcore", "10.0.0", "lib", "net10.0", "Microsoft.EntityFrameworkCore.dll");
-            if (System.IO.File.Exists(efCoreAssemblyPath))
+            var efCoreLocation = typeof(Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<,>).Assembly.Location;
+            if (!metadataRefs.OfType<PortableExecutableReference>().Any(r =>
+                    string.Equals(r.FilePath, efCoreLocation, StringComparison.OrdinalIgnoreCase)))
             {
-                metadataRefsList.Add(MetadataReference.CreateFromFile(efCoreAssemblyPath));
+                metadataRefs.Add(MetadataReference.CreateFromFile(efCoreLocation));
             }
         }
 
         var compilation = CSharpCompilation.Create(
             "TestAssembly",
             new[] { syntaxTree },
-            metadataRefsList.ToArray(),
+            metadataRefs.ToArray(),
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
 
         var generator = new StronglyTypedIdGenerator().AsSourceGenerator();
