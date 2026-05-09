@@ -47,6 +47,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Moongazing.OrionGuard.Testi
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Moongazing.OrionGuard.Generators.Tests", "tests\Moongazing.OrionGuard.Generators.Tests\Moongazing.OrionGuard.Generators.Tests.csproj", "{7EBDDD5C-2768-45CF-BDF4-E89010A6F75A}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Moongazing.OrionGuard.Testing.Tests", "tests\Moongazing.OrionGuard.Testing.Tests\Moongazing.OrionGuard.Testing.Tests.csproj", "{D3FA5B6C-9E04-4A12-9E73-CB10D4F235E3}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -237,6 +239,18 @@ Global
 		{7EBDDD5C-2768-45CF-BDF4-E89010A6F75A}.Release|x64.Build.0 = Release|Any CPU
 		{7EBDDD5C-2768-45CF-BDF4-E89010A6F75A}.Release|x86.ActiveCfg = Release|Any CPU
 		{7EBDDD5C-2768-45CF-BDF4-E89010A6F75A}.Release|x86.Build.0 = Release|Any CPU
+		{D3FA5B6C-9E04-4A12-9E73-CB10D4F235E3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D3FA5B6C-9E04-4A12-9E73-CB10D4F235E3}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D3FA5B6C-9E04-4A12-9E73-CB10D4F235E3}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{D3FA5B6C-9E04-4A12-9E73-CB10D4F235E3}.Debug|x64.Build.0 = Debug|Any CPU
+		{D3FA5B6C-9E04-4A12-9E73-CB10D4F235E3}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{D3FA5B6C-9E04-4A12-9E73-CB10D4F235E3}.Debug|x86.Build.0 = Debug|Any CPU
+		{D3FA5B6C-9E04-4A12-9E73-CB10D4F235E3}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D3FA5B6C-9E04-4A12-9E73-CB10D4F235E3}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D3FA5B6C-9E04-4A12-9E73-CB10D4F235E3}.Release|x64.ActiveCfg = Release|Any CPU
+		{D3FA5B6C-9E04-4A12-9E73-CB10D4F235E3}.Release|x64.Build.0 = Release|Any CPU
+		{D3FA5B6C-9E04-4A12-9E73-CB10D4F235E3}.Release|x86.ActiveCfg = Release|Any CPU
+		{D3FA5B6C-9E04-4A12-9E73-CB10D4F235E3}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -257,5 +271,6 @@ Global
 		{B1E8F3A2-7C4D-4E92-B5F1-A8D9C2E03D14} = {397A784D-16D0-4DC2-8609-3EE0EF18998F}
 		{C2F9A4B3-8D5E-4F03-C6E2-B9EAD3F14E25} = {397A784D-16D0-4DC2-8609-3EE0EF18998F}
 		{7EBDDD5C-2768-45CF-BDF4-E89010A6F75A} = {A26C0EB7-E4A7-4335-8423-E8AEE9EF1738}
+		{D3FA5B6C-9E04-4A12-9E73-CB10D4F235E3} = {A26C0EB7-E4A7-4335-8423-E8AEE9EF1738}
 	EndGlobalSection
 EndGlobal
