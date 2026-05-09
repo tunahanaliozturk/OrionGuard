@@ -115,6 +115,24 @@ public class ServiceProviderDomainEventDispatcherTests
     }
 
     [Fact]
+    public async Task DispatchAsync_Parallel_AggregatesAllHandlerExceptions()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<IDomainEventHandler<TestEvent>, ThrowingHandler>();
+        services.AddSingleton<IDomainEventHandler<TestEvent>, ThrowingHandler>();
+        services.AddSingleton(new DomainEventDispatchOptions { Mode = DispatchMode.Parallel });
+        services.AddSingleton<IDomainEventDispatcher, ServiceProviderDomainEventDispatcher>();
+        var sp = services.BuildServiceProvider();
+        var dispatcher = sp.GetRequiredService<IDomainEventDispatcher>();
+
+        var ex = await Assert.ThrowsAsync<AggregateException>(
+            () => dispatcher.DispatchAsync(new TestEvent("a")));
+
+        Assert.Equal(2, ex.InnerExceptions.Count);
+        Assert.All(ex.InnerExceptions, inner => Assert.IsType<InvalidOperationException>(inner));
+    }
+
+    [Fact]
     public async Task DispatchAsync_NoHandlerRegistered_DoesNotThrow()
     {
         var services = new ServiceCollection();

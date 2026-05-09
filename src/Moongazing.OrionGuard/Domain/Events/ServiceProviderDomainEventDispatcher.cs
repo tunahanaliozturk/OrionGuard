@@ -76,8 +76,15 @@ public sealed class ServiceProviderDomainEventDispatcher : IDomainEventDispatche
                 break;
 
             case DispatchMode.Parallel:
-                var tasks = handlers.Select(h => InvokeAsync(method, h!, @event, cancellationToken));
-                await Task.WhenAll(tasks).ConfigureAwait(false);
+                var allTask = Task.WhenAll(handlers.Select(h => InvokeAsync(method, h!, @event, cancellationToken)));
+                try
+                {
+                    await allTask.ConfigureAwait(false);
+                }
+                catch when (allTask.Exception is not null)
+                {
+                    throw allTask.Exception;
+                }
                 break;
 
             default:
