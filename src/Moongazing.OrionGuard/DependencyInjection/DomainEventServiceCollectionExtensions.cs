@@ -1,5 +1,6 @@
 using System.Reflection;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Moongazing.OrionGuard.Domain.Events;
 
 namespace Moongazing.OrionGuard.DependencyInjection;
@@ -22,8 +23,8 @@ public static class DomainEventServiceCollectionExtensions
 
         var options = new DomainEventDispatchOptions();
         configure?.Invoke(options);
-        services.AddSingleton(options);
-        services.AddScoped<IDomainEventDispatcher, ServiceProviderDomainEventDispatcher>();
+        services.TryAddSingleton(options);
+        services.TryAddScoped<IDomainEventDispatcher, ServiceProviderDomainEventDispatcher>();
         return services;
     }
 
@@ -46,6 +47,7 @@ public static class DomainEventServiceCollectionExtensions
             foreach (var type in assembly.GetTypes())
             {
                 if (type.IsAbstract || type.IsInterface) continue;
+                if (type.IsGenericTypeDefinition) continue;
                 foreach (var iface in type.GetInterfaces())
                 {
                     if (!iface.IsGenericType) continue;
