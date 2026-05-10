@@ -8,7 +8,7 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <NoWarn>CS1591;NU1900;NU1901;NU1902;NU1903;NU1904</NoWarn>
     <PackageId>OrionGuard.OpenTelemetry</PackageId>
-    <Version>6.2.0</Version>
+    <Version>6.3.0</Version>
     <Authors>Tunahan Ali Ozturk</Authors>
     <Description>OpenTelemetry integration for OrionGuard validation library. Provides validation metrics (success/failure rates, latency) and distributed tracing spans.</Description>
     <PackageTags>guard;validation;opentelemetry;metrics;tracing;observability</PackageTags>

@@ -16,7 +16,7 @@
 		<OutputType>Library</OutputType>
 
 		<PackageId>OrionGuard</PackageId>
-		<Version>6.2.0</Version>
+		<Version>6.3.0</Version>
 		<Authors>Tunahan Ali Ozturk</Authors>
 		<Company>Tunahan Ali Ozturk</Company>
 		<GeneratePackageOnBuild>false</GeneratePackageOnBuild>
@@ -35,6 +35,24 @@
 		<PackageProjectUrl>https://github.com/tunahanaliozturk/OrionGuard</PackageProjectUrl>
 		<PackageTags>guard;validation;fluent;exceptions;.NET;input-validation;guard-clauses;defensive-programming;security;localization;format-validation;nativeaot;source-generator;aspnetcore;mediatr</PackageTags>
 		<PackageReleaseNotes>
+v6.3.0 — Release Notes
+
+NEW: Domain event dispatcher — IDomainEventDispatcher and IDomainEventHandler&lt;TEvent&gt; abstractions. Default ServiceProviderDomainEventDispatcher resolves handlers from IServiceProvider; supports SequentialFailFast (default), SequentialContinueOnError, and Parallel dispatch modes. DI: services.AddOrionGuardDomainEvents() + services.AddOrionGuardDomainEventHandlers(assembly).
+
+NEW: MediatR bridge (OrionGuard.MediatR) — MediatRDomainEventDispatcher delegates to MediatR's IPublisher. Consumer events opt in by adding ': INotification' to their record declaration; the bridge throws InvalidOperationException for events that don't. No wrapper types — handlers stay as natural INotificationHandler&lt;TEvent&gt;. DI: services.AddOrionGuardMediatRDomainEvents() swaps the registered dispatcher.
+
+NEW PACKAGE: OrionGuard.EntityFrameworkCore — DomainEventSaveChangesInterceptor pulls events from tracked IAggregateRoot instances at SavingChangesAsync. Two modes: Inline (default — dispatches post-commit) and Outbox (persists to OutboxMessage rows in the same transaction, dispatched by a hosted background worker). OutboxOptions configures PollingInterval / BatchSize / MaxRetries / TableName. Worker increments RetryCount on failure and dead-letters after MaxRetries. W3C trace context (TraceParent / TraceState) propagates across the outbox boundary so end-to-end traces span the worker. DI: services.AddOrionGuardEfCore&lt;TDbContext&gt;(o =&gt; o.UseInline() | o.UseOutbox()).
+
+NEW PACKAGE: OrionGuard.Testing — DomainEventCapture and DomainEventAssertions for fluent unit-test assertions over aggregate-raised events. InMemoryDomainEventDispatcher for integration tests. Framework-agnostic — no xUnit / NUnit / FluentAssertions dependency. Throws DomainEventAssertionException, which any test runner treats as a failure.
+
+NEW: OrionGuard.OpenTelemetry domain-event instrumentation — OrionGuardDomainEventTelemetry exposes ActivitySource and Meter under 'Moongazing.OrionGuard.DomainEvents', with counters orionguard.domain_events.dispatched / failed / outbox.processed / outbox.retries plus the orionguard.domain_events.duration histogram. InstrumentedDomainEventDispatcher decorator opens a span per dispatch and sets ActivityStatusCode.Error on exception. DI: services.WithOpenTelemetryDomainEvents() (call after AddOrionGuardDomainEvents()).
+
+MIGRATION: No breaking changes from v6.2.0. Existing aggregates raise events the same way; nothing dispatches until AddOrionGuardDomainEvents() is wired. MediatR consumers add ', INotification' to their event records (one-line per event). Outbox consumers add an EF Core migration for the OrionGuard_Outbox table.
+
+ROADMAP: v6.4.0 = BusinessRule base class + Guard.Against.BrokenRule + ASP.NET Core ProblemDetails mapping; distributed locking for multi-instance outbox workers; OutboxTypeMapRegistry (alias system for safe type renames); archival job. v6.5+ = push-based outbox dispatch (LISTEN/NOTIFY, SqlDependency); event sourcing primitives.
+
+Full changelog: https://github.com/tunahanaliozturk/OrionGuard/blob/master/CHANGELOG.md
+
 v6.2.0 — Release Notes
 
 NEW: IStronglyTypedId&lt;TValue&gt; marker interface — implemented by both the StronglyTypedId&lt;TValue&gt; abstract record (manual style) AND source-generated readonly partial struct ids. The AgainstDefaultStronglyTypedId guard now accepts this interface as its receiver, so both id styles work with the same guard.
