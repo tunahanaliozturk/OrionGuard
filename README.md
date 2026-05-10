@@ -44,6 +44,7 @@
 | Polymorphic validation | Yes | Yes | - | - |
 | Deep nested validation | Yes | Yes | - | - |
 | Validation caching | Yes | - | - | - |
+| Domain events + outbox | Yes | - | - | - |
 
 ---
 
@@ -93,6 +94,8 @@ if (result.IsInvalid)
 | `OrionGuard.Blazor` | `dotnet add package OrionGuard.Blazor` | EditForm validation |
 | `OrionGuard.Grpc` | `dotnet add package OrionGuard.Grpc` | Server interceptor |
 | `OrionGuard.SignalR` | `dotnet add package OrionGuard.SignalR` | Hub method validation |
+| `OrionGuard.EntityFrameworkCore` | `dotnet add package OrionGuard.EntityFrameworkCore` | EF Core SaveChanges interceptor + transactional outbox |
+| `OrionGuard.Testing` | `dotnet add package OrionGuard.Testing` | DomainEventCapture + InMemoryDispatcher + assertions |
 
 ---
 
