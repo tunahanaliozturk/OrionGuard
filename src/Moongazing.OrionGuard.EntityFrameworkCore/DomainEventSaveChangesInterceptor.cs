@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
@@ -60,6 +61,7 @@ public sealed class DomainEventSaveChangesInterceptor : SaveChangesInterceptor
         }
         else
         {
+            var current = Activity.Current;
             foreach (var aggregate in aggregates)
             {
                 var events = aggregate.PullDomainEvents();
@@ -70,6 +72,8 @@ public sealed class DomainEventSaveChangesInterceptor : SaveChangesInterceptor
                         EventType = e.GetType().AssemblyQualifiedName!,
                         Payload = JsonSerializer.Serialize(e, e.GetType()),
                         OccurredOnUtc = e.OccurredOnUtc,
+                        TraceParent = current?.Id,
+                        TraceState = current?.TraceStateString,
                     });
                 }
             }

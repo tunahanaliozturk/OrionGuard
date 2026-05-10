@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
@@ -15,6 +16,8 @@ namespace Moongazing.OrionGuard.EntityFrameworkCore.Outbox;
 /// </summary>
 public sealed class OutboxDispatcherHostedService : BackgroundService
 {
+    private static readonly ActivitySource OutboxActivitySource = new("Moongazing.OrionGuard.DomainEvents", "6.3.0");
+
     private readonly IServiceProvider root;
     private readonly OutboxOptions options;
     private readonly IServiceScopeFactory scopeFactory;
@@ -90,6 +93,12 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
 
         foreach (var msg in batch)
         {
+            Activity? activity = null;
+            if (!string.IsNullOrEmpty(msg.TraceParent)
+                && ActivityContext.TryParse(msg.TraceParent, msg.TraceState, out var parentContext))
+            {
+                activity = OutboxActivitySource.StartActivity("Outbox.Dispatch", ActivityKind.Consumer, parentContext);
+            }
             try
             {
                 var type = Type.GetType(msg.EventType)
@@ -107,6 +116,10 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
                 {
                     msg.ProcessedOnUtc = DateTime.UtcNow;   // dead-letter
                 }
+            }
+            finally
+            {
+                activity?.Dispose();
             }
         }
 
