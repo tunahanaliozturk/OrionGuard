@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="6.0.2" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="9.0.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="9.0.0" />
+    <!-- Override transitive Microsoft.Data.Sqlite.Core because the locally cached 9.0.0 PACKAGE.md is filesystem-corrupt and undeletable (chkdsk needed). 9.0.9 is the lowest patched 9.x build available locally. -->
+    <PackageReference Include="Microsoft.Data.Sqlite.Core" Version="9.0.9" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Moongazing.OrionGuard\Moongazing.OrionGuard.csproj" />
+    <ProjectReference Include="..\..\src\Moongazing.OrionGuard.EntityFrameworkCore\Moongazing.OrionGuard.EntityFrameworkCore.csproj" />
+    <ProjectReference Include="..\..\src\Moongazing.OrionGuard.Testing\Moongazing.OrionGuard.Testing.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+</Project>
