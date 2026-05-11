@@ -103,6 +103,35 @@ public class OutboxDispatcherTests
     }
 
     [Fact]
+    public async Task ProcessBatch_HonoursCancellation_StopsBeforeDispatch()
+    {
+        var dispatcher = new InMemoryDomainEventDispatcher();
+        await using var sp = BuildSp(dispatcher);
+        await using var scope = sp.CreateAsyncScope();
+        var ctx = scope.ServiceProvider.GetRequiredService<TestDbContext>();
+        await ctx.Database.OpenConnectionAsync();
+        await ctx.Database.EnsureCreatedAsync();
+
+        await SeedOutboxRowAsync(ctx, new OrderShipped(Guid.NewGuid()));
+
+        var worker = new OutboxDispatcherHostedService(
+            sp.GetRequiredService<OutboxOptions>(),
+            sp.GetRequiredService<IServiceScopeFactory>());
+
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();   // pre-cancelled
+
+        await Assert.ThrowsAsync<OperationCanceledException>(
+            () => worker.ProcessBatchAsync(cts.Token));
+
+        // The cancelled call must not have dispatched the row.
+        Assert.Empty(dispatcher.Captured);
+        var row = await ctx.OutboxMessages.AsNoTracking().SingleAsync();
+        Assert.Null(row.ProcessedOnUtc);
+        Assert.Equal(0, row.RetryCount);
+    }
+
+    [Fact]
     public async Task ProcessBatch_AfterMaxRetries_DeadLettersTheRow()
     {
         var dispatcher = new ThrowingDispatcher();
