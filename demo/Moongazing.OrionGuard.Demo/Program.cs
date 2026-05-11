@@ -580,3 +580,5 @@ Console.WriteLine("🎉 All OrionGuard v6.1 demos completed successfully!");
 Console.WriteLine("   (v5 core + v6.0 ecosystem + v6.1 DDD primitives)");
 Console.WriteLine("=".PadRight(60, '='));
 
+await Moongazing.OrionGuard.Demo.DomainEventsDemo.RunAsync();
+
