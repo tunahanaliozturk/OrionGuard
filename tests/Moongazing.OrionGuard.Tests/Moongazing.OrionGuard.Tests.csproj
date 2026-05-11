@@ -20,6 +20,7 @@
     <ProjectReference Include="..\..\src\Moongazing.OrionGuard\Moongazing.OrionGuard.csproj" />
     <ProjectReference Include="..\..\src\Moongazing.OrionGuard.MediatR\Moongazing.OrionGuard.MediatR.csproj" />
     <ProjectReference Include="..\..\src\Moongazing.OrionGuard.OpenTelemetry\Moongazing.OrionGuard.OpenTelemetry.csproj" />
+    <ProjectReference Include="..\..\src\Moongazing.OrionGuard.EntityFrameworkCore\Moongazing.OrionGuard.EntityFrameworkCore.csproj" />
   </ItemGroup>
 
   <ItemGroup>
