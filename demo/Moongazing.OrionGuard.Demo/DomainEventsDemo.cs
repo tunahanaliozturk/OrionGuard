@@ -48,11 +48,12 @@ public static class DomainEventsDemo
         Console.WriteLine("\n=== Domain Events demo (Inline mode) ===");
 
         var builder = Host.CreateApplicationBuilder();
-        builder.Services.AddDbContext<DemoDbContext>(o => o.UseSqlite("DataSource=demo.db"));
         builder.Services.AddOrionGuardDomainEvents();
         builder.Services.AddOrionGuardDomainEventHandlers(typeof(DomainEventsDemo).Assembly);
         builder.Services.AddOrionGuardEfCore<DemoDbContext>(o => o.UseInline());
-        builder.Services.AddSingleton<DomainEventSaveChangesInterceptor>();
+        builder.Services.AddDbContext<DemoDbContext>((sp, o) =>
+            o.UseSqlite("DataSource=demo.db")
+             .AddInterceptors(new DomainEventSaveChangesInterceptor(sp)));
 
         using var host = builder.Build();
         await using var scope = host.Services.CreateAsyncScope();
