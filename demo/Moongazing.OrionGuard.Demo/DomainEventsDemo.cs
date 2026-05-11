@@ -53,7 +53,7 @@ public static class DomainEventsDemo
         builder.Services.AddOrionGuardEfCore<DemoDbContext>(o => o.UseInline());
         builder.Services.AddDbContext<DemoDbContext>((sp, o) =>
             o.UseSqlite("DataSource=demo.db")
-             .AddInterceptors(new DomainEventSaveChangesInterceptor(sp)));
+             .UseOrionGuardDomainEvents(sp));
 
         using var host = builder.Build();
         await using var scope = host.Services.CreateAsyncScope();

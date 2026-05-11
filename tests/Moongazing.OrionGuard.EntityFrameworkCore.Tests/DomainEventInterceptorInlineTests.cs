@@ -77,4 +77,34 @@ public class DomainEventInterceptorInlineTests
 
         Assert.Empty(dispatcher.Captured);
     }
+
+    [Fact]
+    public async Task UseOrionGuardDomainEvents_Extension_WiresInterceptorCorrectly()
+    {
+        var dispatcher = new InMemoryDomainEventDispatcher();
+        var services = new ServiceCollection();
+        services.AddOrionGuardDomainEvents();
+        var existing = services.Single(d => d.ServiceType == typeof(IDomainEventDispatcher));
+        services.Remove(existing);
+        services.AddSingleton<IDomainEventDispatcher>(dispatcher);
+
+        services.AddOrionGuardEfCore<TestDbContext>(o => o.UseInline());
+        services.AddDbContext<TestDbContext>((sp, o) =>
+            o.UseSqlite("DataSource=:memory:")
+             .UseOrionGuardDomainEvents(sp));   // <-- the new path
+
+        await using var sp = services.BuildServiceProvider();
+        await using var scope = sp.CreateAsyncScope();
+        var ctx = scope.ServiceProvider.GetRequiredService<TestDbContext>();
+        await ctx.Database.OpenConnectionAsync();
+        await ctx.Database.EnsureCreatedAsync();
+
+        var order = new Order(Guid.NewGuid());
+        ctx.Orders.Add(order);
+        order.Ship();
+        await ctx.SaveChangesAsync();
+
+        Assert.Single(dispatcher.Captured);
+        Assert.IsType<OrderShipped>(dispatcher.Captured[0]);
+    }
 }
