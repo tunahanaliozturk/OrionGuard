@@ -18,21 +18,15 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
 {
     private static readonly ActivitySource OutboxActivitySource = new("Moongazing.OrionGuard.DomainEvents", "6.3.0");
 
-    private readonly IServiceProvider root;
     private readonly OutboxOptions options;
     private readonly IServiceScopeFactory scopeFactory;
 
     /// <summary>Initializes a new worker.</summary>
-    /// <param name="root">Root service provider (kept for parity with other hosted services; scope work uses <paramref name="scopeFactory"/>).</param>
     /// <param name="options">Outbox dispatch configuration.</param>
     /// <param name="scopeFactory">Factory used to create per-batch DI scopes for resolving <see cref="DbContext"/> and <see cref="IDomainEventDispatcher"/>.</param>
     /// <exception cref="ArgumentNullException">Thrown when any argument is <see langword="null"/>.</exception>
-    public OutboxDispatcherHostedService(
-        IServiceProvider root,
-        OutboxOptions options,
-        IServiceScopeFactory scopeFactory)
+    public OutboxDispatcherHostedService(OutboxOptions options, IServiceScopeFactory scopeFactory)
     {
-        this.root = root ?? throw new ArgumentNullException(nameof(root));
         this.options = options ?? throw new ArgumentNullException(nameof(options));
         this.scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
     }

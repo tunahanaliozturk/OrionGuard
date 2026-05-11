@@ -67,7 +67,7 @@ public class OutboxDispatcherTests
 
         await SeedOutboxRowAsync(ctx, new OrderShipped(Guid.NewGuid()));
 
-        var worker = new OutboxDispatcherHostedService(sp,
+        var worker = new OutboxDispatcherHostedService(
             sp.GetRequiredService<OutboxOptions>(),
             sp.GetRequiredService<IServiceScopeFactory>());
 
@@ -90,7 +90,7 @@ public class OutboxDispatcherTests
 
         await SeedOutboxRowAsync(ctx, new OrderShipped(Guid.NewGuid()));
 
-        var worker = new OutboxDispatcherHostedService(sp,
+        var worker = new OutboxDispatcherHostedService(
             sp.GetRequiredService<OutboxOptions>(),
             sp.GetRequiredService<IServiceScopeFactory>());
 
@@ -114,7 +114,7 @@ public class OutboxDispatcherTests
         await ctx.Database.EnsureCreatedAsync();
 
         await SeedOutboxRowAsync(ctx, new OrderShipped(Guid.NewGuid()));
-        var worker = new OutboxDispatcherHostedService(sp, opts, sp.GetRequiredService<IServiceScopeFactory>());
+        var worker = new OutboxDispatcherHostedService(opts, sp.GetRequiredService<IServiceScopeFactory>());
 
         await worker.ProcessBatchAsync(default);
         await worker.ProcessBatchAsync(default);

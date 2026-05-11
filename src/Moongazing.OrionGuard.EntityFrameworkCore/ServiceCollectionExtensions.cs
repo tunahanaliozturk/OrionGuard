@@ -40,7 +40,6 @@ public static class ServiceCollectionExtensions
         if (options.Strategy == DomainEventDispatchStrategy.Outbox)
         {
             services.AddHostedService(sp => new OutboxDispatcherHostedService(
-                sp,
                 sp.GetRequiredService<OutboxOptions>(),
                 sp.GetRequiredService<IServiceScopeFactory>()));
         }
