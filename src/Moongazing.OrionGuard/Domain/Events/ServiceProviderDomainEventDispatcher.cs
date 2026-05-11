@@ -1,5 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
+using System.Runtime.ExceptionServices;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Moongazing.OrionGuard.Domain.Events;
@@ -106,18 +107,22 @@ public sealed class ServiceProviderDomainEventDispatcher : IDomainEventDispatche
         }
     }
 
-    private static Task InvokeAsync(MethodInfo method, object handler, IDomainEvent @event, CancellationToken ct)
+    private static async Task InvokeAsync(MethodInfo method, object handler, IDomainEvent @event, CancellationToken ct)
     {
+        Task task;
         try
         {
-            var task = (Task?)method.Invoke(handler, new object[] { @event, ct });
-            return task ?? Task.CompletedTask;
+            task = (Task?)method.Invoke(handler, new object[] { @event, ct }) ?? Task.CompletedTask;
         }
         catch (TargetInvocationException ex) when (ex.InnerException is not null)
         {
             // Surface the handler's original exception instead of the reflection wrapper
-            // so callers (and DispatchMode policies) observe the real type.
-            return Task.FromException(ex.InnerException);
+            // so callers (and DispatchMode policies) observe the real type. Using
+            // ExceptionDispatchInfo preserves the original stack trace seamlessly.
+            ExceptionDispatchInfo.Capture(ex.InnerException).Throw();
+            throw; // unreachable; satisfies the compiler's return-path analysis.
         }
+
+        await task.ConfigureAwait(false);
     }
 }
