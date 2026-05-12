@@ -118,12 +118,25 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
             }
             try
             {
-                var type = Type.GetType(msg.EventType)
-                    ?? throw new InvalidOperationException($"Cannot resolve event type '{msg.EventType}'.");
-                var @event = (IDomainEvent)JsonSerializer.Deserialize(msg.Payload, type)!;
-                await dispatcher.DispatchAsync(@event, cancellationToken).ConfigureAwait(false);
-                msg.ProcessedOnUtc = DateTime.UtcNow;
-                msg.Error = null;
+                var type = Type.GetType(msg.EventType);
+                if (type is null)
+                {
+                    // Unresolvable types will never resolve unless the deployment changes.
+                    // Dead-letter immediately rather than wasting MaxRetries-1 attempts.
+                    msg.Error = $"TYPE_NOT_FOUND: cannot resolve {msg.EventType}";
+                    msg.RetryCount = options.MaxRetries;
+                    msg.ProcessedOnUtc = DateTime.UtcNow;
+                    logger?.LogError(
+                        "Outbox row {RowId} dead-lettered: event type '{EventType}' could not be resolved.",
+                        msg.Id, msg.EventType);
+                }
+                else
+                {
+                    var @event = (IDomainEvent)JsonSerializer.Deserialize(msg.Payload, type)!;
+                    await dispatcher.DispatchAsync(@event, cancellationToken).ConfigureAwait(false);
+                    msg.ProcessedOnUtc = DateTime.UtcNow;
+                    msg.Error = null;
+                }
             }
             catch (OperationCanceledException)
             {

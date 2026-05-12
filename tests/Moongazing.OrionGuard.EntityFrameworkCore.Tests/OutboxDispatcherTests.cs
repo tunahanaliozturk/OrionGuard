@@ -181,6 +181,38 @@ public class OutboxDispatcherTests
         Assert.Equal(3, dispatcher.Captured.Count);
     }
 
+    [Fact]
+    public async Task ProcessBatch_UnresolvableEventType_DeadLettersImmediately()
+    {
+        var dispatcher = new InMemoryDomainEventDispatcher();
+        await using var sp = BuildSp(dispatcher);
+        await using var scope = sp.CreateAsyncScope();
+        var ctx = scope.ServiceProvider.GetRequiredService<TestDbContext>();
+        await ctx.Database.OpenConnectionAsync();
+        await ctx.Database.EnsureCreatedAsync();
+
+        ctx.OutboxMessages.Add(new OutboxMessage
+        {
+            EventType = "SomeApp.Domain.Events.OrderShipped, NonExistentAssembly, Version=1.0.0.0",
+            Payload = "{}",
+            OccurredOnUtc = DateTime.UtcNow,
+        });
+        await ctx.SaveChangesAsync();
+
+        var worker = new OutboxDispatcherHostedService(
+            sp.GetRequiredService<OutboxOptions>(),
+            sp.GetRequiredService<IServiceScopeFactory>());
+
+        await worker.ProcessBatchAsync(default);
+
+        var row = await ctx.OutboxMessages.AsNoTracking().SingleAsync();
+        Assert.Equal(2, row.RetryCount);     // RetryCount jumped to MaxRetries (2)
+        Assert.NotNull(row.ProcessedOnUtc);   // dead-lettered
+        Assert.NotNull(row.Error);
+        Assert.StartsWith("TYPE_NOT_FOUND:", row.Error);
+        Assert.Empty(dispatcher.Captured);    // no dispatch attempted
+    }
+
     private sealed class ThrowingDispatcher : IDomainEventDispatcher
     {
         public Task DispatchAsync(IDomainEvent @event, CancellationToken ct = default) => throw new InvalidOperationException("boom");
