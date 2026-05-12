@@ -45,7 +45,7 @@ public static class DomainEventsDemo
 
     public static async Task RunAsync()
     {
-        Console.WriteLine("\n=== Domain Events demo (Inline mode) ===");
+        Console.WriteLine("\n== Domain Events demo (Inline mode) ==");
 
         var builder = Host.CreateApplicationBuilder();
         builder.Services.AddOrionGuardDomainEvents();
