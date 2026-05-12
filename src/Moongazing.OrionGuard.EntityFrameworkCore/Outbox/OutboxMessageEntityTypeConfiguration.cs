@@ -10,9 +10,28 @@ namespace Moongazing.OrionGuard.EntityFrameworkCore.Outbox;
 public sealed class OutboxMessageEntityTypeConfiguration : IEntityTypeConfiguration<OutboxMessage>
 {
     private readonly string tableName;
+    private readonly string? indexFilter;
 
-    /// <summary>Constructs a configuration for the supplied table name (typically from <see cref="OutboxOptions.TableName"/>).</summary>
-    public OutboxMessageEntityTypeConfiguration(string tableName) => this.tableName = tableName;
+    /// <summary>
+    /// Creates the configuration for the supplied table name.
+    /// </summary>
+    /// <param name="tableName">The outbox table name (typically <see cref="OutboxOptions.TableName"/>).</param>
+    /// <param name="indexFilter">
+    /// Optional provider-specific filter SQL for the unprocessed-rows index. Strongly recommended in
+    /// production to avoid an ever-growing index of dead-lettered/processed rows.
+    /// <list type="bullet">
+    ///   <item><description>SQL Server / PostgreSQL: <c>"[ProcessedOnUtc] IS NULL"</c></description></item>
+    ///   <item><description>SQLite: <c>"\"ProcessedOnUtc\" IS NULL"</c></description></item>
+    ///   <item><description>If <see langword="null"/>, a non-filtered composite index on
+    ///   <c>(ProcessedOnUtc, OccurredOnUtc)</c> is created so the worker's
+    ///   <c>WHERE ProcessedOnUtc IS NULL ORDER BY OccurredOnUtc</c> query stays index-covered.</description></item>
+    /// </list>
+    /// </param>
+    public OutboxMessageEntityTypeConfiguration(string tableName, string? indexFilter = null)
+    {
+        this.tableName = tableName;
+        this.indexFilter = indexFilter;
+    }
 
     /// <inheritdoc />
     public void Configure(EntityTypeBuilder<OutboxMessage> builder)
@@ -25,7 +44,17 @@ public sealed class OutboxMessageEntityTypeConfiguration : IEntityTypeConfigurat
         builder.Property(x => x.CorrelationId).HasMaxLength(128);
         builder.Property(x => x.TraceParent).HasMaxLength(64);
         builder.Property(x => x.TraceState).HasMaxLength(256);
-        builder.HasIndex(x => new { x.ProcessedOnUtc, x.OccurredOnUtc })
-            .HasDatabaseName("IX_OrionGuard_Outbox_Unprocessed");
+
+        if (indexFilter is not null)
+        {
+            builder.HasIndex(x => x.OccurredOnUtc)
+                .HasDatabaseName("IX_OrionGuard_Outbox_Unprocessed")
+                .HasFilter(indexFilter);
+        }
+        else
+        {
+            builder.HasIndex(x => new { x.ProcessedOnUtc, x.OccurredOnUtc })
+                .HasDatabaseName("IX_OrionGuard_Outbox_Unprocessed");
+        }
     }
 }
