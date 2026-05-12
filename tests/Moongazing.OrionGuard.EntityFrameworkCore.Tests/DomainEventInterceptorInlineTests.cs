@@ -79,6 +79,69 @@ public class DomainEventInterceptorInlineTests
     }
 
     [Fact]
+    public async Task SaveChanges_AfterFailedAndRetried_StillDispatchesEvents()
+    {
+        var dispatcher = new InMemoryDomainEventDispatcher();
+        await using var sp = BuildSp(dispatcher);
+        await using var scope = sp.CreateAsyncScope();
+        var ctx = scope.ServiceProvider.GetRequiredService<TestDbContext>();
+        await ctx.Database.OpenConnectionAsync();
+        await ctx.Database.EnsureCreatedAsync();
+
+        var order = new Order(Guid.NewGuid());
+        ctx.Orders.Add(order);
+        order.Ship();
+
+        var collector = scope.ServiceProvider.GetRequiredService<DomainEventCollector>();
+
+        // After first successful save:
+        await ctx.SaveChangesAsync();
+        Assert.Single(dispatcher.Captured);          // dispatched
+        Assert.Empty(order.DomainEvents);             // aggregate drained at SavedChanges
+        Assert.Empty(collector.Pending);              // collector flushed
+
+        // Raise more events on the same aggregate and try again — must work cleanly.
+        order.Cancel();
+        await ctx.SaveChangesAsync();
+        Assert.Equal(2, dispatcher.Captured.Count);
+        Assert.Empty(order.DomainEvents);
+        Assert.Empty(collector.Pending);
+    }
+
+    [Fact]
+    public async Task SaveChangesFailed_ResetsCollector_AggregateEventsSurvive()
+    {
+        var dispatcher = new InMemoryDomainEventDispatcher();
+        await using var sp = BuildSp(dispatcher);
+        await using var scope = sp.CreateAsyncScope();
+        var ctx = scope.ServiceProvider.GetRequiredService<TestDbContext>();
+        await ctx.Database.OpenConnectionAsync();
+        await ctx.Database.EnsureCreatedAsync();
+
+        var order = new Order(Guid.NewGuid());
+        ctx.Orders.Add(order);
+        order.Ship();
+
+        // Simulate the SavingChangesAsync contract: TrackAggregate registers the live reference
+        // but does NOT drain it. Pending stays empty; events remain on the aggregate.
+        var collector = scope.ServiceProvider.GetRequiredService<DomainEventCollector>();
+        collector.TrackAggregate(order);
+        Assert.Empty(collector.Pending);             // TrackAggregate does not buffer events
+        Assert.NotEmpty(order.DomainEvents);          // events still on aggregate
+
+        // Reset (the SaveChangesFailedAsync path): aggregate's events must survive the reset
+        // because TrackAggregate never pulled them.
+        collector.Reset();
+        Assert.NotEmpty(order.DomainEvents);          // aggregate still has its events
+        Assert.Empty(collector.Pending);
+
+        // After reset, a subsequent DrainSnapshot returns nothing — no stale references.
+        var drained = collector.DrainSnapshot();
+        Assert.Empty(drained);
+        Assert.NotEmpty(order.DomainEvents);          // and the aggregate is still intact
+    }
+
+    [Fact]
     public async Task UseOrionGuardDomainEvents_Extension_WiresInterceptorCorrectly()
     {
         var dispatcher = new InMemoryDomainEventDispatcher();
