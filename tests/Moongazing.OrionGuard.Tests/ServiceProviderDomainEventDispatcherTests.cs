@@ -151,4 +151,21 @@ public class ServiceProviderDomainEventDispatcherTests
 
         await Assert.ThrowsAsync<ArgumentNullException>(() => dispatcher.DispatchAsync((IDomainEvent)null!));
     }
+
+    [Fact]
+    public async Task DispatchAsync_Parallel_SingleException_PreservesOriginalType_NoAggregateWrap()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<IDomainEventHandler<TestEvent>, ThrowingHandler>();
+        services.AddSingleton<IDomainEventHandler<TestEvent>, CountingHandler>();
+        services.AddSingleton(new DomainEventDispatchOptions { Mode = DispatchMode.Parallel });
+        services.AddSingleton<IDomainEventDispatcher, ServiceProviderDomainEventDispatcher>();
+        var sp = services.BuildServiceProvider();
+        var dispatcher = sp.GetRequiredService<IDomainEventDispatcher>();
+
+        // Only one handler throws -> should surface as the original InvalidOperationException,
+        // not wrapped in AggregateException.
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => dispatcher.DispatchAsync(new TestEvent("a")));
+    }
 }

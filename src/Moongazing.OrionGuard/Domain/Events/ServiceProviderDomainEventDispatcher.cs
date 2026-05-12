@@ -79,14 +79,27 @@ public sealed class ServiceProviderDomainEventDispatcher : IDomainEventDispatche
                 break;
 
             case DispatchMode.Parallel:
-                var allTask = Task.WhenAll(handlers.Select(h => InvokeAsync(method, h!, @event, cancellationToken)));
+                var parallelTasks = handlers.Select(h => InvokeAsync(method, h!, @event, cancellationToken)).ToArray();
                 try
                 {
-                    await allTask.ConfigureAwait(false);
+                    await Task.WhenAll(parallelTasks).ConfigureAwait(false);
                 }
-                catch when (allTask.Exception is not null)
+                catch (OperationCanceledException)
                 {
-                    throw allTask.Exception;
+                    throw;
+                }
+                catch
+                {
+                    var faults = parallelTasks
+                        .Where(t => t.IsFaulted)
+                        .SelectMany(t => t.Exception!.InnerExceptions)
+                        .ToArray();
+                    if (faults.Length == 1)
+                    {
+                        ExceptionDispatchInfo.Capture(faults[0]).Throw();
+                        throw; // unreachable; satisfies the compiler
+                    }
+                    throw new AggregateException(faults);
                 }
                 break;
 
