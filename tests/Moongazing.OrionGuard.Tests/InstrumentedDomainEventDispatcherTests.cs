@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using Microsoft.Extensions.DependencyInjection;
+using Moongazing.OrionGuard.DependencyInjection;
 using Moongazing.OrionGuard.Domain.Events;
 using Moongazing.OrionGuard.OpenTelemetry.DomainEvents;
 
@@ -56,5 +58,44 @@ public class InstrumentedDomainEventDispatcherTests
         await Assert.ThrowsAsync<InvalidOperationException>(() => instr.DispatchAsync(new TestEvent(1)));
         var activity = Assert.Single(captured);
         Assert.Equal(ActivityStatusCode.Error, activity.Status);
+    }
+
+    [Fact]
+    public void WithOpenTelemetryDomainEvents_DecoratesFactoryBasedRegistration()
+    {
+        var inner = new StubDispatcher();
+
+        var services = new ServiceCollection();
+        services.AddScoped<IDomainEventDispatcher>(_ => inner);   // factory, not type
+        services.WithOpenTelemetryDomainEvents();
+
+        using var sp = services.BuildServiceProvider();
+        using var scope = sp.CreateScope();
+        var dispatcher = scope.ServiceProvider.GetRequiredService<IDomainEventDispatcher>();
+
+        Assert.IsType<InstrumentedDomainEventDispatcher>(dispatcher);
+    }
+
+    [Fact]
+    public void WithOpenTelemetryDomainEvents_CalledTwice_DoesNotDoubleDecorate()
+    {
+        var services = new ServiceCollection();
+        services.AddOrionGuardDomainEvents();
+        services.WithOpenTelemetryDomainEvents();
+        services.WithOpenTelemetryDomainEvents();   // second call must be a no-op
+
+        var dispatcherCount = services.Count(d => d.ServiceType == typeof(IDomainEventDispatcher));
+        var markerCount = services.Count(d => d.ServiceType == typeof(WithOpenTelemetryDomainEventsMarker));
+
+        Assert.Equal(1, dispatcherCount);
+        Assert.Equal(1, markerCount);
+    }
+
+    [Fact]
+    public void WithOpenTelemetryDomainEvents_WithoutPriorRegistration_Throws()
+    {
+        var services = new ServiceCollection();
+        var ex = Assert.Throws<InvalidOperationException>(() => services.WithOpenTelemetryDomainEvents());
+        Assert.Contains("No IDomainEventDispatcher", ex.Message);
     }
 }
