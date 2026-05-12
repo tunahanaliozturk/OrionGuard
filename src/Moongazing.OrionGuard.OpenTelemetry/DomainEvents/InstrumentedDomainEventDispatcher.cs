@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
 using Moongazing.OrionGuard.Domain.Events;
 
 namespace Moongazing.OrionGuard.OpenTelemetry.DomainEvents;
@@ -30,9 +31,9 @@ public sealed class InstrumentedDomainEventDispatcher : IDomainEventDispatcher
         var typeName = @event.GetType().Name;
         using var activity = OrionGuardDomainEventTelemetry.ActivitySource
             .StartActivity($"DomainEvent.Dispatch {typeName}", ActivityKind.Internal);
-        activity?.SetTag("orionguard.event.id", @event.EventId);
+        activity?.SetTag("orionguard.event.id", @event.EventId.ToString("D"));
         activity?.SetTag("orionguard.event.type", @event.GetType().FullName);
-        activity?.SetTag("orionguard.event.occurred_on", @event.OccurredOnUtc);
+        activity?.SetTag("orionguard.event.occurred_on", @event.OccurredOnUtc.ToString("O", CultureInfo.InvariantCulture));
 
         var sw = Stopwatch.StartNew();
         var tags = new TagList { { "event_type", typeName } };
