@@ -106,6 +106,10 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
                 msg.ProcessedOnUtc = DateTime.UtcNow;
                 msg.Error = null;
             }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
             catch (Exception ex)
             {
                 msg.RetryCount++;
@@ -119,8 +123,24 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
             {
                 activity?.Dispose();
             }
-        }
 
-        await ctx.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+            // Save THIS row's state before moving on. If SaveChanges throws (transient DB error,
+            // network drop, process kill), the row's mutation is lost and the row will be re-picked
+            // on the next poll; idempotent handlers will then see a duplicate. Surface the failure
+            // on the row Error so operators can investigate, and rethrow so the worker logs it.
+            try
+            {
+                await ctx.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception saveEx)
+            {
+                msg.Error = $"Row dispatched but state update failed: {saveEx.GetType().Name}: {saveEx.Message}";
+                throw;
+            }
+        }
     }
 }

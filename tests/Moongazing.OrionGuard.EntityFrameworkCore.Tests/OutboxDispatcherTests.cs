@@ -153,6 +153,34 @@ public class OutboxDispatcherTests
         Assert.NotNull(row.ProcessedOnUtc);   // dead-lettered
     }
 
+    [Fact]
+    public async Task ProcessBatch_PersistsEachRowIndependently()
+    {
+        var dispatcher = new InMemoryDomainEventDispatcher();
+        await using var sp = BuildSp(dispatcher);
+        await using var scope = sp.CreateAsyncScope();
+        var ctx = scope.ServiceProvider.GetRequiredService<TestDbContext>();
+        await ctx.Database.OpenConnectionAsync();
+        await ctx.Database.EnsureCreatedAsync();
+
+        // Seed three rows.
+        await SeedOutboxRowAsync(ctx, new OrderShipped(Guid.NewGuid()));
+        await SeedOutboxRowAsync(ctx, new OrderShipped(Guid.NewGuid()));
+        await SeedOutboxRowAsync(ctx, new OrderShipped(Guid.NewGuid()));
+
+        var worker = new OutboxDispatcherHostedService(
+            sp.GetRequiredService<OutboxOptions>(),
+            sp.GetRequiredService<IServiceScopeFactory>());
+
+        await worker.ProcessBatchAsync(default);
+
+        // All three rows should be processed individually.
+        var processed = await ctx.OutboxMessages.AsNoTracking()
+            .CountAsync(m => m.ProcessedOnUtc != null);
+        Assert.Equal(3, processed);
+        Assert.Equal(3, dispatcher.Captured.Count);
+    }
+
     private sealed class ThrowingDispatcher : IDomainEventDispatcher
     {
         public Task DispatchAsync(IDomainEvent @event, CancellationToken ct = default) => throw new InvalidOperationException("boom");
