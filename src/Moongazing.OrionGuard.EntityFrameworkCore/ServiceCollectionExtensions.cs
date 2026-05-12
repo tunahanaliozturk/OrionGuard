@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Moongazing.OrionGuard.EntityFrameworkCore.Outbox;
 
 namespace Moongazing.OrionGuard.EntityFrameworkCore;
@@ -22,6 +23,13 @@ public static class ServiceCollectionExtensions
     /// In Outbox mode, the consumer must apply <see cref="OutboxMessageEntityTypeConfiguration"/>
     /// inside their <c>OnModelCreating</c> override using the configured <see cref="OutboxOptions.TableName"/>;
     /// the <see cref="OutboxDispatcherHostedService"/> is registered automatically.
+    /// <para>
+    /// IMPORTANT: The v6.3.0 outbox dispatcher assumes a single instance per database.
+    /// Concurrent instances will double-dispatch events because there is no row-level
+    /// locking. If you scale horizontally (e.g. Kubernetes with replicas &gt; 1),
+    /// either pin the worker to one replica via a leader-election mechanism, or run
+    /// it in a dedicated singleton service. Distributed locking lands in v6.4.
+    /// </para>
     /// </remarks>
     public static IServiceCollection AddOrionGuardEfCore<TDbContext>(
         this IServiceCollection services,
@@ -41,7 +49,8 @@ public static class ServiceCollectionExtensions
         {
             services.AddHostedService(sp => new OutboxDispatcherHostedService(
                 sp.GetRequiredService<OutboxOptions>(),
-                sp.GetRequiredService<IServiceScopeFactory>()));
+                sp.GetRequiredService<IServiceScopeFactory>(),
+                sp.GetService<ILogger<OutboxDispatcherHostedService>>()));
         }
         return services;
     }

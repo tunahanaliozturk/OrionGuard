@@ -4,6 +4,7 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Moongazing.OrionGuard.Domain.Events;
 
 namespace Moongazing.OrionGuard.EntityFrameworkCore.Outbox;
@@ -14,21 +15,34 @@ namespace Moongazing.OrionGuard.EntityFrameworkCore.Outbox;
 /// <see cref="IDomainEventDispatcher"/>. On dispatch failure, increments <see cref="OutboxMessage.RetryCount"/>;
 /// after <see cref="OutboxOptions.MaxRetries"/> attempts the row is dead-lettered (marked processed).
 /// </summary>
+/// <remarks>
+/// IMPORTANT: This v6.3.0 implementation assumes a single instance per database.
+/// Concurrent instances will double-dispatch events because there is no row-level
+/// locking. If you scale horizontally (e.g. Kubernetes with replicas &gt; 1),
+/// either pin the worker to one replica via a leader-election mechanism, or run
+/// it in a dedicated singleton service. Distributed locking lands in v6.4.
+/// </remarks>
 public sealed class OutboxDispatcherHostedService : BackgroundService
 {
     private static readonly ActivitySource OutboxActivitySource = new("Moongazing.OrionGuard.DomainEvents", "6.3.0");
 
     private readonly OutboxOptions options;
     private readonly IServiceScopeFactory scopeFactory;
+    private readonly ILogger<OutboxDispatcherHostedService>? logger;
 
     /// <summary>Initializes a new worker.</summary>
     /// <param name="options">Outbox dispatch configuration.</param>
     /// <param name="scopeFactory">Factory used to create per-batch DI scopes for resolving <see cref="DbContext"/> and <see cref="IDomainEventDispatcher"/>.</param>
-    /// <exception cref="ArgumentNullException">Thrown when any argument is <see langword="null"/>.</exception>
-    public OutboxDispatcherHostedService(OutboxOptions options, IServiceScopeFactory scopeFactory)
+    /// <param name="logger">Optional logger used to surface a startup warning about the single-instance assumption.</param>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="options"/> or <paramref name="scopeFactory"/> is <see langword="null"/>.</exception>
+    public OutboxDispatcherHostedService(
+        OutboxOptions options,
+        IServiceScopeFactory scopeFactory,
+        ILogger<OutboxDispatcherHostedService>? logger = null)
     {
         this.options = options ?? throw new ArgumentNullException(nameof(options));
         this.scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
+        this.logger = logger;
     }
 
     /// <inheritdoc />
@@ -38,6 +52,11 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
     [RequiresDynamicCode("JsonSerializer.Deserialize(string, Type) requires runtime code generation under AOT. Use System.Text.Json source generation for full AOT support.")]
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        logger?.LogWarning(
+            "OrionGuard outbox dispatcher started. NOTE: this v6.3.0 implementation assumes a SINGLE instance per database. " +
+            "Running multiple instances concurrently will double-dispatch every event. " +
+            "Distributed locking lands in v6.4.");
+
         while (!stoppingToken.IsCancellationRequested)
         {
             try
