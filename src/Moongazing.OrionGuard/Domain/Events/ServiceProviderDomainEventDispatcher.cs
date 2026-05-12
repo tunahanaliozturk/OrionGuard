@@ -35,6 +35,8 @@ public sealed class ServiceProviderDomainEventDispatcher : IDomainEventDispatche
     /// </exception>
     [SuppressMessage("Naming", "CA1716:Identifiers should not match keywords",
         Justification = "Canonical DDD term aligned with public API contract from Task 3.")]
+    [RequiresUnreferencedCode("ServiceProviderDomainEventDispatcher uses reflection to resolve IDomainEventHandler<TEvent>. Event types and their handler types must be preserved (e.g. via DynamicDependency or by rooting them in your application).")]
+    [RequiresDynamicCode("MakeGenericType is used at dispatch time to construct IDomainEventHandler<TEvent>.")]
     public async Task DispatchAsync(IDomainEvent @event, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(@event);
@@ -98,6 +100,8 @@ public sealed class ServiceProviderDomainEventDispatcher : IDomainEventDispatche
     /// <param name="cancellationToken">Token used to observe cancellation requests.</param>
     /// <returns>A task representing the asynchronous dispatch operation.</returns>
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="events"/> is <see langword="null"/>.</exception>
+    [RequiresUnreferencedCode("ServiceProviderDomainEventDispatcher uses reflection to resolve IDomainEventHandler<TEvent>. Event types and their handler types must be preserved (e.g. via DynamicDependency or by rooting them in your application).")]
+    [RequiresDynamicCode("MakeGenericType is used at dispatch time to construct IDomainEventHandler<TEvent>.")]
     public async Task DispatchAsync(IEnumerable<IDomainEvent> events, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(events);

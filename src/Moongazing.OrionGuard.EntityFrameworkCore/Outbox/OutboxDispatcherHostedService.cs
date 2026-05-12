@@ -34,6 +34,8 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
     /// <inheritdoc />
     [SuppressMessage("Design", "CA1031:Do not catch general exception types",
         Justification = "Per-batch faults are intentionally swallowed; per-row faults are already recorded on the OutboxMessage row.")]
+    [RequiresUnreferencedCode("Type.GetType deserializes events by assembly-qualified name; event types must be preserved in the AOT build (e.g. via DynamicDependency or by rooting them in your application). System.Text.Json source generation is recommended for full AOT support.")]
+    [RequiresDynamicCode("JsonSerializer.Deserialize(string, Type) requires runtime code generation under AOT. Use System.Text.Json source generation for full AOT support.")]
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         while (!stoppingToken.IsCancellationRequested)
@@ -67,6 +69,8 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
     /// <returns>A task that completes when the batch is processed and saved.</returns>
     [SuppressMessage("Design", "CA1031:Do not catch general exception types",
         Justification = "Per-row dispatch faults are recorded on the OutboxMessage row and used to drive retry / dead-letter policy.")]
+    [RequiresUnreferencedCode("Type.GetType deserializes events by assembly-qualified name; event types must be preserved in the AOT build (e.g. via DynamicDependency or by rooting them in your application). System.Text.Json source generation is recommended for full AOT support.")]
+    [RequiresDynamicCode("JsonSerializer.Deserialize(string, Type) requires runtime code generation under AOT. Use System.Text.Json source generation for full AOT support.")]
     public async Task ProcessBatchAsync(CancellationToken cancellationToken)
     {
         await using var scope = scopeFactory.CreateAsyncScope();
