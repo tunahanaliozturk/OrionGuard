@@ -17,8 +17,16 @@ public static class DbContextOptionsBuilderExtensions
     /// </summary>
     /// <param name="builder">The options builder.</param>
     /// <param name="serviceProvider">
-    /// The resolution-time service provider (the <c>sp</c> parameter of the
-    /// <c>AddDbContext&lt;T&gt;((sp, o) =&gt; ...)</c> overload).
+    /// The <strong>scoped</strong> service provider passed by EF Core's
+    /// <c>services.AddDbContext&lt;T&gt;((sp, o) =&gt; ...)</c> overload. You MUST use the two-argument
+    /// overload that exposes <c>sp</c>; passing a root provider (e.g. <c>app.Services</c>) or
+    /// using the single-argument <c>AddDbContext&lt;T&gt;(o =&gt; ...)</c> overload will break
+    /// scope-validated containers and may cause the interceptor to resolve scoped collaborators
+    /// from the wrong scope. Correct usage:
+    /// <code>
+    /// services.AddDbContext&lt;AppDbContext&gt;((sp, o) =&gt;
+    ///     o.UseSqlServer(...).UseOrionGuardDomainEvents(sp));
+    /// </code>
     /// </param>
     /// <returns>The same <paramref name="builder"/> for chaining.</returns>
     public static DbContextOptionsBuilder UseOrionGuardDomainEvents(
@@ -38,8 +46,16 @@ public static class DbContextOptionsBuilderExtensions
     /// <typeparam name="TContext">The consumer's <see cref="DbContext"/> type.</typeparam>
     /// <param name="builder">The options builder.</param>
     /// <param name="serviceProvider">
-    /// The resolution-time service provider (the <c>sp</c> parameter of the
-    /// <c>AddDbContext&lt;T&gt;((sp, o) =&gt; ...)</c> overload).
+    /// The <strong>scoped</strong> service provider passed by EF Core's
+    /// <c>services.AddDbContext&lt;T&gt;((sp, o) =&gt; ...)</c> overload. You MUST use the two-argument
+    /// overload that exposes <c>sp</c>; passing a root provider (e.g. <c>app.Services</c>) or
+    /// using the single-argument <c>AddDbContext&lt;T&gt;(o =&gt; ...)</c> overload will break
+    /// scope-validated containers and may cause the interceptor to resolve scoped collaborators
+    /// from the wrong scope. Correct usage:
+    /// <code>
+    /// services.AddDbContext&lt;AppDbContext&gt;((sp, o) =&gt;
+    ///     o.UseSqlServer(...).UseOrionGuardDomainEvents(sp));
+    /// </code>
     /// </param>
     /// <returns>The same <paramref name="builder"/> for chaining.</returns>
     public static DbContextOptionsBuilder<TContext> UseOrionGuardDomainEvents<TContext>(
