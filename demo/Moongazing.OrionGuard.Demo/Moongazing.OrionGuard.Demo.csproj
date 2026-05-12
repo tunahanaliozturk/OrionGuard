@@ -14,12 +14,15 @@
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.9" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="9.0.9" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.9" />
+    <PackageReference Include="MediatR" Version="12.4.1" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Moongazing.OrionGuard\Moongazing.OrionGuard.csproj" />
     <ProjectReference Include="..\..\src\Moongazing.OrionGuard.EntityFrameworkCore\Moongazing.OrionGuard.EntityFrameworkCore.csproj" />
     <ProjectReference Include="..\..\src\Moongazing.OrionGuard.Testing\Moongazing.OrionGuard.Testing.csproj" />
+    <ProjectReference Include="..\..\src\Moongazing.OrionGuard.MediatR\Moongazing.OrionGuard.MediatR.csproj" />
+    <ProjectReference Include="..\..\src\Moongazing.OrionGuard.OpenTelemetry\Moongazing.OrionGuard.OpenTelemetry.csproj" />
     <ProjectReference Include="..\..\src\Moongazing.OrionGuard.Generators\Moongazing.OrionGuard.Generators.csproj"
                       OutputItemType="Analyzer"
                       ReferenceOutputAssembly="false" />
