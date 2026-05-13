@@ -31,8 +31,6 @@ public static class MediatRDomainEventServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(services);
 
-        // Detect if the OpenTelemetry decorator has already been applied — if so, the user
-        // must call us BEFORE that, or they'll lose telemetry.
         if (services.Any(d => d.ServiceType.FullName == "Moongazing.OrionGuard.OpenTelemetry.DomainEvents.WithOpenTelemetryDomainEventsMarker"))
         {
             throw new InvalidOperationException(
