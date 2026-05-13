@@ -13,6 +13,12 @@ public sealed class OutboxMessage
     public string EventType { get; set; } = default!;
 
     /// <summary>System.Text.Json payload of the event.</summary>
+    /// <remarks>
+    /// No <c>HasMaxLength</c> is configured by default — the column maps to the provider's largest
+    /// text type (<c>nvarchar(max)</c> on SQL Server, <c>TEXT</c> on PostgreSQL/SQLite). For payloads
+    /// reliably under a few KB, consider constraining the column in a custom configuration to reduce
+    /// LOB read overhead.
+    /// </remarks>
     public string Payload { get; set; } = default!;
 
     /// <summary>UTC timestamp on the originating event.</summary>

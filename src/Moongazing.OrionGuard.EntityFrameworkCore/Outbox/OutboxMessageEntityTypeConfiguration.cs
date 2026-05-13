@@ -7,6 +7,29 @@ namespace Moongazing.OrionGuard.EntityFrameworkCore.Outbox;
 /// EF Core fluent configuration for <see cref="OutboxMessage"/>. Apply inside the consumer DbContext's
 /// <c>OnModelCreating</c> override (or via <c>ApplyConfiguration</c>) using the configured table name.
 /// </summary>
+/// <remarks>
+/// <para>
+/// The default index <c>IX_OrionGuard_Outbox_Unprocessed</c> covers
+/// <c>(ProcessedOnUtc, OccurredOnUtc)</c> without a filter, which is provider-neutral but
+/// inefficient at scale: as the "processed" partition (typically &gt; 99% of rows in steady state)
+/// grows, query latency and INSERT cost rise.
+/// </para>
+/// <para>
+/// For production workloads, supply an <c>indexFilter</c> at construction (or replace this index
+/// with a provider-specific filtered/partial index in a custom migration). Examples:
+/// </para>
+/// <list type="bullet">
+///   <item>
+///     <description>SQL Server: <c>CREATE INDEX IX_OrionGuard_Outbox_Unprocessed ON OrionGuard_Outbox (OccurredOnUtc) WHERE ProcessedOnUtc IS NULL;</c></description>
+///   </item>
+///   <item>
+///     <description>PostgreSQL: <c>CREATE INDEX IX_OrionGuard_Outbox_Unprocessed ON "OrionGuard_Outbox" ("OccurredOnUtc") WHERE "ProcessedOnUtc" IS NULL;</c></description>
+///   </item>
+///   <item>
+///     <description>SQLite: filtered indexes are not supported; the default unfiltered index applies.</description>
+///   </item>
+/// </list>
+/// </remarks>
 public sealed class OutboxMessageEntityTypeConfiguration : IEntityTypeConfiguration<OutboxMessage>
 {
     private readonly string tableName;
