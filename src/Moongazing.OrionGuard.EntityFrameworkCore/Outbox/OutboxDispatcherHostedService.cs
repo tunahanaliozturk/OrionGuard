@@ -121,21 +121,40 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
                 var type = Type.GetType(msg.EventType);
                 if (type is null)
                 {
-                    // Unresolvable types will never resolve unless the deployment changes.
-                    // Dead-letter immediately rather than wasting MaxRetries-1 attempts.
-                    msg.Error = $"TYPE_NOT_FOUND: cannot resolve {msg.EventType}";
-                    msg.RetryCount = options.MaxRetries;
+                    // Permanently unresolvable type — dead-letter immediately with a clear marker.
+                    // No point retrying since the assembly graph won't change without redeployment.
+                    msg.Error = $"TYPE_NOT_FOUND: cannot resolve event type '{msg.EventType}'. " +
+                                "Type was renamed, moved, or its assembly is not loaded.";
                     msg.ProcessedOnUtc = DateTime.UtcNow;
-                    logger?.LogError(
-                        "Outbox row {RowId} dead-lettered: event type '{EventType}' could not be resolved.",
+                    logger?.LogWarning(
+                        "Outbox row {RowId} dead-lettered: type '{EventType}' could not be resolved.",
+                        msg.Id, msg.EventType);
+                }
+                else if (!typeof(IDomainEvent).IsAssignableFrom(type))
+                {
+                    msg.Error = $"TYPE_NOT_DOMAIN_EVENT: '{msg.EventType}' does not implement IDomainEvent.";
+                    msg.ProcessedOnUtc = DateTime.UtcNow;
+                    logger?.LogWarning(
+                        "Outbox row {RowId} dead-lettered: type '{EventType}' is not IDomainEvent.",
                         msg.Id, msg.EventType);
                 }
                 else
                 {
-                    var @event = (IDomainEvent)JsonSerializer.Deserialize(msg.Payload, type)!;
-                    await dispatcher.DispatchAsync(@event, cancellationToken).ConfigureAwait(false);
-                    msg.ProcessedOnUtc = DateTime.UtcNow;
-                    msg.Error = null;
+                    var deserialized = JsonSerializer.Deserialize(msg.Payload, type);
+                    if (deserialized is not IDomainEvent @event)
+                    {
+                        msg.Error = $"DESERIALIZE_FAILED: payload for '{msg.EventType}' deserialized to null or wrong type.";
+                        msg.ProcessedOnUtc = DateTime.UtcNow;
+                        logger?.LogWarning(
+                            "Outbox row {RowId} dead-lettered: payload deserialized to null or wrong type.",
+                            msg.Id);
+                    }
+                    else
+                    {
+                        await dispatcher.DispatchAsync(@event, cancellationToken).ConfigureAwait(false);
+                        msg.ProcessedOnUtc = DateTime.UtcNow;
+                        msg.Error = null;
+                    }
                 }
             }
             catch (OperationCanceledException)

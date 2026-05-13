@@ -206,11 +206,44 @@ public class OutboxDispatcherTests
         await worker.ProcessBatchAsync(default);
 
         var row = await ctx.OutboxMessages.AsNoTracking().SingleAsync();
-        Assert.Equal(2, row.RetryCount);     // RetryCount jumped to MaxRetries (2)
+        Assert.Equal(0, row.RetryCount);     // dead-lettered without retry
         Assert.NotNull(row.ProcessedOnUtc);   // dead-lettered
         Assert.NotNull(row.Error);
         Assert.StartsWith("TYPE_NOT_FOUND:", row.Error);
         Assert.Empty(dispatcher.Captured);    // no dispatch attempted
+    }
+
+    [Fact]
+    public void OutboxOptions_RejectsNonPositivePollingInterval()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new OutboxOptions { PollingInterval = TimeSpan.Zero });
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new OutboxOptions { PollingInterval = TimeSpan.FromSeconds(-1) });
+    }
+
+    [Fact]
+    public void OutboxOptions_RejectsNonPositiveBatchSize()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => new OutboxOptions { BatchSize = 0 });
+        Assert.Throws<ArgumentOutOfRangeException>(() => new OutboxOptions { BatchSize = -1 });
+    }
+
+    [Fact]
+    public void OutboxOptions_RejectsMaxRetriesBelowOne()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => new OutboxOptions { MaxRetries = -1 });
+        Assert.Throws<ArgumentOutOfRangeException>(() => new OutboxOptions { MaxRetries = 0 });
+        var ok = new OutboxOptions { MaxRetries = 1 };
+        Assert.Equal(1, ok.MaxRetries);
+    }
+
+    [Fact]
+    public void OutboxOptions_RejectsNullOrWhitespaceTableName()
+    {
+        Assert.Throws<ArgumentException>(() => new OutboxOptions { TableName = null! });
+        Assert.Throws<ArgumentException>(() => new OutboxOptions { TableName = "" });
+        Assert.Throws<ArgumentException>(() => new OutboxOptions { TableName = "   " });
     }
 
     private sealed class ThrowingDispatcher : IDomainEventDispatcher
