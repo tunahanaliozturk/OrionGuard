@@ -97,7 +97,7 @@ public sealed class ServiceProviderDomainEventDispatcher : IDomainEventDispatche
                     if (faults.Length == 1)
                     {
                         ExceptionDispatchInfo.Capture(faults[0]).Throw();
-                        throw; // unreachable; satisfies the compiler
+                        throw; // Why: ExceptionDispatchInfo.Throw never returns; this satisfies the compiler's flow analysis.
                     }
                     throw new AggregateException(faults);
                 }
@@ -134,11 +134,10 @@ public sealed class ServiceProviderDomainEventDispatcher : IDomainEventDispatche
         }
         catch (TargetInvocationException ex) when (ex.InnerException is not null)
         {
-            // Surface the handler's original exception instead of the reflection wrapper
-            // so callers (and DispatchMode policies) observe the real type. Using
-            // ExceptionDispatchInfo preserves the original stack trace seamlessly.
+            // Why: surface the handler's original exception (not the TargetInvocationException wrapper)
+            // so DispatchMode policies and callers observe the real exception type with the original stack trace.
             ExceptionDispatchInfo.Capture(ex.InnerException).Throw();
-            throw; // unreachable; satisfies the compiler's return-path analysis.
+            throw; // Why: ExceptionDispatchInfo.Throw never returns; this satisfies the compiler's flow analysis.
         }
 
         await task.ConfigureAwait(false);
