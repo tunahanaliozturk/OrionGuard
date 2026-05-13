@@ -17,9 +17,6 @@ public static class StronglyTypedIdsDemo
     {
         Console.WriteLine("\n== Strongly-Typed IDs ==");
 
-        // Source-generated struct style (zero allocation). The generator emits
-        // IEquatable, operators, New(), Empty, Value plus EF Core / JSON /
-        // TypeConverter companions as separate .g.cs files.
         ProductId p1 = ProductId.New();
         ProductId p1copy = new(p1.Value);
         ProductId p2 = ProductId.New();
@@ -38,9 +35,6 @@ public static class StronglyTypedIdsDemo
         var skuToString = skuConverter.ConvertTo(sku, typeof(string));
         Console.WriteLine($"  Generated TypeConverter: \"123\" -> {skuFromString}, {sku} -> \"{skuToString}\"");
 
-        // Manual record style. Inherits StronglyTypedId<TValue> abstract record
-        // (reference type) and participates in the AgainstDefaultStronglyTypedId
-        // guard via the base-class receiver.
         OrderId orderId = OrderId.New();
         CustomerId customerId = CustomerId.New();
         InvoiceId invoiceId = InvoiceId.New();

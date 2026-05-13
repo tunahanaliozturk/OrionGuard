@@ -9,6 +9,10 @@ using Moongazing.OrionGuard.EntityFrameworkCore.Outbox;
 
 namespace Moongazing.OrionGuard.Demo;
 
+/// <summary>
+/// Demonstrates Inline mode: domain events raised on an aggregate are dispatched synchronously
+/// after a successful EF Core SaveChanges via the registered <c>IDomainEventDispatcher</c>.
+/// </summary>
 public static class DomainEventsDemo
 {
     public sealed record OrderShipped(Guid OrderId) : DomainEventBase;
