@@ -69,7 +69,9 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
             }
             catch
             {
-                // swallow per-batch fault; per-row faults already recorded on the row
+                // Why: swallow per-batch faults so the worker survives transient infrastructure
+                // errors. Per-row dispatch faults are recorded on the OutboxMessage row itself
+                // (Error/RetryCount), so they are not lost.
             }
 
             try
@@ -121,8 +123,8 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
                 var type = Type.GetType(msg.EventType);
                 if (type is null)
                 {
-                    // Permanently unresolvable type — dead-letter immediately with a clear marker.
-                    // No point retrying since the assembly graph won't change without redeployment.
+                    // Why: an unresolvable type cannot become resolvable without a redeployment,
+                    // so retrying is pointless. Dead-letter immediately with a clear error marker.
                     msg.Error = $"TYPE_NOT_FOUND: cannot resolve event type '{msg.EventType}'. " +
                                 "Type was renamed, moved, or its assembly is not loaded.";
                     msg.ProcessedOnUtc = DateTime.UtcNow;
@@ -167,7 +169,9 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
                 msg.Error = ex.ToString();
                 if (msg.RetryCount >= options.MaxRetries)
                 {
-                    msg.ProcessedOnUtc = DateTime.UtcNow;   // dead-letter
+                    // Why: stamping ProcessedOnUtc removes the row from the unprocessed-rows query
+                    // while preserving Error/RetryCount for operators to inspect (dead-letter).
+                    msg.ProcessedOnUtc = DateTime.UtcNow;
                 }
             }
             finally
@@ -175,10 +179,9 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
                 activity?.Dispose();
             }
 
-            // Save THIS row's state before moving on. If SaveChanges throws (transient DB error,
-            // network drop, process kill), the row's mutation is lost and the row will be re-picked
-            // on the next poll; idempotent handlers will then see a duplicate. Surface the failure
-            // on the row Error so operators can investigate, and rethrow so the worker logs it.
+            // Why: persist this row's state per iteration (not per batch) so a SaveChanges failure
+            // mid-batch does not lose state for rows that already dispatched. A lost save means the
+            // row is re-picked on the next poll, which idempotent handlers will tolerate as a duplicate.
             try
             {
                 await ctx.SaveChangesAsync(cancellationToken).ConfigureAwait(false);

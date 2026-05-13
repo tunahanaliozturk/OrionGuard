@@ -50,11 +50,9 @@ public sealed class DomainEventSaveChangesInterceptor : SaveChangesInterceptor
 
         if (options.Strategy == DomainEventDispatchStrategy.Inline)
         {
-            // Do NOT drain the aggregate here — leave the events on the aggregate so that if
-            // EF's IExecutionStrategy retries the save after a transient fault, the next
-            // SavingChanges invocation can still observe them. The collector merely holds a
-            // reference; the actual pull happens in SavedChangesAsync (post-commit) via
-            // DrainSnapshot().
+            // Why: do NOT drain the aggregate here. Leaving events on the aggregate lets an
+            // IExecutionStrategy retry (post transient fault) re-observe them on the next
+            // SavingChanges invocation. The actual pull happens post-commit in SavedChangesAsync.
             foreach (var aggregate in aggregates)
             {
                 collector.TrackAggregate(aggregate);
@@ -116,9 +114,9 @@ public sealed class DomainEventSaveChangesInterceptor : SaveChangesInterceptor
         DbContextErrorEventData eventData,
         CancellationToken cancellationToken = default)
     {
-        // A transient save failure must not leave stale tracked aggregates in the collector for
-        // the next save attempt (e.g. an IExecutionStrategy retry). Reset discards refs/events
-        // without draining — the aggregate retains its domain events for the retry to observe.
+        // Why: a transient save failure must not leave stale tracked aggregates in the collector
+        // for the next save attempt (e.g. an IExecutionStrategy retry). Reset discards references
+        // without draining, so the aggregate retains its domain events for the retry to observe.
         var collector = serviceProvider.GetRequiredService<DomainEventCollector>();
         collector.Reset();
         return base.SaveChangesFailedAsync(eventData, cancellationToken);
