@@ -66,6 +66,7 @@ public sealed class InstrumentedDomainEventDispatcher : IDomainEventDispatcher
         ArgumentNullException.ThrowIfNull(events);
         foreach (var e in events)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             await DispatchAsync(e, cancellationToken).ConfigureAwait(false);
         }
     }

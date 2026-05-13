@@ -52,6 +52,7 @@ public sealed class MediatRDomainEventDispatcher : IDomainEventDispatcher
         ArgumentNullException.ThrowIfNull(events);
         foreach (var e in events)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             await DispatchAsync(e, cancellationToken).ConfigureAwait(false);
         }
     }

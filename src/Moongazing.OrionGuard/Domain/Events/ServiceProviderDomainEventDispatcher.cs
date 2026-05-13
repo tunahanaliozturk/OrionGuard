@@ -120,6 +120,7 @@ public sealed class ServiceProviderDomainEventDispatcher : IDomainEventDispatche
         ArgumentNullException.ThrowIfNull(events);
         foreach (var e in events)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             await DispatchAsync(e, cancellationToken).ConfigureAwait(false);
         }
     }
