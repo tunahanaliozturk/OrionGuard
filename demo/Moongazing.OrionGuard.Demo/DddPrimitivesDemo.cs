@@ -16,7 +16,6 @@ public static class DddPrimitivesDemo
     {
         Console.WriteLine("\n== Value Objects ==");
 
-        // Behaviour-rich VO via the abstract ValueObject base class.
         var price1 = new Money(100m, "USD");
         var price2 = new Money(100m, "USD");
         var price3 = new Money(100m, "EUR");
@@ -28,7 +27,6 @@ public static class DddPrimitivesDemo
         var doubled = price1.Add(price2);
         Console.WriteLine($"  Money.Add: 100 USD + 100 USD = {doubled}");
 
-        // Pure-data VO via IValueObject marker on a record.
         var home = new Address("Bagdat Cd. 100", "Istanbul", "34728", "TR");
         var sameHome = new Address("Bagdat Cd. 100", "Istanbul", "34728", "TR");
         Console.WriteLine($"  Record-based VO structural equality: {home == sameHome}");
@@ -63,11 +61,9 @@ public static class DddPrimitivesDemo
 
         Console.WriteLine($"  Order created with total = {order.Total}");
 
-        // Synchronous rule: OrderMustHaveItemsRule via Order.Place().
         order.Place();
         Console.WriteLine($"  Order.Place() succeeded (status={order.Status})");
 
-        // Rule failure path: cannot ship an unpaid order.
         var unpaidOrder = new Order(OrderId.New(), customerId);
         unpaidOrder.AddItem(new Money(9.99m, "USD"));
         try
@@ -79,7 +75,6 @@ public static class DddPrimitivesDemo
             Console.WriteLine($"  Ship blocked by rule {ex.RuleName}: {ex.Message}");
         }
 
-        // Happy path: ship the paid order, which raises OrderShippedEvent.
         order.Ship();
         Console.WriteLine($"  Order.Ship() succeeded (status={order.Status})");
 
@@ -91,7 +86,6 @@ public static class DddPrimitivesDemo
         }
         Console.WriteLine($"  After Pull, aggregate's DomainEvents is empty: {order.DomainEvents.Count == 0}");
 
-        // Async rule path.
         var uniqueRule = new CustomerEmailMustBeUniqueRule(
             "alice@example.com",
             existsInStore: async email =>

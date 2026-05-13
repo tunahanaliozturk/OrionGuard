@@ -27,7 +27,6 @@ public static class DomainEventOpenTelemetryExtensions
     {
         ArgumentNullException.ThrowIfNull(services);
 
-        // Already decorated? No-op (detected via the marker sentinel).
         if (services.Any(d => d.ServiceType == typeof(WithOpenTelemetryDomainEventsMarker)))
         {
             return services;
