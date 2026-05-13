@@ -44,6 +44,7 @@
 | Polymorphic validation | Yes | Yes | - | - |
 | Deep nested validation | Yes | Yes | - | - |
 | Validation caching | Yes | - | - | - |
+| Domain events + outbox | Yes | - | - | - |
 
 ---
 
@@ -93,6 +94,8 @@ if (result.IsInvalid)
 | `OrionGuard.Blazor` | `dotnet add package OrionGuard.Blazor` | EditForm validation |
 | `OrionGuard.Grpc` | `dotnet add package OrionGuard.Grpc` | Server interceptor |
 | `OrionGuard.SignalR` | `dotnet add package OrionGuard.SignalR` | Hub method validation |
+| `OrionGuard.EntityFrameworkCore` | `dotnet add package OrionGuard.EntityFrameworkCore` | EF Core SaveChanges interceptor + transactional outbox |
+| `OrionGuard.Testing` | `dotnet add package OrionGuard.Testing` | DomainEventCapture + InMemoryDispatcher + assertions |
 
 ---
 
@@ -415,6 +418,7 @@ var msg = ValidationMessages.Get("NotNull", "Email");
 - **ThrowHelper** — `[DoesNotReturn]` + `[StackTraceHidden]` for minimal JIT footprint
 - **Validation Caching** — Cache results with TTL for identical inputs
 - **NativeAOT** — Source generator enables reflection-free validation
+- **AOT story for v6.3.0 domain events:** `ServiceProviderDomainEventDispatcher` and `OutboxDispatcherHostedService` use runtime reflection; they are marked with `[RequiresUnreferencedCode]` and `[RequiresDynamicCode]`. Two AOT-friendly paths exist: (1) use the **MediatR bridge** (`MediatRDomainEventDispatcher`) which has no reflection, or (2) root your event/handler types via `[DynamicDependency]` and use System.Text.Json source generation for outbox payloads. The core guard / validation surface remains fully AOT-safe.
 
 ---
 

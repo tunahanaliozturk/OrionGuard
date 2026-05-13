@@ -8,7 +8,7 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <NoWarn>CS1591;NU1900;NU1901;NU1902;NU1903;NU1904</NoWarn>
     <PackageId>OrionGuard.MediatR</PackageId>
-    <Version>6.2.0</Version>
+    <Version>6.3.0</Version>
     <Authors>Tunahan Ali Ozturk</Authors>
     <Description>MediatR integration for OrionGuard validation library. Provides ValidationBehavior pipeline behavior for automatic request validation in CQRS pipelines.</Description>
     <PackageTags>guard;validation;mediatr;cqrs;pipeline;behavior</PackageTags>

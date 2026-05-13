@@ -9,13 +9,18 @@
 
   <ItemGroup>
     <PackageReference Include="coverlet.collector" Version="6.0.2" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.0" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
     <PackageReference Include="xunit" Version="2.9.2" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="MediatR" Version="12.4.1" />
     <ProjectReference Include="..\..\src\Moongazing.OrionGuard\Moongazing.OrionGuard.csproj" />
+    <ProjectReference Include="..\..\src\Moongazing.OrionGuard.MediatR\Moongazing.OrionGuard.MediatR.csproj" />
+    <ProjectReference Include="..\..\src\Moongazing.OrionGuard.OpenTelemetry\Moongazing.OrionGuard.OpenTelemetry.csproj" />
+    <ProjectReference Include="..\..\src\Moongazing.OrionGuard.EntityFrameworkCore\Moongazing.OrionGuard.EntityFrameworkCore.csproj" />
   </ItemGroup>
 
   <ItemGroup>

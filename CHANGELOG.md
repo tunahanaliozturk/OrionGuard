@@ -33,6 +33,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - v6.3.0 (next): Domain event dispatcher, MediatR bridge, EF Core `SaveChanges` interceptor.
 - v6.4.0: Full `BusinessRule` base class, `Guard.Against.BrokenRule`, ASP.NET Core ProblemDetails mapping.
 
+## [6.3.0] - 2026-05-10
+
+### Added
+
+#### Domain event dispatcher (`Moongazing.OrionGuard.Domain.Events`)
+
+- `IDomainEventDispatcher` and `IDomainEventHandler<TEvent>` abstractions.
+- `ServiceProviderDomainEventDispatcher` — default implementation resolving handlers from `IServiceProvider`.
+- `DomainEventDispatchOptions` with `DispatchMode.SequentialFailFast` (default), `SequentialContinueOnError`, and `Parallel`.
+- `services.AddOrionGuardDomainEvents()` and `services.AddOrionGuardDomainEventHandlers(...)` DI helpers — idempotent (use `TryAdd*` internally) and safely composable.
+
+#### MediatR bridge (`OrionGuard.MediatR`)
+
+- `MediatRDomainEventDispatcher` delegates to MediatR's `IPublisher`. Consumer events opt in by adding `: INotification` to their record declaration; the bridge throws `InvalidOperationException` for events that do not. No wrapper types — handlers stay as natural `INotificationHandler<TEvent>`, so MediatR pipeline behaviours compose naturally.
+- `services.AddOrionGuardMediatRDomainEvents()` swaps the registered dispatcher.
+
+#### `OrionGuard.EntityFrameworkCore` (NEW PACKAGE)
+
+- `DomainEventSaveChangesInterceptor` — pulls events from tracked `IAggregateRoot` instances at `SavingChangesAsync` and either dispatches them post-commit (`Inline` mode, default) or persists them as `OutboxMessage` rows in the same transaction (`Outbox` mode).
+- `OutboxMessage` entity, `OutboxMessageEntityTypeConfiguration`, and `OutboxOptions` (`PollingInterval`, `BatchSize`, `MaxRetries`, `TableName`).
+- `OutboxDispatcherHostedService` — `BackgroundService` that polls unprocessed rows, deserializes events, dispatches via `IDomainEventDispatcher`, increments `RetryCount` on failure, dead-letters after `MaxRetries`.
+- W3C trace context propagation — outbox rows record `TraceParent` and `TraceState`; the worker resumes the parent activity context per message so end-to-end traces span the worker boundary.
+- `services.AddOrionGuardEfCore<TDbContext>(o => o.UseInline() | o.UseOutbox())`.
+
+#### `OrionGuard.Testing` (NEW PACKAGE)
+
+- `DomainEventCapture` and `DomainEventAssertions` for fluent unit-test assertions.
+- `InMemoryDomainEventDispatcher` for integration tests.
+- Framework-agnostic — no xUnit / NUnit / FluentAssertions dependency. Throws `DomainEventAssertionException`, which any test runner treats as a failure.
+
+#### `OrionGuard.OpenTelemetry`
+
+- `OrionGuardDomainEventTelemetry` — `ActivitySource` + `Meter` under `Moongazing.OrionGuard.DomainEvents`, with `EventsDispatched`, `EventsFailed`, `OutboxProcessed`, `OutboxRetries` counters and the `DispatchDuration` histogram.
+- `InstrumentedDomainEventDispatcher` decorator — opens a span per dispatch, records counters, sets activity status on exception.
+- `services.WithOpenTelemetryDomainEvents()`.
+
+#### AOT compatibility
+
+- `ServiceProviderDomainEventDispatcher` and `OutboxDispatcherHostedService` annotated with `[RequiresUnreferencedCode]` + `[RequiresDynamicCode]`. AOT consumers should use the MediatR bridge or root event/handler types via `[DynamicDependency]`.
+- All other v6.3.0 additions (`IDomainEventDispatcher`, `IDomainEventHandler<T>`, `MediatRDomainEventDispatcher`, `DomainEventCapture`, `InMemoryDomainEventDispatcher`, `InstrumentedDomainEventDispatcher`) are reflection-free.
+
+### Migration from v6.2.0
+
+- No breaking changes. Source-compatible.
+- Existing `RaiseEvent` / `PullDomainEvents` aggregate code continues to work; events simply do not dispatch unless `AddOrionGuardDomainEvents()` is wired.
+- MediatR consumers add `, INotification` to their event records (one-line per event).
+- Outbox consumers add an EF Core migration for the `OrionGuard_Outbox` table.
+
+### Roadmap
+
+- v6.4.0: `BusinessRule` base class + `Guard.Against.BrokenRule` + ASP.NET Core ProblemDetails mapping (carries the original v6.3.0 plan); plus distributed locking for multi-instance outbox workers, `OutboxTypeMapRegistry`, archival job.
+- v6.5+: Push-based outbox dispatch (`LISTEN/NOTIFY`, `SqlDependency`); event sourcing primitives.
+
 ## [6.1.0] - 2026-04-19
 
 ### Added
