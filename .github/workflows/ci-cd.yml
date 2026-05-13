@@ -72,6 +72,8 @@ jobs:
           dotnet pack src/Moongazing.OrionGuard.Blazor/Moongazing.OrionGuard.Blazor.csproj --no-build --configuration Release -o ./nupkgs
           dotnet pack src/Moongazing.OrionGuard.Grpc/Moongazing.OrionGuard.Grpc.csproj --no-build --configuration Release -o ./nupkgs
           dotnet pack src/Moongazing.OrionGuard.SignalR/Moongazing.OrionGuard.SignalR.csproj --no-build --configuration Release -o ./nupkgs
+          dotnet pack src/Moongazing.OrionGuard.EntityFrameworkCore/Moongazing.OrionGuard.EntityFrameworkCore.csproj --no-build --configuration Release -o ./nupkgs
+          dotnet pack src/Moongazing.OrionGuard.Testing/Moongazing.OrionGuard.Testing.csproj --no-build --configuration Release -o ./nupkgs
 
       - name: Push to NuGet.org
         run: dotnet nuget push "./nupkgs/*.nupkg" --api-key ${{ secrets.NUGET }} --source https://api.nuget.org/v3/index.json --skip-duplicate
