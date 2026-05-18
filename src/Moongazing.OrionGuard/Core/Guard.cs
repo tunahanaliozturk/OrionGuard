@@ -1,9 +1,13 @@
-﻿using Moongazing.OrionGuard.Exceptions;
+﻿using Moongazing.OrionGuard.Domain.Exceptions;
+using Moongazing.OrionGuard.Domain.Rules;
+using Moongazing.OrionGuard.Exceptions;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Moongazing.OrionGuard.Core;
 
@@ -78,6 +82,41 @@ public static class Guard
     {
         if (value)
             ThrowHelper.ThrowTrue(parameterName);
+    }
+
+    /// <summary>
+    /// Evaluates a synchronous business rule and throws <see cref="BusinessRuleValidationException"/>
+    /// when the rule reports itself broken.
+    /// </summary>
+    /// <param name="rule">The rule to evaluate. Cannot be null.</param>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="rule"/> is null.</exception>
+    /// <exception cref="BusinessRuleValidationException">Thrown when the rule is broken.</exception>
+    public static void AgainstBrokenRule(IBusinessRule rule)
+    {
+        ArgumentNullException.ThrowIfNull(rule);
+        if (rule.IsBroken())
+        {
+            throw new BusinessRuleValidationException(rule);
+        }
+    }
+
+    /// <summary>
+    /// Evaluates an asynchronous business rule and throws <see cref="BusinessRuleValidationException"/>
+    /// when the rule reports itself broken.
+    /// </summary>
+    /// <param name="rule">The rule to evaluate. Cannot be null.</param>
+    /// <param name="cancellationToken">A token to observe while waiting for the task to complete.</param>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="rule"/> is null.</exception>
+    /// <exception cref="BusinessRuleValidationException">Thrown when the rule is broken.</exception>
+    public static async Task AgainstBrokenRuleAsync(
+        IAsyncBusinessRule rule,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(rule);
+        if (await rule.IsBrokenAsync(cancellationToken).ConfigureAwait(false))
+        {
+            throw new BusinessRuleValidationException(rule);
+        }
     }
 
     public static void AgainstUninitializedProperties<T>(this T obj, string parameterName)
