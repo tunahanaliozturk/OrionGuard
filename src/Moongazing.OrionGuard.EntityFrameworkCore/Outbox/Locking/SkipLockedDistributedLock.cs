@@ -1,0 +1,113 @@
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+
+namespace Moongazing.OrionGuard.EntityFrameworkCore.Outbox.Locking;
+
+/// <summary>
+/// Default DB-backed <see cref="IDistributedLock"/> implementation. Uses an <see cref="OutboxLock"/>
+/// row per lock key in the consumer's <c>OrionGuard_OutboxLocks</c> table. Provider-agnostic — all
+/// SQL is issued through EF Core. Lease-based; expired holders are taken over by fresh callers.
+/// </summary>
+public sealed class SkipLockedDistributedLock : IDistributedLock
+{
+    private readonly IServiceScopeFactory _scopeFactory;
+    private readonly ILogger<SkipLockedDistributedLock>? _logger;
+
+    public SkipLockedDistributedLock(
+        IServiceScopeFactory scopeFactory,
+        ILogger<SkipLockedDistributedLock>? logger = null)
+    {
+        ArgumentNullException.ThrowIfNull(scopeFactory);
+        _scopeFactory = scopeFactory;
+        _logger = logger;
+    }
+
+    public async Task<IDistributedLockHandle?> TryAcquireAsync(
+        string lockKey,
+        TimeSpan leaseDuration,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(lockKey);
+        if (leaseDuration <= TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(nameof(leaseDuration), "Lease must be > 0.");
+
+        var holderId = Guid.NewGuid();
+        var now = DateTime.UtcNow;
+        var expires = now + leaseDuration;
+
+        await using var scope = _scopeFactory.CreateAsyncScope();
+        var ctx = scope.ServiceProvider.GetRequiredService<DbContext>();
+
+        await using var tx = await ctx.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+
+        var updated = await ctx.Database.ExecuteSqlInterpolatedAsync(
+            $@"UPDATE OrionGuard_OutboxLocks
+                  SET HolderId = {holderId}, AcquiredOnUtc = {now}, ExpiresOnUtc = {expires}
+                WHERE LockKey = {lockKey}
+                  AND (HolderId IS NULL OR ExpiresOnUtc <= {now})",
+            cancellationToken).ConfigureAwait(false);
+
+        if (updated == 0)
+        {
+            try
+            {
+                await ctx.Database.ExecuteSqlInterpolatedAsync(
+                    $@"INSERT INTO OrionGuard_OutboxLocks (LockKey, HolderId, AcquiredOnUtc, ExpiresOnUtc)
+                       SELECT {lockKey}, {holderId}, {now}, {expires}
+                       WHERE NOT EXISTS (SELECT 1 FROM OrionGuard_OutboxLocks WHERE LockKey = {lockKey})",
+                    cancellationToken).ConfigureAwait(false);
+            }
+            catch (DbUpdateException)
+            {
+                await tx.RollbackAsync(cancellationToken).ConfigureAwait(false);
+                return null;
+            }
+        }
+
+        await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
+
+        var ownerCheck = await ctx.Set<OutboxLock>().AsNoTracking()
+            .Where(x => x.LockKey == lockKey)
+            .Select(x => x.HolderId)
+            .FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false);
+
+        if (ownerCheck != holderId)
+        {
+            return null;
+        }
+
+        return new Handle(this, lockKey, holderId);
+    }
+
+    private async Task ReleaseAsync(string lockKey, Guid holderId, CancellationToken cancellationToken = default)
+    {
+        await using var scope = _scopeFactory.CreateAsyncScope();
+        var ctx = scope.ServiceProvider.GetRequiredService<DbContext>();
+        var now = DateTime.UtcNow;
+        await ctx.Database.ExecuteSqlInterpolatedAsync(
+            $@"UPDATE OrionGuard_OutboxLocks
+                  SET HolderId = NULL, ExpiresOnUtc = {now}
+                WHERE LockKey = {lockKey} AND HolderId = {holderId}",
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    private sealed class Handle(SkipLockedDistributedLock owner, string lockKey, Guid holderId) : IDistributedLockHandle
+    {
+        public string LockKey => lockKey;
+
+        public async ValueTask DisposeAsync()
+        {
+            try
+            {
+                await owner.ReleaseAsync(lockKey, holderId).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                owner._logger?.LogWarning(ex,
+                    "Failed to release distributed lock '{LockKey}'. Lease will expire naturally.",
+                    lockKey);
+            }
+        }
+    }
+}
