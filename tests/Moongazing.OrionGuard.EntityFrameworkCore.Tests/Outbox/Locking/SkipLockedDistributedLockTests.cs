@@ -77,4 +77,36 @@ public class SkipLockedDistributedLockTests : IAsyncLifetime
         var third = await @lock.TryAcquireAsync("k", TimeSpan.FromSeconds(30));
         Assert.Null(third);
     }
+
+    private sealed class NoLockTableDbContext(DbContextOptions<NoLockTableDbContext> options) : DbContext(options)
+    {
+    }
+
+    [Fact]
+    public async Task TryAcquireAsync_ShouldReturnNull_WhenLockTableIsMissing()
+    {
+        await using var connection = new SqliteConnection("Filename=:memory:");
+        await connection.OpenAsync();
+
+        var services = new ServiceCollection();
+        services.AddDbContext<NoLockTableDbContext>(o => o.UseSqlite(connection));
+        services.AddScoped<DbContext>(sp => sp.GetRequiredService<NoLockTableDbContext>());
+        await using var sp = services.BuildServiceProvider();
+
+        using (var scope = sp.CreateScope())
+        {
+            var ctx = scope.ServiceProvider.GetRequiredService<NoLockTableDbContext>();
+            await ctx.Database.EnsureCreatedAsync();
+        }
+
+        var @lock = new SkipLockedDistributedLock(
+            sp.GetRequiredService<IServiceScopeFactory>(),
+            NullLogger<SkipLockedDistributedLock>.Instance);
+
+        var handle = await @lock.TryAcquireAsync("k", TimeSpan.FromSeconds(30));
+        Assert.Null(handle);
+
+        var handle2 = await @lock.TryAcquireAsync("k", TimeSpan.FromSeconds(30));
+        Assert.Null(handle2);
+    }
 }

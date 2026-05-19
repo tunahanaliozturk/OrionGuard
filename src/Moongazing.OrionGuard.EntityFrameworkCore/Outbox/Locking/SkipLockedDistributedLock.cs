@@ -13,6 +13,7 @@ public sealed class SkipLockedDistributedLock : IDistributedLock
 {
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<SkipLockedDistributedLock>? _logger;
+    private int _missingTableWarned;
 
     public SkipLockedDistributedLock(
         IServiceScopeFactory scopeFactory,
@@ -32,64 +33,99 @@ public sealed class SkipLockedDistributedLock : IDistributedLock
         if (leaseDuration <= TimeSpan.Zero)
             throw new ArgumentOutOfRangeException(nameof(leaseDuration), "Lease must be > 0.");
 
-        var holderId = Guid.NewGuid();
-        var now = DateTime.UtcNow;
-        var expires = now + leaseDuration;
-
-        await using var scope = _scopeFactory.CreateAsyncScope();
-        var ctx = scope.ServiceProvider.GetRequiredService<DbContext>();
-
-        await using var tx = await ctx.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
-
-        var updated = await ctx.Database.ExecuteSqlInterpolatedAsync(
-            $@"UPDATE OrionGuard_OutboxLocks
-                  SET HolderId = {holderId}, AcquiredOnUtc = {now}, ExpiresOnUtc = {expires}
-                WHERE LockKey = {lockKey}
-                  AND (HolderId IS NULL OR ExpiresOnUtc <= {now})",
-            cancellationToken).ConfigureAwait(false);
-
-        if (updated == 0)
+        try
         {
-            try
+            var holderId = Guid.NewGuid();
+            var now = DateTime.UtcNow;
+            var expires = now + leaseDuration;
+
+            await using var scope = _scopeFactory.CreateAsyncScope();
+            var ctx = scope.ServiceProvider.GetRequiredService<DbContext>();
+
+            await using var tx = await ctx.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+
+            var updated = await ctx.Database.ExecuteSqlInterpolatedAsync(
+                $@"UPDATE OrionGuard_OutboxLocks
+                      SET HolderId = {holderId}, AcquiredOnUtc = {now}, ExpiresOnUtc = {expires}
+                    WHERE LockKey = {lockKey}
+                      AND (HolderId IS NULL OR ExpiresOnUtc <= {now})",
+                cancellationToken).ConfigureAwait(false);
+
+            if (updated == 0)
             {
-                await ctx.Database.ExecuteSqlInterpolatedAsync(
-                    $@"INSERT INTO OrionGuard_OutboxLocks (LockKey, HolderId, AcquiredOnUtc, ExpiresOnUtc)
-                       SELECT {lockKey}, {holderId}, {now}, {expires}
-                       WHERE NOT EXISTS (SELECT 1 FROM OrionGuard_OutboxLocks WHERE LockKey = {lockKey})",
-                    cancellationToken).ConfigureAwait(false);
+                try
+                {
+                    await ctx.Database.ExecuteSqlInterpolatedAsync(
+                        $@"INSERT INTO OrionGuard_OutboxLocks (LockKey, HolderId, AcquiredOnUtc, ExpiresOnUtc)
+                           SELECT {lockKey}, {holderId}, {now}, {expires}
+                           WHERE NOT EXISTS (SELECT 1 FROM OrionGuard_OutboxLocks WHERE LockKey = {lockKey})",
+                        cancellationToken).ConfigureAwait(false);
+                }
+                catch (DbUpdateException)
+                {
+                    await tx.RollbackAsync(cancellationToken).ConfigureAwait(false);
+                    return null;
+                }
             }
-            catch (DbUpdateException)
+
+            await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
+
+            var ownerCheck = await ctx.Set<OutboxLock>().AsNoTracking()
+                .Where(x => x.LockKey == lockKey)
+                .Select(x => x.HolderId)
+                .FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false);
+
+            if (ownerCheck != holderId)
             {
-                await tx.RollbackAsync(cancellationToken).ConfigureAwait(false);
                 return null;
             }
+
+            return new Handle(this, lockKey, holderId);
         }
-
-        await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
-
-        var ownerCheck = await ctx.Set<OutboxLock>().AsNoTracking()
-            .Where(x => x.LockKey == lockKey)
-            .Select(x => x.HolderId)
-            .FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false);
-
-        if (ownerCheck != holderId)
+        catch (Exception ex) when (IsMissingTable(ex))
         {
+            LogMissingTableOnce();
             return null;
         }
-
-        return new Handle(this, lockKey, holderId);
     }
 
     private async Task ReleaseAsync(string lockKey, Guid holderId, CancellationToken cancellationToken = default)
     {
-        await using var scope = _scopeFactory.CreateAsyncScope();
-        var ctx = scope.ServiceProvider.GetRequiredService<DbContext>();
-        var now = DateTime.UtcNow;
-        await ctx.Database.ExecuteSqlInterpolatedAsync(
-            $@"UPDATE OrionGuard_OutboxLocks
-                  SET HolderId = NULL, ExpiresOnUtc = {now}
-                WHERE LockKey = {lockKey} AND HolderId = {holderId}",
-            cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await using var scope = _scopeFactory.CreateAsyncScope();
+            var ctx = scope.ServiceProvider.GetRequiredService<DbContext>();
+            var now = DateTime.UtcNow;
+            await ctx.Database.ExecuteSqlInterpolatedAsync(
+                $@"UPDATE OrionGuard_OutboxLocks
+                      SET HolderId = NULL, ExpiresOnUtc = {now}
+                    WHERE LockKey = {lockKey} AND HolderId = {holderId}",
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (IsMissingTable(ex))
+        {
+            // table dropped between acquire and release — nothing to clean up.
+        }
+    }
+
+    private static bool IsMissingTable(Exception ex)
+    {
+        var msg = ex.Message;
+        if (string.IsNullOrEmpty(msg)) return false;
+        return msg.Contains("no such table", StringComparison.OrdinalIgnoreCase)
+            || msg.Contains("Invalid object name", StringComparison.OrdinalIgnoreCase)
+            || msg.Contains("does not exist", StringComparison.OrdinalIgnoreCase)
+            || msg.Contains("doesn't exist", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void LogMissingTableOnce()
+    {
+        if (Interlocked.Exchange(ref _missingTableWarned, 1) == 0)
+        {
+            _logger?.LogWarning(
+                "OrionGuard_OutboxLocks table not found. Distributed locking is disabled until the v6.4.0 migration is applied. " +
+                "Single-instance consumers who do not want this migration should call opts.UseDistributedLock<NullDistributedLock>().");
+        }
     }
 
     private sealed class Handle(SkipLockedDistributedLock owner, string lockKey, Guid holderId) : IDistributedLockHandle
