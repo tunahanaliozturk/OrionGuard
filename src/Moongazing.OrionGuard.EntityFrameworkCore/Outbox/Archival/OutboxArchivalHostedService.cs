@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -75,9 +76,49 @@ public sealed class OutboxArchivalHostedService : BackgroundService
     }
 
     /// <inheritdoc />
-    protected override Task ExecuteAsync(CancellationToken stoppingToken)
+    [SuppressMessage("Design", "CA1031:Do not catch general exception types",
+        Justification = "Per-batch faults are intentionally swallowed so the worker survives transient infrastructure errors.")]
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        // Filled in by Task 21.
-        return Task.CompletedTask;
+        logger?.LogInformation(
+            "OrionGuard outbox archival started. Retention {Retention}, batch {BatchSize}, polling {Polling}.",
+            options.RetentionPeriod, options.BatchSize, options.PollingInterval);
+
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            try
+            {
+                await using var handle = await distributedLock.TryAcquireAsync(
+                    options.LockKey,
+                    TimeSpan.FromMinutes(5),
+                    stoppingToken).ConfigureAwait(false);
+
+                if (handle is null)
+                {
+                    // Why: another instance owns the lease. Sleep and retry — do not archive.
+                    await Task.Delay(options.PollingInterval, stoppingToken).ConfigureAwait(false);
+                    continue;
+                }
+
+                await ArchiveBatchAsync(stoppingToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+            catch (Exception ex)
+            {
+                logger?.LogError(ex, "Outbox archival batch failed.");
+            }
+
+            try
+            {
+                await Task.Delay(options.PollingInterval, stoppingToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+        }
     }
 }
