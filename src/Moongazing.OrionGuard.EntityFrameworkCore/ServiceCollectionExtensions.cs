@@ -26,11 +26,11 @@ public static class ServiceCollectionExtensions
     /// inside their <c>OnModelCreating</c> override using the configured <see cref="OutboxOptions.TableName"/>;
     /// the <see cref="OutboxDispatcherHostedService"/> is registered automatically.
     /// <para>
-    /// IMPORTANT: The v6.3.0 outbox dispatcher assumes a single instance per database.
-    /// Concurrent instances will double-dispatch events because there is no row-level
-    /// locking. If you scale horizontally (e.g. Kubernetes with replicas &gt; 1),
-    /// either pin the worker to one replica via a leader-election mechanism, or run
-    /// it in a dedicated singleton service. Distributed locking lands in v6.4.
+    /// Multi-instance deployments are safe by default: the dispatcher uses
+    /// <see cref="SkipLockedDistributedLock"/> against the <c>OrionGuard_OutboxLocks</c> table so
+    /// only one replica dispatches at a time. Single-instance consumers who do not want this
+    /// migration can opt into <see cref="NullDistributedLock"/> by registering it before calling
+    /// this method.
     /// </para>
     /// </remarks>
     public static IServiceCollection AddOrionGuardEfCore<TDbContext>(

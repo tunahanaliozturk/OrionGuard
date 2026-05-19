@@ -18,15 +18,15 @@ namespace Moongazing.OrionGuard.EntityFrameworkCore.Outbox;
 /// after <see cref="OutboxOptions.MaxRetries"/> attempts the row is dead-lettered (marked processed).
 /// </summary>
 /// <remarks>
-/// IMPORTANT: This v6.3.0 implementation assumes a single instance per database.
-/// Concurrent instances will double-dispatch events because there is no row-level
-/// locking. If you scale horizontally (e.g. Kubernetes with replicas &gt; 1),
-/// either pin the worker to one replica via a leader-election mechanism, or run
-/// it in a dedicated singleton service. Distributed locking lands in v6.4.
+/// Multi-instance safety: at startup the worker resolves an <see cref="IDistributedLock"/>
+/// (default <see cref="SkipLockedDistributedLock"/>) and acquires <see cref="OutboxOptions.LockKey"/>
+/// before each batch. Instances that fail to acquire the lock sleep and retry, so only one replica
+/// dispatches at a time. Pin to <see cref="NullDistributedLock"/> for single-instance deployments
+/// that do not want to apply the <c>OrionGuard_OutboxLocks</c> migration.
 /// </remarks>
 public sealed class OutboxDispatcherHostedService : BackgroundService
 {
-    private static readonly ActivitySource OutboxActivitySource = new("Moongazing.OrionGuard.DomainEvents", "6.3.0");
+    private static readonly ActivitySource OutboxActivitySource = new("Moongazing.OrionGuard.DomainEvents", "6.4.0");
 
     private readonly OutboxOptions options;
     private readonly IServiceScopeFactory scopeFactory;
@@ -76,15 +76,26 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
     [RequiresDynamicCode("JsonSerializer.Deserialize(string, Type) requires runtime code generation under AOT. Use System.Text.Json source generation for full AOT support.")]
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        logger?.LogWarning(
-            "OrionGuard outbox dispatcher started. NOTE: this v6.3.0 implementation assumes a SINGLE instance per database. " +
-            "Running multiple instances concurrently will double-dispatch every event. " +
-            "Distributed locking lands in v6.4.");
+        logger?.LogInformation(
+            "OrionGuard outbox dispatcher started with distributed locking key '{LockKey}' (lease {Lease}).",
+            options.LockKey, options.LockLeaseDuration);
 
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
+                await using var handle = await distributedLock.TryAcquireAsync(
+                    options.LockKey,
+                    options.LockLeaseDuration,
+                    stoppingToken).ConfigureAwait(false);
+
+                if (handle is null)
+                {
+                    // Why: another instance holds the lease. Sleep and retry — do not dispatch.
+                    await Task.Delay(options.PollingInterval, stoppingToken).ConfigureAwait(false);
+                    continue;
+                }
+
                 await ProcessBatchAsync(stoppingToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException)

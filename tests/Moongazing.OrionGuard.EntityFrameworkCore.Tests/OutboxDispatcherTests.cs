@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Moongazing.OrionGuard.DependencyInjection;
 using Moongazing.OrionGuard.Domain.Events;
 using Moongazing.OrionGuard.EntityFrameworkCore.Outbox;
+using Moongazing.OrionGuard.EntityFrameworkCore.Outbox.Locking;
 using Moongazing.OrionGuard.EntityFrameworkCore.Tests.TestFixtures;
 using Moongazing.OrionGuard.Testing.DomainEvents;
 
@@ -244,6 +245,51 @@ public class OutboxDispatcherTests
         Assert.Throws<ArgumentException>(() => new OutboxOptions { TableName = null! });
         Assert.Throws<ArgumentException>(() => new OutboxOptions { TableName = "" });
         Assert.Throws<ArgumentException>(() => new OutboxOptions { TableName = "   " });
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenDistributedLockReturnsNull_DoesNotDispatch()
+    {
+        var dispatcher = new InMemoryDomainEventDispatcher();
+        var opts = new OutboxOptions { PollingInterval = TimeSpan.FromMilliseconds(20), BatchSize = 10, MaxRetries = 2 };
+        await using var sp = BuildSp(dispatcher, opts);
+        await using var scope = sp.CreateAsyncScope();
+        var ctx = scope.ServiceProvider.GetRequiredService<TestDbContext>();
+        await ctx.Database.OpenConnectionAsync();
+        await ctx.Database.EnsureCreatedAsync();
+
+        await SeedOutboxRowAsync(ctx, new OrderShipped(Guid.NewGuid()));
+
+        var alwaysBusy = new AlwaysBusyLock();
+        var worker = new OutboxDispatcherHostedService(
+            sp.GetRequiredService<OutboxOptions>(),
+            sp.GetRequiredService<IServiceScopeFactory>(),
+            distributedLock: alwaysBusy);
+
+        using var cts = new CancellationTokenSource();
+        await worker.StartAsync(cts.Token);
+        await Task.Delay(200);
+        await cts.CancelAsync();
+        await worker.StopAsync(default);
+
+        // Lock was attempted multiple times; nothing dispatched; row unprocessed.
+        Assert.True(alwaysBusy.AttemptCount > 0, "Expected at least one TryAcquire attempt.");
+        Assert.Empty(dispatcher.Captured);
+        var row = await ctx.OutboxMessages.AsNoTracking().SingleAsync();
+        Assert.Null(row.ProcessedOnUtc);
+    }
+
+    private sealed class AlwaysBusyLock : IDistributedLock
+    {
+        private int _attempts;
+        public int AttemptCount => Volatile.Read(ref _attempts);
+
+        public Task<IDistributedLockHandle?> TryAcquireAsync(
+            string lockKey, TimeSpan leaseDuration, CancellationToken cancellationToken = default)
+        {
+            Interlocked.Increment(ref _attempts);
+            return Task.FromResult<IDistributedLockHandle?>(null);
+        }
     }
 
     private sealed class ThrowingDispatcher : IDomainEventDispatcher
