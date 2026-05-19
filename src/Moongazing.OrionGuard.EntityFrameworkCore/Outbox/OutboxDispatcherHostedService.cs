@@ -155,13 +155,31 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
             }
             try
             {
-                var type = Type.GetType(msg.EventType);
+                // Resolution: registry first, AQN fallback if enabled. Why: the registry decouples
+                // persisted payloads from internal type identity, while AQN preserves v6.3 source
+                // compatibility for consumers who have not yet adopted logical names.
+                Type? type;
+                if (typeMap.TryResolve(msg.EventType, out var resolved))
+                {
+                    type = resolved;
+                }
+                else if (typeMapOptions.AllowAssemblyQualifiedNameFallback)
+                {
+                    type = Type.GetType(msg.EventType);
+                }
+                else
+                {
+                    type = null;
+                }
+
                 if (type is null)
                 {
                     // Why: an unresolvable type cannot become resolvable without a redeployment,
-                    // so retrying is pointless. Dead-letter immediately with a clear error marker.
+                    // so retrying is pointless. Dead-letter immediately with a clear error marker
+                    // that records the current fallback state for operators.
                     msg.Error = $"TYPE_NOT_FOUND: cannot resolve event type '{msg.EventType}'. " +
-                                "Type was renamed, moved, or its assembly is not loaded.";
+                                $"Registry has no mapping and AQN fallback is " +
+                                $"{(typeMapOptions.AllowAssemblyQualifiedNameFallback ? "enabled but resolution failed" : "disabled")}.";
                     msg.ProcessedOnUtc = DateTime.UtcNow;
                     logger?.LogWarning(
                         "Outbox row {RowId} dead-lettered: type '{EventType}' could not be resolved.",
