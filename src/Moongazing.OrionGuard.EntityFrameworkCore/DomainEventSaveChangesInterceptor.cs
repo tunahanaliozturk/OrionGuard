@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Moongazing.OrionGuard.Domain.Events;
 using Moongazing.OrionGuard.Domain.Primitives;
 using Moongazing.OrionGuard.EntityFrameworkCore.Outbox;
+using Moongazing.OrionGuard.EntityFrameworkCore.Outbox.TypeMap;
 
 namespace Moongazing.OrionGuard.EntityFrameworkCore;
 
@@ -61,6 +62,7 @@ public sealed class DomainEventSaveChangesInterceptor : SaveChangesInterceptor
         else
         {
             var current = Activity.Current;
+            var typeMap = serviceProvider.GetService<OutboxTypeMapRegistry>();
             foreach (var aggregate in aggregates)
             {
                 var events = aggregate.PullDomainEvents();
@@ -68,7 +70,7 @@ public sealed class DomainEventSaveChangesInterceptor : SaveChangesInterceptor
                 {
                     ctx.Add(new OutboxMessage
                     {
-                        EventType = e.GetType().AssemblyQualifiedName!,
+                        EventType = ResolveEventTypeId(e.GetType(), typeMap),
                         Payload = JsonSerializer.Serialize(e, e.GetType()),
                         OccurredOnUtc = e.OccurredOnUtc,
                         TraceParent = current?.Id,
@@ -78,6 +80,15 @@ public sealed class DomainEventSaveChangesInterceptor : SaveChangesInterceptor
             }
         }
         return await base.SavingChangesAsync(eventData, result, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static string ResolveEventTypeId(Type eventType, OutboxTypeMapRegistry? typeMap)
+    {
+        if (typeMap is not null && typeMap.TryGetLogicalName(eventType, out var logical))
+        {
+            return logical;
+        }
+        return eventType.AssemblyQualifiedName ?? eventType.FullName!;
     }
 
     /// <inheritdoc />
