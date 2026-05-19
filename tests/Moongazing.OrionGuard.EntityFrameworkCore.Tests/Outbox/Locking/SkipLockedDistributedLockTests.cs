@@ -47,4 +47,34 @@ public class SkipLockedDistributedLockTests : IAsyncLifetime
         var second = await @lock.TryAcquireAsync("k", TimeSpan.FromSeconds(30));
         Assert.NotNull(second);
     }
+
+    [Fact]
+    public async Task TryAcquireAsync_ShouldTakeOver_WhenLeaseHasExpired()
+    {
+        var @lock = NewLock();
+        var first = await @lock.TryAcquireAsync("k", TimeSpan.FromMilliseconds(50));
+        Assert.NotNull(first);
+
+        await Task.Delay(150);
+
+        var second = await @lock.TryAcquireAsync("k", TimeSpan.FromSeconds(30));
+        Assert.NotNull(second);
+    }
+
+    [Fact]
+    public async Task DisposingExpiredHandle_ShouldBeNoOp_WhenAnotherHolderHasTakenOver()
+    {
+        var @lock = NewLock();
+        var first = await @lock.TryAcquireAsync("k", TimeSpan.FromMilliseconds(50));
+        Assert.NotNull(first);
+        await Task.Delay(150);
+
+        var second = await @lock.TryAcquireAsync("k", TimeSpan.FromSeconds(30));
+        Assert.NotNull(second);
+
+        await first!.DisposeAsync();
+
+        var third = await @lock.TryAcquireAsync("k", TimeSpan.FromSeconds(30));
+        Assert.Null(third);
+    }
 }
