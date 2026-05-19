@@ -4,6 +4,8 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Moongazing.OrionGuard.EntityFrameworkCore.Outbox;
+using Moongazing.OrionGuard.EntityFrameworkCore.Outbox.Locking;
+using Moongazing.OrionGuard.EntityFrameworkCore.Outbox.TypeMap;
 
 namespace Moongazing.OrionGuard.EntityFrameworkCore;
 
@@ -47,9 +49,19 @@ public static class ServiceCollectionExtensions
 
         if (options.Strategy == DomainEventDispatchStrategy.Outbox)
         {
+            // Default outbox infrastructure: DB-backed distributed lock + empty logical-name
+            // registry with AQN fallback enabled (v6.3 source-compatible). Consumers can override
+            // by registering their own implementations BEFORE calling AddOrionGuardEfCore.
+            services.TryAddSingleton<IDistributedLock, SkipLockedDistributedLock>();
+            services.TryAddSingleton(new OutboxTypeMapRegistry());
+            services.TryAddSingleton(new OutboxTypeMapOptions());
+
             services.AddHostedService(sp => new OutboxDispatcherHostedService(
                 sp.GetRequiredService<OutboxOptions>(),
                 sp.GetRequiredService<IServiceScopeFactory>(),
+                sp.GetRequiredService<IDistributedLock>(),
+                sp.GetRequiredService<OutboxTypeMapRegistry>(),
+                sp.GetRequiredService<OutboxTypeMapOptions>(),
                 sp.GetService<ILogger<OutboxDispatcherHostedService>>()));
         }
         return services;

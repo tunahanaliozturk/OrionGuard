@@ -6,6 +6,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Moongazing.OrionGuard.Domain.Events;
+using Moongazing.OrionGuard.EntityFrameworkCore.Outbox.Locking;
+using Moongazing.OrionGuard.EntityFrameworkCore.Outbox.TypeMap;
 
 namespace Moongazing.OrionGuard.EntityFrameworkCore.Outbox;
 
@@ -28,20 +30,42 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
 
     private readonly OutboxOptions options;
     private readonly IServiceScopeFactory scopeFactory;
+    private readonly IDistributedLock distributedLock;
+    private readonly OutboxTypeMapRegistry typeMap;
+    private readonly OutboxTypeMapOptions typeMapOptions;
     private readonly ILogger<OutboxDispatcherHostedService>? logger;
 
     /// <summary>Initializes a new worker.</summary>
     /// <param name="options">Outbox dispatch configuration.</param>
     /// <param name="scopeFactory">Factory used to create per-batch DI scopes for resolving <see cref="DbContext"/> and <see cref="IDomainEventDispatcher"/>.</param>
-    /// <param name="logger">Optional logger used to surface a startup warning about the single-instance assumption.</param>
+    /// <param name="distributedLock">
+    /// Distributed lock used to coordinate dispatcher instances. When <see langword="null"/>, a
+    /// <see cref="NullDistributedLock"/> is used (single-instance behaviour).
+    /// </param>
+    /// <param name="typeMap">
+    /// Logical-name registry consulted when resolving <see cref="OutboxMessage.EventType"/>. When
+    /// <see langword="null"/>, an empty registry is used and resolution falls back to AQN per
+    /// <paramref name="typeMapOptions"/>.
+    /// </param>
+    /// <param name="typeMapOptions">
+    /// Controls the AQN fallback behaviour when the registry has no mapping. When <see langword="null"/>,
+    /// defaults preserve v6.3 source compatibility (AQN fallback enabled).
+    /// </param>
+    /// <param name="logger">Optional logger used to surface startup and per-row diagnostic messages.</param>
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="options"/> or <paramref name="scopeFactory"/> is <see langword="null"/>.</exception>
     public OutboxDispatcherHostedService(
         OutboxOptions options,
         IServiceScopeFactory scopeFactory,
+        IDistributedLock? distributedLock = null,
+        OutboxTypeMapRegistry? typeMap = null,
+        OutboxTypeMapOptions? typeMapOptions = null,
         ILogger<OutboxDispatcherHostedService>? logger = null)
     {
         this.options = options ?? throw new ArgumentNullException(nameof(options));
         this.scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
+        this.distributedLock = distributedLock ?? new NullDistributedLock();
+        this.typeMap = typeMap ?? new OutboxTypeMapRegistry();
+        this.typeMapOptions = typeMapOptions ?? new OutboxTypeMapOptions();
         this.logger = logger;
     }
 
