@@ -64,6 +64,14 @@ public static class ServiceCollectionExtensions
                 sp.GetRequiredService<OutboxTypeMapOptions>(),
                 sp.GetService<ILogger<OutboxDispatcherHostedService>>()));
         }
+
+        // Apply fluent customizations (UseDistributedLock / UseOutboxTypeMap / UseOutboxArchival)
+        // last so they can Replace the defaults registered above.
+        foreach (var customize in options.ServiceCustomizations)
+        {
+            customize(services);
+        }
+
         return services;
     }
 }
