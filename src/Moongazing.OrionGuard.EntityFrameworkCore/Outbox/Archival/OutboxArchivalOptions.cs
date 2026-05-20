@@ -20,4 +20,10 @@ public sealed class OutboxArchivalOptions
 
     /// <summary>Lock key used to coordinate archival across instances. Default <c>orion_guard_outbox_archival</c>.</summary>
     public string LockKey { get; set; } = "orion_guard_outbox_archival";
+
+    /// <summary>
+    /// Lease duration for the archival distributed lock. Must exceed the wall-clock cost of a
+    /// single <see cref="OutboxArchivalHostedService.ArchiveBatchAsync"/> call. Default 5 minutes.
+    /// </summary>
+    public TimeSpan LockLeaseDuration { get; set; } = TimeSpan.FromMinutes(5);
 }

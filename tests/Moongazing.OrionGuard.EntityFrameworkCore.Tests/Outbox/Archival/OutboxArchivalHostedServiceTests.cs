@@ -140,6 +140,12 @@ public class OutboxArchivalHostedServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public void OutboxArchivalOptions_LockLeaseDuration_ShouldDefaultToFiveMinutes()
+    {
+        Assert.Equal(TimeSpan.FromMinutes(5), new OutboxArchivalOptions().LockLeaseDuration);
+    }
+
+    [Fact]
     public async Task ArchiveBatchAsync_ShouldRespectBatchSize()
     {
         var rows = Enumerable.Range(0, 20)

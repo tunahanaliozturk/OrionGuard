@@ -9,6 +9,22 @@ namespace Moongazing.OrionGuard.EntityFrameworkCore.Outbox.Locking;
 /// row per lock key in the consumer's <c>OrionGuard_OutboxLocks</c> table. Provider-agnostic — all
 /// SQL is issued through EF Core. Lease-based; expired holders are taken over by fresh callers.
 /// </summary>
+/// <remarks>
+/// <para>
+/// Concurrency contract: acquisition is correct but <b>best-effort and lease-bounded</b>, not a
+/// hard mutual-exclusion primitive. The conditional <c>UPDATE ... WHERE (HolderId IS NULL OR
+/// ExpiresOnUtc &lt;= now)</c> serializes concurrent acquirers via row locks on PostgreSQL, SQL
+/// Server, and MySQL; the post-commit owner-check confirms which acquirer won. Under contention
+/// the losers return <see langword="null"/> and retry on the next poll — brief lock starvation
+/// (one polling cycle) is possible but never double-ownership of a fresh lease.
+/// </para>
+/// <para>
+/// If a holder's lease expires before it disposes the handle (e.g. a batch outran
+/// <c>LockLeaseDuration</c>), another caller may take over. Outbox dispatch is therefore
+/// at-least-once: consumer event handlers must be idempotent. This is by design — see the
+/// v6.4.0 design spec, section 6.6.
+/// </para>
+/// </remarks>
 public sealed class SkipLockedDistributedLock : IDistributedLock
 {
     private readonly IServiceScopeFactory _scopeFactory;
@@ -70,6 +86,9 @@ public sealed class SkipLockedDistributedLock : IDistributedLock
 
             await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
 
+            // Why: authoritative arbiter for the INSERT race. When the conditional UPDATE matched
+            // nothing we attempted an INSERT that inserts 0 rows if a concurrent caller won first;
+            // reading HolderId back tells us definitively whether this caller owns the lock.
             var ownerCheck = await ctx.Set<OutboxLock>().AsNoTracking()
                 .Where(x => x.LockKey == lockKey)
                 .Select(x => x.HolderId)

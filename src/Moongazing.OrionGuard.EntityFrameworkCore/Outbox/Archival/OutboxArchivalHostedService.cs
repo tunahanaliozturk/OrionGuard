@@ -90,7 +90,7 @@ public sealed class OutboxArchivalHostedService : BackgroundService
             {
                 await using var handle = await distributedLock.TryAcquireAsync(
                     options.LockKey,
-                    TimeSpan.FromMinutes(5),
+                    options.LockLeaseDuration,
                     stoppingToken).ConfigureAwait(false);
 
                 if (handle is null)
