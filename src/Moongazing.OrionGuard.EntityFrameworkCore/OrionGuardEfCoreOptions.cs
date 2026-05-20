@@ -1,4 +1,7 @@
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Moongazing.OrionGuard.EntityFrameworkCore.Outbox;
+using Moongazing.OrionGuard.EntityFrameworkCore.Outbox.Locking;
 
 namespace Moongazing.OrionGuard.EntityFrameworkCore;
 
@@ -37,6 +40,20 @@ public sealed class OrionGuardEfCoreOptions
             configure(temp);
             Outbox = temp;
         }
+        return this;
+    }
+
+    internal List<Action<IServiceCollection>> ServiceCustomizations { get; } = new();
+
+    /// <summary>
+    /// Replaces the registered <see cref="IDistributedLock"/> implementation. Default is
+    /// <see cref="SkipLockedDistributedLock"/>; alternatives include <see cref="NullDistributedLock"/>
+    /// or a custom (e.g. Redis) implementation.
+    /// </summary>
+    public OrionGuardEfCoreOptions UseDistributedLock<TLock>() where TLock : class, IDistributedLock
+    {
+        ServiceCustomizations.Add(services =>
+            services.Replace(ServiceDescriptor.Singleton<IDistributedLock, TLock>()));
         return this;
     }
 }
