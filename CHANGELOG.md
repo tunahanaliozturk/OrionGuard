@@ -30,6 +30,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Entity.CheckRule` / `Entity.CheckRuleAsync` internally delegate to `Guard.AgainstBrokenRule` / `Guard.AgainstBrokenRuleAsync`. Public behaviour unchanged.
 - `OutboxDispatcherHostedService` constructor expanded with `IDistributedLock`, `OutboxTypeMapRegistry`, and `OutboxTypeMapOptions` parameters (optional, defaulted). The DI factory in `AddOrionGuardEfCore` updates accordingly; consumers using only DI are unaffected.
 
+### Deprecated
+
+- The `[StronglyTypedId<TValue>]` source generator is soft-deprecated in favour of the standalone **OrionKey** package (`[OrionId<TValue>]` / `[OrionId<TValue, TStrategy>]`). Existing usages keep compiling and the generator keeps emitting; each `[StronglyTypedId]` usage now raises a CS0618 warning with migration guidance. The generator will be removed in v7.0.0. The manual `StronglyTypedId<TValue>` record, `IStronglyTypedId<TValue>`, and the related guards are unaffected. See `docs/migrations/stronglytypedid-to-orionkey.md`.
+
 ### Migration from v6.3.0
 
 - **No breaking source changes.**
