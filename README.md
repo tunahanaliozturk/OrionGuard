@@ -214,6 +214,8 @@ var result = validator.Validate(userDto);
 
 ### DDD Primitives (NEW in v6.1)
 
+> **Deprecated in v6.4.0.** The `[StronglyTypedId]` source generator is superseded by the standalone [OrionKey](https://github.com/tunahanaliozturk/OrionKey) package (`[OrionId]`). It still works through the v6.x line and is removed in v7.0.0. See [the migration guide](docs/migrations/stronglytypedid-to-orionkey.md). The manual `StronglyTypedId<TValue>` record is not affected.
+
 ```csharp
 // Hybrid ValueObject — abstract class or record-based marker
 public sealed class Money : ValueObject
