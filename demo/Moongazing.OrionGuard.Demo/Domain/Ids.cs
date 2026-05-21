@@ -13,6 +13,10 @@ namespace Moongazing.OrionGuard.Demo.Domain;
 // wiring.
 // ============================================================================
 
+// OrionGuard's [StronglyTypedId] is obsolete (superseded by OrionKey). The demo
+// keeps exercising it because OrionGuard still ships and supports the generator
+// through v6.x. Suppression is intentional and scoped to these declarations.
+#pragma warning disable CS0618
 [StronglyTypedId<Guid>]
 public readonly partial struct ProductId;
 
@@ -21,6 +25,7 @@ public readonly partial struct SkuId;
 
 [StronglyTypedId<string>]
 public readonly partial struct CountryCode;
+#pragma warning restore CS0618
 
 // ============================================================================
 // Style 2: MANUAL RECORD — inherits StronglyTypedId<TValue> abstract record.
