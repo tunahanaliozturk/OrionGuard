@@ -6,6 +6,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Moongazing.OrionGuard.Domain.Events;
+using Moongazing.OrionGuard.EntityFrameworkCore.Outbox.Locking;
+using Moongazing.OrionGuard.EntityFrameworkCore.Outbox.TypeMap;
 
 namespace Moongazing.OrionGuard.EntityFrameworkCore.Outbox;
 
@@ -16,32 +18,54 @@ namespace Moongazing.OrionGuard.EntityFrameworkCore.Outbox;
 /// after <see cref="OutboxOptions.MaxRetries"/> attempts the row is dead-lettered (marked processed).
 /// </summary>
 /// <remarks>
-/// IMPORTANT: This v6.3.0 implementation assumes a single instance per database.
-/// Concurrent instances will double-dispatch events because there is no row-level
-/// locking. If you scale horizontally (e.g. Kubernetes with replicas &gt; 1),
-/// either pin the worker to one replica via a leader-election mechanism, or run
-/// it in a dedicated singleton service. Distributed locking lands in v6.4.
+/// Multi-instance safety: at startup the worker resolves an <see cref="IDistributedLock"/>
+/// (default <see cref="SkipLockedDistributedLock"/>) and acquires <see cref="OutboxOptions.LockKey"/>
+/// before each batch. Instances that fail to acquire the lock sleep and retry, so only one replica
+/// dispatches at a time. Pin to <see cref="NullDistributedLock"/> for single-instance deployments
+/// that do not want to apply the <c>OrionGuard_OutboxLocks</c> migration.
 /// </remarks>
 public sealed class OutboxDispatcherHostedService : BackgroundService
 {
-    private static readonly ActivitySource OutboxActivitySource = new("Moongazing.OrionGuard.DomainEvents", "6.3.0");
+    private static readonly ActivitySource OutboxActivitySource = new("Moongazing.OrionGuard.DomainEvents", "6.4.0");
 
     private readonly OutboxOptions options;
     private readonly IServiceScopeFactory scopeFactory;
+    private readonly IDistributedLock distributedLock;
+    private readonly OutboxTypeMapRegistry typeMap;
+    private readonly OutboxTypeMapOptions typeMapOptions;
     private readonly ILogger<OutboxDispatcherHostedService>? logger;
 
     /// <summary>Initializes a new worker.</summary>
     /// <param name="options">Outbox dispatch configuration.</param>
     /// <param name="scopeFactory">Factory used to create per-batch DI scopes for resolving <see cref="DbContext"/> and <see cref="IDomainEventDispatcher"/>.</param>
-    /// <param name="logger">Optional logger used to surface a startup warning about the single-instance assumption.</param>
+    /// <param name="distributedLock">
+    /// Distributed lock used to coordinate dispatcher instances. When <see langword="null"/>, a
+    /// <see cref="NullDistributedLock"/> is used (single-instance behaviour).
+    /// </param>
+    /// <param name="typeMap">
+    /// Logical-name registry consulted when resolving <see cref="OutboxMessage.EventType"/>. When
+    /// <see langword="null"/>, an empty registry is used and resolution falls back to AQN per
+    /// <paramref name="typeMapOptions"/>.
+    /// </param>
+    /// <param name="typeMapOptions">
+    /// Controls the AQN fallback behaviour when the registry has no mapping. When <see langword="null"/>,
+    /// defaults preserve v6.3 source compatibility (AQN fallback enabled).
+    /// </param>
+    /// <param name="logger">Optional logger used to surface startup and per-row diagnostic messages.</param>
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="options"/> or <paramref name="scopeFactory"/> is <see langword="null"/>.</exception>
     public OutboxDispatcherHostedService(
         OutboxOptions options,
         IServiceScopeFactory scopeFactory,
+        IDistributedLock? distributedLock = null,
+        OutboxTypeMapRegistry? typeMap = null,
+        OutboxTypeMapOptions? typeMapOptions = null,
         ILogger<OutboxDispatcherHostedService>? logger = null)
     {
         this.options = options ?? throw new ArgumentNullException(nameof(options));
         this.scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
+        this.distributedLock = distributedLock ?? new NullDistributedLock();
+        this.typeMap = typeMap ?? new OutboxTypeMapRegistry();
+        this.typeMapOptions = typeMapOptions ?? new OutboxTypeMapOptions();
         this.logger = logger;
     }
 
@@ -52,15 +76,26 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
     [RequiresDynamicCode("JsonSerializer.Deserialize(string, Type) requires runtime code generation under AOT. Use System.Text.Json source generation for full AOT support.")]
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        logger?.LogWarning(
-            "OrionGuard outbox dispatcher started. NOTE: this v6.3.0 implementation assumes a SINGLE instance per database. " +
-            "Running multiple instances concurrently will double-dispatch every event. " +
-            "Distributed locking lands in v6.4.");
+        logger?.LogInformation(
+            "OrionGuard outbox dispatcher started with distributed locking key '{LockKey}' (lease {Lease}).",
+            options.LockKey, options.LockLeaseDuration);
 
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
+                await using var handle = await distributedLock.TryAcquireAsync(
+                    options.LockKey,
+                    options.LockLeaseDuration,
+                    stoppingToken).ConfigureAwait(false);
+
+                if (handle is null)
+                {
+                    // Why: another instance holds the lease. Sleep and retry — do not dispatch.
+                    await Task.Delay(options.PollingInterval, stoppingToken).ConfigureAwait(false);
+                    continue;
+                }
+
                 await ProcessBatchAsync(stoppingToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
@@ -120,13 +155,31 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
             }
             try
             {
-                var type = Type.GetType(msg.EventType);
+                // Resolution: registry first, AQN fallback if enabled. Why: the registry decouples
+                // persisted payloads from internal type identity, while AQN preserves v6.3 source
+                // compatibility for consumers who have not yet adopted logical names.
+                Type? type;
+                if (typeMap.TryResolve(msg.EventType, out var resolved))
+                {
+                    type = resolved;
+                }
+                else if (typeMapOptions.AllowAssemblyQualifiedNameFallback)
+                {
+                    type = Type.GetType(msg.EventType);
+                }
+                else
+                {
+                    type = null;
+                }
+
                 if (type is null)
                 {
                     // Why: an unresolvable type cannot become resolvable without a redeployment,
-                    // so retrying is pointless. Dead-letter immediately with a clear error marker.
+                    // so retrying is pointless. Dead-letter immediately with a clear error marker
+                    // that records the current fallback state for operators.
                     msg.Error = $"TYPE_NOT_FOUND: cannot resolve event type '{msg.EventType}'. " +
-                                "Type was renamed, moved, or its assembly is not loaded.";
+                                $"Registry has no mapping and AQN fallback is " +
+                                $"{(typeMapOptions.AllowAssemblyQualifiedNameFallback ? "enabled but resolution failed" : "disabled")}.";
                     msg.ProcessedOnUtc = DateTime.UtcNow;
                     logger?.LogWarning(
                         "Outbox row {RowId} dead-lettered: type '{EventType}' could not be resolved.",

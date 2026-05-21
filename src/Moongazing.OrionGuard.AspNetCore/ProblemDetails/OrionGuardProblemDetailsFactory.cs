@@ -1,5 +1,7 @@
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Moongazing.OrionGuard.Core;
+using Moongazing.OrionGuard.Domain.Exceptions;
 
 namespace Moongazing.OrionGuard.AspNetCore.ProblemDetails;
 
@@ -12,6 +14,10 @@ public static class OrionGuardProblemDetailsFactory
     private const string ProblemDetailsType = "https://tools.ietf.org/html/rfc9457";
     private const string DefaultTitle = "Validation Failed";
     private const int DefaultStatusCode = 422;
+
+    private const string BusinessRuleProblemType =
+        "https://moongazing.dev/orionguard/problems/business-rule-violation";
+    private const string BusinessRuleTitle = "Business Rule Violation";
 
     /// <summary>
     /// Creates a <see cref="ValidationProblemDetails"/> from a failed <see cref="GuardResult"/>.
@@ -50,5 +56,26 @@ public static class OrionGuardProblemDetailsFactory
         };
 
         return problemDetails;
+    }
+
+    /// <summary>
+    /// Creates a <see cref="ValidationProblemDetails"/> from a <see cref="BusinessRuleValidationException"/>.
+    /// Errors are keyed by the rule's CLR type name; status defaults to 422.
+    /// </summary>
+    /// <param name="exception">The business rule exception.</param>
+    /// <returns>A <see cref="ValidationProblemDetails"/> ready for serialization.</returns>
+    public static ValidationProblemDetails Create(BusinessRuleValidationException exception)
+    {
+        var errors = new Dictionary<string, string[]>
+        {
+            [exception.RuleName] = new[] { exception.Message },
+        };
+
+        return new ValidationProblemDetails(errors)
+        {
+            Type = BusinessRuleProblemType,
+            Title = BusinessRuleTitle,
+            Status = StatusCodes.Status422UnprocessableEntity,
+        };
     }
 }

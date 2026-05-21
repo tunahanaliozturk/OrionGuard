@@ -5,6 +5,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Moongazing.OrionGuard.DependencyInjection;
 using Moongazing.OrionGuard.Domain.Events;
 using Moongazing.OrionGuard.EntityFrameworkCore.Outbox;
+using Moongazing.OrionGuard.EntityFrameworkCore.Outbox.Locking;
+using Moongazing.OrionGuard.EntityFrameworkCore.Outbox.TypeMap;
 using Moongazing.OrionGuard.EntityFrameworkCore.Tests.TestFixtures;
 using Moongazing.OrionGuard.Testing.DomainEvents;
 
@@ -244,6 +246,140 @@ public class OutboxDispatcherTests
         Assert.Throws<ArgumentException>(() => new OutboxOptions { TableName = null! });
         Assert.Throws<ArgumentException>(() => new OutboxOptions { TableName = "" });
         Assert.Throws<ArgumentException>(() => new OutboxOptions { TableName = "   " });
+    }
+
+    [Fact]
+    public async Task ProcessBatch_RegistryResolvesLogicalName_Dispatches()
+    {
+        var dispatcher = new InMemoryDomainEventDispatcher();
+        await using var sp = BuildSp(dispatcher);
+        await using var scope = sp.CreateAsyncScope();
+        var ctx = scope.ServiceProvider.GetRequiredService<TestDbContext>();
+        await ctx.Database.OpenConnectionAsync();
+        await ctx.Database.EnsureCreatedAsync();
+
+        // Row uses logical name, NOT AQN. Only the registry can resolve it.
+        var evt = new OrderShipped(Guid.NewGuid());
+        ctx.OutboxMessages.Add(new OutboxMessage
+        {
+            EventType = "order.shipped",
+            Payload = JsonSerializer.Serialize(evt, evt.GetType()),
+            OccurredOnUtc = evt.OccurredOnUtc,
+        });
+        await ctx.SaveChangesAsync();
+
+        var registry = new OutboxTypeMapRegistry().Map<OrderShipped>("order.shipped");
+        var worker = new OutboxDispatcherHostedService(
+            sp.GetRequiredService<OutboxOptions>(),
+            sp.GetRequiredService<IServiceScopeFactory>(),
+            typeMap: registry);
+
+        await worker.ProcessBatchAsync(default);
+
+        Assert.Single(dispatcher.Captured);
+        var row = await ctx.OutboxMessages.AsNoTracking().SingleAsync();
+        Assert.NotNull(row.ProcessedOnUtc);
+        Assert.Null(row.Error);
+    }
+
+    [Fact]
+    public async Task ProcessBatch_RegistryEmpty_AqnFallbackEnabled_DispatchesViaAqn()
+    {
+        var dispatcher = new InMemoryDomainEventDispatcher();
+        await using var sp = BuildSp(dispatcher);
+        await using var scope = sp.CreateAsyncScope();
+        var ctx = scope.ServiceProvider.GetRequiredService<TestDbContext>();
+        await ctx.Database.OpenConnectionAsync();
+        await ctx.Database.EnsureCreatedAsync();
+
+        // Default behaviour (existing tests): AQN-stamped row, empty registry, AQN fallback on.
+        await SeedOutboxRowAsync(ctx, new OrderShipped(Guid.NewGuid()));
+
+        var worker = new OutboxDispatcherHostedService(
+            sp.GetRequiredService<OutboxOptions>(),
+            sp.GetRequiredService<IServiceScopeFactory>(),
+            typeMap: new OutboxTypeMapRegistry(),
+            typeMapOptions: new OutboxTypeMapOptions { AllowAssemblyQualifiedNameFallback = true });
+
+        await worker.ProcessBatchAsync(default);
+
+        Assert.Single(dispatcher.Captured);
+        var row = await ctx.OutboxMessages.AsNoTracking().SingleAsync();
+        Assert.NotNull(row.ProcessedOnUtc);
+    }
+
+    [Fact]
+    public async Task ProcessBatch_RegistryEmpty_AqnFallbackDisabled_DeadLetters()
+    {
+        var dispatcher = new InMemoryDomainEventDispatcher();
+        await using var sp = BuildSp(dispatcher);
+        await using var scope = sp.CreateAsyncScope();
+        var ctx = scope.ServiceProvider.GetRequiredService<TestDbContext>();
+        await ctx.Database.OpenConnectionAsync();
+        await ctx.Database.EnsureCreatedAsync();
+
+        // AQN-stamped row, but registry is empty and AQN fallback is disabled.
+        await SeedOutboxRowAsync(ctx, new OrderShipped(Guid.NewGuid()));
+
+        var worker = new OutboxDispatcherHostedService(
+            sp.GetRequiredService<OutboxOptions>(),
+            sp.GetRequiredService<IServiceScopeFactory>(),
+            typeMap: new OutboxTypeMapRegistry(),
+            typeMapOptions: new OutboxTypeMapOptions { AllowAssemblyQualifiedNameFallback = false });
+
+        await worker.ProcessBatchAsync(default);
+
+        Assert.Empty(dispatcher.Captured);
+        var row = await ctx.OutboxMessages.AsNoTracking().SingleAsync();
+        Assert.NotNull(row.ProcessedOnUtc);   // dead-lettered
+        Assert.NotNull(row.Error);
+        Assert.StartsWith("TYPE_NOT_FOUND:", row.Error);
+        Assert.Contains("AQN fallback is disabled", row.Error);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenDistributedLockReturnsNull_DoesNotDispatch()
+    {
+        var dispatcher = new InMemoryDomainEventDispatcher();
+        var opts = new OutboxOptions { PollingInterval = TimeSpan.FromMilliseconds(20), BatchSize = 10, MaxRetries = 2 };
+        await using var sp = BuildSp(dispatcher, opts);
+        await using var scope = sp.CreateAsyncScope();
+        var ctx = scope.ServiceProvider.GetRequiredService<TestDbContext>();
+        await ctx.Database.OpenConnectionAsync();
+        await ctx.Database.EnsureCreatedAsync();
+
+        await SeedOutboxRowAsync(ctx, new OrderShipped(Guid.NewGuid()));
+
+        var alwaysBusy = new AlwaysBusyLock();
+        var worker = new OutboxDispatcherHostedService(
+            sp.GetRequiredService<OutboxOptions>(),
+            sp.GetRequiredService<IServiceScopeFactory>(),
+            distributedLock: alwaysBusy);
+
+        using var cts = new CancellationTokenSource();
+        await worker.StartAsync(cts.Token);
+        await Task.Delay(200);
+        await cts.CancelAsync();
+        await worker.StopAsync(default);
+
+        // Lock was attempted multiple times; nothing dispatched; row unprocessed.
+        Assert.True(alwaysBusy.AttemptCount > 0, "Expected at least one TryAcquire attempt.");
+        Assert.Empty(dispatcher.Captured);
+        var row = await ctx.OutboxMessages.AsNoTracking().SingleAsync();
+        Assert.Null(row.ProcessedOnUtc);
+    }
+
+    private sealed class AlwaysBusyLock : IDistributedLock
+    {
+        private int _attempts;
+        public int AttemptCount => Volatile.Read(ref _attempts);
+
+        public Task<IDistributedLockHandle?> TryAcquireAsync(
+            string lockKey, TimeSpan leaseDuration, CancellationToken cancellationToken = default)
+        {
+            Interlocked.Increment(ref _attempts);
+            return Task.FromResult<IDistributedLockHandle?>(null);
+        }
     }
 
     private sealed class ThrowingDispatcher : IDomainEventDispatcher

@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.Http;
+
 namespace Moongazing.OrionGuard.AspNetCore.Options;
 
 /// <summary>
@@ -23,4 +25,11 @@ public sealed class OrionGuardAspNetCoreOptions
     /// Default is <c>false</c>.
     /// </summary>
     public bool SuppressModelStateInvalidFilter { get; set; } = false;
+
+    /// <summary>
+    /// HTTP status code returned for <see cref="Moongazing.OrionGuard.Domain.Exceptions.BusinessRuleValidationException"/>.
+    /// Defaults to <see cref="StatusCodes.Status422UnprocessableEntity"/> (RFC 9457 — request is
+    /// syntactically valid but semantically rejected). Override (e.g., to 400) for legacy clients.
+    /// </summary>
+    public int BusinessRuleStatusCode { get; set; } = StatusCodes.Status422UnprocessableEntity;
 }

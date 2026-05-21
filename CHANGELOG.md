@@ -5,6 +5,55 @@ All notable changes to OrionGuard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.4.0] - 2026-05-20
+
+### Added
+
+#### Business Rule ergonomics (`Moongazing.OrionGuard`)
+- `BusinessRule` and `AsyncBusinessRule` abstract base classes implementing `IBusinessRule` / `IAsyncBusinessRule`. `MessageKey` defaults to the CLR type name.
+- `Guard.AgainstBrokenRule(IBusinessRule)` and `Guard.AgainstBrokenRuleAsync(IAsyncBusinessRule, CancellationToken)` static helpers. `Entity.CheckRule` / `CheckRuleAsync` now delegate to these helpers (behaviour unchanged).
+
+#### ASP.NET Core ProblemDetails (`Moongazing.OrionGuard.AspNetCore`)
+- `OrionGuardExceptionHandler` now produces a 422 `ValidationProblemDetails` for `BusinessRuleValidationException` (previously fell through to the framework default 500).
+- New `OrionGuardAspNetCoreOptions.BusinessRuleStatusCode` (default 422) for clients that require 400.
+- New `OrionGuardProblemDetailsFactory.Create(BusinessRuleValidationException)` overload — `errors` keyed by `RuleName`, `Type` = `https://moongazing.dev/orionguard/problems/business-rule-violation`.
+
+#### Outbox production-hardening (`Moongazing.OrionGuard.EntityFrameworkCore`)
+- `IDistributedLock` / `IDistributedLockHandle` abstractions. Default `SkipLockedDistributedLock` uses an `OutboxLock` row per key in `OrionGuard_OutboxLocks` (provider-agnostic via EF Core raw SQL). Multi-instance outbox workers no longer double-dispatch.
+- `NullDistributedLock` no-op implementation for single-instance consumers who do not want to apply the new migration. Wire with `opts.UseOutbox().UseDistributedLock<NullDistributedLock>()`.
+- `OutboxTypeMapRegistry` — opt-in logical-name to CLR type mapping. The `SaveChanges` interceptor prefers logical names when registered; the dispatcher resolves them on read. Falls back to AQN when no mapping exists (toggle via `OutboxTypeMapOptions.AllowAssemblyQualifiedNameFallback`).
+- `OutboxArchivalHostedService` — opt-in periodic deletion of processed outbox rows. Default 30-day retention, 1-hour polling, dead-letter rows preserved.
+- `OutboxOptions.LockKey` (default `"orion_guard_outbox_dispatcher"`) and `OutboxOptions.LockLeaseDuration` (default 30s).
+- `OrionGuardEfCoreOptions.UseDistributedLock<T>()`, `UseOutboxTypeMap(...)`, `UseOutboxArchival(...)`.
+
+### Changed
+- `Entity.CheckRule` / `Entity.CheckRuleAsync` internally delegate to `Guard.AgainstBrokenRule` / `Guard.AgainstBrokenRuleAsync`. Public behaviour unchanged.
+- `OutboxDispatcherHostedService` constructor expanded with `IDistributedLock`, `OutboxTypeMapRegistry`, and `OutboxTypeMapOptions` parameters (optional, defaulted). The DI factory in `AddOrionGuardEfCore` updates accordingly; consumers using only DI are unaffected.
+
+### Deprecated
+
+- The `[StronglyTypedId<TValue>]` source generator is soft-deprecated in favour of the standalone **OrionKey** package (`[OrionId<TValue>]` / `[OrionId<TValue, TStrategy>]`). Existing usages keep compiling and the generator keeps emitting; each `[StronglyTypedId]` usage now raises a CS0618 warning with migration guidance. The generator will be removed in v7.0.0. The manual `StronglyTypedId<TValue>` record, `IStronglyTypedId<TValue>`, and the related guards are unaffected. See `docs/migrations/stronglytypedid-to-orionkey.md`.
+
+### Migration from v6.3.0
+
+- **No breaking source changes.**
+- **Distributed locking (recommended for multi-instance deployments):**
+  Add an EF Core migration that creates `OrionGuard_OutboxLocks` — see `docs/migrations/v6.4.0-outbox-locks.md`.
+  No code change needed when using `AddOrionGuardEfCore` — `SkipLockedDistributedLock` is wired automatically.
+- **Single-instance consumers who do NOT want to apply the migration:**
+  `opts.UseOutbox(...).UseDistributedLock<NullDistributedLock>()`.
+- **Type-safe outbox payloads (optional):**
+  `opts.UseOutbox(...).UseOutboxTypeMap(r => r.Map<UserRegistered>("user.registered"));`
+- **Outbox archival (optional):**
+  `opts.UseOutbox(...).UseOutboxArchival(a => a.RetentionPeriod = TimeSpan.FromDays(60));`
+- **`BusinessRule` base class (optional):** existing `IBusinessRule` implementations work unchanged.
+- **`Guard.AgainstBrokenRule` (additive):** `Guard.AgainstBrokenRule(new OrderMustHaveItems(order));`
+- **`BusinessRuleValidationException` to 422 ProblemDetails (automatic):** customize via `OrionGuardAspNetCoreOptions.BusinessRuleStatusCode`.
+
+### Roadmap
+
+- v6.5+: Redis / Consul `IDistributedLock` implementations as extension packages. Push-based outbox dispatch (`LISTEN/NOTIFY`, `SqlDependency`). Audit-trail copy-before-delete for archival.
+
 ## [6.2.0] - 2026-04-19
 
 ### Added

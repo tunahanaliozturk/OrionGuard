@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Moongazing.OrionGuard.Core;
 using Moongazing.OrionGuard.Domain.Exceptions;
 using Moongazing.OrionGuard.Domain.Rules;
 
@@ -78,34 +79,21 @@ public abstract class Entity<TId> : IEquatable<Entity<TId>>
 
     /// <summary>
     /// Enforces a synchronous business rule. Throws <see cref="BusinessRuleValidationException"/>
-    /// if the rule reports itself as broken.
+    /// if the rule reports itself as broken. Delegates to <see cref="Guard.AgainstBrokenRule"/>.
     /// </summary>
     /// <param name="rule">The business rule to validate. Cannot be null.</param>
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="rule"/> is null.</exception>
     /// <exception cref="BusinessRuleValidationException">Thrown when the rule is broken.</exception>
-    protected static void CheckRule(IBusinessRule rule)
-    {
-        ArgumentNullException.ThrowIfNull(rule);
-        if (rule.IsBroken())
-        {
-            throw new BusinessRuleValidationException(rule);
-        }
-    }
+    protected static void CheckRule(IBusinessRule rule) => Guard.AgainstBrokenRule(rule);
 
     /// <summary>
     /// Enforces an asynchronous business rule. Throws <see cref="BusinessRuleValidationException"/>
-    /// if the rule reports itself as broken.
+    /// if the rule reports itself as broken. Delegates to <see cref="Guard.AgainstBrokenRuleAsync"/>.
     /// </summary>
     /// <param name="rule">The asynchronous business rule to validate. Cannot be null.</param>
-    /// <param name="cancellationToken">The cancellation token that can be used to cancel the validation.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="rule"/> is null.</exception>
     /// <exception cref="BusinessRuleValidationException">Thrown when the rule is broken.</exception>
-    protected static async Task CheckRuleAsync(IAsyncBusinessRule rule, CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(rule);
-        if (await rule.IsBrokenAsync(cancellationToken).ConfigureAwait(false))
-        {
-            throw new BusinessRuleValidationException(rule);
-        }
-    }
+    protected static Task CheckRuleAsync(IAsyncBusinessRule rule, CancellationToken cancellationToken = default)
+        => Guard.AgainstBrokenRuleAsync(rule, cancellationToken);
 }

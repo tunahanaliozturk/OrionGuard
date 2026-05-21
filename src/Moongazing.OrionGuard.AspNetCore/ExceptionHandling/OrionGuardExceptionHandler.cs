@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 using Moongazing.OrionGuard.AspNetCore.ProblemDetails;
 using Moongazing.OrionGuard.AspNetCore.Options;
 using Moongazing.OrionGuard.Core;
+using Moongazing.OrionGuard.Domain.Exceptions;
 using Moongazing.OrionGuard.Exceptions;
 
 namespace Moongazing.OrionGuard.AspNetCore.ExceptionHandling;
@@ -72,6 +73,43 @@ public sealed class OrionGuardExceptionHandler : IExceptionHandler
 
                 await httpContext.Response.WriteAsJsonAsync(
                     new { errors },
+                    SerializerOptions,
+                    cancellationToken).ConfigureAwait(false);
+            }
+
+            return true;
+        }
+
+        if (exception is BusinessRuleValidationException ruleException)
+        {
+            _logger.LogWarning(
+                ruleException,
+                "Business rule '{RuleName}' violated: {Message}",
+                ruleException.RuleName,
+                ruleException.Message);
+
+            var statusCode = _options.BusinessRuleStatusCode;
+
+            if (_options.UseProblemDetails)
+            {
+                var problemDetails = OrionGuardProblemDetailsFactory.Create(ruleException);
+                problemDetails.Status = statusCode;
+
+                httpContext.Response.StatusCode = statusCode;
+                httpContext.Response.ContentType = MediaTypeNames.Application.Json;
+
+                await httpContext.Response.WriteAsJsonAsync(
+                    problemDetails,
+                    SerializerOptions,
+                    cancellationToken).ConfigureAwait(false);
+            }
+            else
+            {
+                httpContext.Response.StatusCode = statusCode;
+                httpContext.Response.ContentType = MediaTypeNames.Application.Json;
+
+                await httpContext.Response.WriteAsJsonAsync(
+                    new { ruleName = ruleException.RuleName, message = ruleException.Message },
                     SerializerOptions,
                     cancellationToken).ConfigureAwait(false);
             }

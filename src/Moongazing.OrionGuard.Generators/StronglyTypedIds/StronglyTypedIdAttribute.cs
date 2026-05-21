@@ -17,11 +17,16 @@ namespace Moongazing.OrionGuard.Domain.Primitives
 {
     /// <summary>
     /// Marks a readonly partial struct as a strongly-typed id backed by the specified primitive type.
-    /// The OrionGuard source generator emits equality, comparison, conversion members, as well as
-    /// EF Core ValueConverter, System.Text.Json converter, and TypeConverter companion types.
     /// </summary>
+    /// <remarks>
+    /// DEPRECATED. This generator is superseded by the standalone OrionKey package. Install
+    /// the OrionKey NuGet package and use [OrionId&lt;TValue&gt;] or [OrionId&lt;TValue, TStrategy&gt;]
+    /// instead. The OrionGuard generator still works but will be removed in v7.0.0.
+    /// See https://www.nuget.org/packages/OrionKey.
+    /// </remarks>
     /// <typeparam name=""TValue"">Underlying primitive type. Supported: System.Guid, int, long,
     /// string, System.Ulid (net9.0+).</typeparam>
+    [System.Obsolete(""OrionGuard's [StronglyTypedId] is superseded by the standalone OrionKey package. Install OrionKey and use [OrionId<TValue>] or [OrionId<TValue, TStrategy>] instead - see https://www.nuget.org/packages/OrionKey. OrionGuard's generator will be removed in v7.0.0."")]
     [System.AttributeUsage(System.AttributeTargets.Struct, Inherited = false, AllowMultiple = false)]
     internal sealed class StronglyTypedIdAttribute<TValue> : System.Attribute { }
 }

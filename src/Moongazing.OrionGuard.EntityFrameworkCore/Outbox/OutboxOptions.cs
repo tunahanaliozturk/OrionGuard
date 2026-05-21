@@ -7,6 +7,8 @@ public sealed class OutboxOptions
     private int batchSize = 100;
     private int maxRetries = 5;
     private string tableName = "OrionGuard_Outbox";
+    private string lockKey = "orion_guard_outbox_dispatcher";
+    private TimeSpan lockLeaseDuration = TimeSpan.FromSeconds(30);
 
     /// <summary>How frequently the worker polls for unprocessed rows. Must be &gt; 0. Default 5s.</summary>
     /// <exception cref="ArgumentOutOfRangeException">Thrown when set to a non-positive value.</exception>
@@ -68,6 +70,43 @@ public sealed class OutboxOptions
                 throw new ArgumentException($"{nameof(TableName)} cannot be null or whitespace.", nameof(value));
             }
             tableName = value;
+        }
+    }
+
+    /// <summary>
+    /// Lock key used by <see cref="Locking.IDistributedLock"/> to coordinate dispatcher instances.
+    /// Cannot be null or whitespace. Default <c>orion_guard_outbox_dispatcher</c>.
+    /// </summary>
+    /// <exception cref="ArgumentException">Thrown when set to null, empty, or whitespace.</exception>
+    public string LockKey
+    {
+        get => lockKey;
+        set
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                throw new ArgumentException($"{nameof(LockKey)} cannot be null or whitespace.", nameof(value));
+            }
+            lockKey = value;
+        }
+    }
+
+    /// <summary>
+    /// Lease duration for the distributed lock. Must exceed the wall-clock cost of a single
+    /// <see cref="OutboxDispatcherHostedService.ProcessBatchAsync"/> call. Must be &gt; 0. Default 30s.
+    /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown when set to a non-positive value.</exception>
+    public TimeSpan LockLeaseDuration
+    {
+        get => lockLeaseDuration;
+        set
+        {
+            if (value <= TimeSpan.Zero)
+            {
+                throw new ArgumentOutOfRangeException(nameof(value), value,
+                    $"{nameof(LockLeaseDuration)} must be greater than zero.");
+            }
+            lockLeaseDuration = value;
         }
     }
 }
