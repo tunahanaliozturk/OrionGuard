@@ -5,6 +5,12 @@ All notable changes to OrionGuard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.4.1] - 2026-05-23
+
+### Changed
+
+- New minimalist family-style logo (shield with an Orion-star center, indigo line-art, no badge ring or curved text) replaces the v6.x circular emblem. Applied to the README and to every package's NuGet icon. No code changes.
+
 ## [6.4.0] - 2026-05-20
 
 ### Added
