@@ -18,7 +18,7 @@
 ---
 
 > **v6.0.0 is here!** 9 ecosystem packages, 14-language localization, Dynamic Rule Engine, source generators, ASP.NET Core / MediatR / Blazor / gRPC / SignalR integration, and much more.
-> [See what's new in this release.](CHANGELOG.md)
+> [See what's new in this release.](CHANGELOG.md) · [What's coming next (12-month roadmap)](docs/ROADMAP.md)
 
 ---
 
@@ -526,6 +526,18 @@ public class MyExceptionFactory : IExceptionFactory
 services.AddOrionGuardExceptionFactory<MyExceptionFactory>();
 // Or globally: ExceptionFactoryProvider.Configure(new MyExceptionFactory());
 ```
+
+---
+
+## Roadmap
+
+OrionGuard publishes a public, twelve-month forward roadmap covering the next minor releases
+through **v7.0.0 (Q2 2027)**. See [docs/ROADMAP.md](docs/ROADMAP.md) for the next-12-months
+view (v6.5.0 family integration, v6.6.0 migration tooling, v6.7.0 production excellence,
+v7.0.0 API freeze) plus the deep tier backlog of every item under consideration.
+
+If something on the roadmap matters to you, open an issue with the `roadmap` label. Real
+workload demand is what moves items up the list.
 
 ---
 
