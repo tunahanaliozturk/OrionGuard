@@ -42,9 +42,9 @@ Priority tiers roughly map to timing:
 | Tier | Theme | Timing |
 |------|-------|--------|
 | Tier 0 | Shipped (reference) | Done |
-| Tier 1 | Adoption & Growth | v6.1 - v6.2 |
-| Tier 2 | Production Excellence | v6.2 - v6.3 |
-| Tier 3 | Differentiation & Innovation | v6.3 - v7.0 |
+| Tier 1 | Adoption & Growth | v6.6 - v6.7 |
+| Tier 2 | Production Excellence | v6.7 - v6.8 |
+| Tier 3 | Differentiation & Innovation | v6.8 - v7.0 |
 | Tier 4 | Ecosystem & Integrations | Rolling |
 | Tier 5 | Developer Experience | Rolling |
 | Research | Exploratory | Unscheduled |
@@ -55,8 +55,83 @@ Priority tiers roughly map to timing:
 
 - **v6.1.0** — DDD tactical primitives (ValueObject, Entity, AggregateRoot, StronglyTypedId base + generator), guard extension, DI helper, 14-language localization keys.
 - **v6.2.0** — API polish: `IStronglyTypedId<TValue>` unification, `DomainEventBase`, `IParsable`/`ISpanParsable` on generated ids, conditional EF Core converter emission, sub-package NuGet ID rename (drop `Moongazing.` prefix).
-- **v6.3.0** (next) — Domain event dispatcher, MediatR bridge, EF Core `SaveChanges` interceptor.
-- **v6.4.0** — Full `BusinessRule` base class, `Guard.Against.BrokenRule`, ASP.NET Core ProblemDetails mapping.
+- **v6.3.0** — Domain event dispatcher, MediatR bridge, EF Core `SaveChanges` interceptor.
+- **v6.4.0** — Full `BusinessRule` base class, `Guard.Against.BrokenRule`, ASP.NET Core ProblemDetails mapping; in-process `IDistributedLock` primitive (in-memory + EF Core `SKIP LOCKED`); audit-trail copy-before-delete; outbox type-map registry; archive-only outbox post-publish behaviour.
+- **v6.4.1** — Logo refresh shipped 2026-05-23 (minimalist family-style indigo shield, no code changes).
+- **v6.5.0** (next) — Soft-deprecation of the in-box `StronglyTypedId` generator in favour of the standalone [OrionKey](https://github.com/tunahanaliozturk/OrionKey) package; Redis-backed `IDistributedLock` bridge via the new [OrionLock](https://github.com/tunahanaliozturk/OrionLock) package; push-based outbox dispatch.
+
+---
+
+## Next 12 Months — Where OrionGuard Is Going
+
+This is the operational view of the roadmap: what we expect to ship in the next year, mapped
+to concrete versions and quarterly windows. The deep tiered backlog below stays as the
+inventory of everything under consideration; this section is the *commitment view* that
+mirrors the public-facing roadmaps in the sibling [[orionaudit]] and [[orionlock]] packages.
+
+Dates are targets, not commitments. If a milestone slips by more than four weeks, the delay
+shows up here.
+
+### v6.5.0 — Family Integration *(planned, Q3 2026)*
+
+Theme: *let OrionGuard quietly hand off the workloads its siblings now do better.*
+
+- **`StronglyTypedId` generator soft-deprecation.** The in-box generator emits `[Obsolete]`
+  with a migration hint pointing at [OrionKey](https://github.com/tunahanaliozturk/OrionKey).
+  No runtime break — generated ids continue to compile and run. Removal scheduled for v7.0.
+- **`OrionGuard.Locks.Redis` bridge.** Implements the v6.4 `IDistributedLock` primitive on
+  top of the standalone [OrionLock](https://github.com/tunahanaliozturk/OrionLock) Redis
+  backend. Consumers who already added OrionGuard for validation get distributed locking
+  via one extra `UseRedisLock(...)` call.
+- **Push-based outbox dispatcher.** Replaces the v6.4 polling loop with a `PostgresLISTEN` /
+  `SqlServerBrokerNotification` push backend on the EF Core providers that support it.
+  Falls back to polling cleanly.
+- **Outbox dead-letter UI surface.** A read-only `MapOutboxDashboard` endpoint listing
+  failed/poisoned messages with replay / discard actions. Authorization-required by default.
+
+### v6.6.0 — Migration & Contract-First *(planned, Q4 2026)*
+
+Theme: *make adoption a weekend, not a quarter.*
+
+- **R1: FluentValidation migration codemod (`dotnet orionguard migrate`).** Reads a project,
+  rewrites validators to OrionGuard equivalents, emits a diff report. Covers the 25 most
+  common FluentValidation built-ins, rule sets, `ChildRules`, `When/Unless`, `SetValidator`
+  and async rules.
+- **R2: OpenAPI-First validation.** `[OpenApiValidator("openapi.yaml", "#/...")]` generates
+  validators from the schema; complements the existing validator-to-OpenAPI direction shipped
+  by `OrionGuard.Swagger`.
+- **`OrionGuard.Hangfire` integration.** Validates job arguments at enqueue time and on the
+  worker side; rejected enqueues raise a structured `JobValidationException` instead of
+  failing inside the worker.
+
+### v6.7.0 — Production Excellence *(planned, Q1 2027)*
+
+Theme: *stop one validator from melting an instance, and answer "why is this failing in prod"
+in one query.*
+
+- **R7: Validation budget.** Per-request budget for total validation wall-clock and rule
+  count; tripping the budget short-circuits with a structured `ValidationBudgetExceeded`
+  result and a metric.
+- **R8: Top-N failure analytics.** Built-in aggregation of failure reasons over a rolling
+  window, exposed both as `IMeter` histograms and a `MapValidationAnalytics` endpoint.
+- **Per-rule circuit breaker.** Optional circuit-breaker wrapper around individual async
+  rules so a flaky external dependency cannot stall the request pipeline.
+- **OpenTelemetry semantic-convention pass.** Align metric and span names with the upcoming
+  OTel semconv shape, in lockstep with [[orionaudit]] and [[orionlock]].
+
+### v7.0.0 — Stable API *(planned, Q2 2027)*
+
+Theme: *commit to the surface and remove the deprecated paths.*
+
+- **API freeze + SemVer 2.0.0 commitment.** Public types lock; breaking changes only on
+  majors from this point.
+- **Remove the in-box `StronglyTypedId` source generator** (soft-deprecated in v6.5, removed
+  here). Migration path: install `OrionKey`, no source changes required if the migration
+  analyzer was followed.
+- **Drop net8.0 decision.** Decide and publish whether v7.x ships TFM `net8.0` or starts at
+  `net9.0`. This is the last chance to cut net8 before SemVer locks it in for the 7.x line.
+- **Documentation site.** Hosted reference + recipes + migration guides covering everything
+  shipped in v6.x and the bridges to the rest of the family.
 
 ---
 
@@ -90,7 +165,7 @@ See [FEATURES-v6.md](FEATURES-v6.md) for full details.
 The fastest-impact work: remove migration friction, ship features that make
 prospective users pick OrionGuard when evaluating libraries.
 
-### R1. FluentValidation Migration Codemod `[Planned]` `L` `v6.2`
+### R1. FluentValidation Migration Codemod `[Planned]` `L` `v6.6`
 
 A `dotnet tool` that reads existing FluentValidation validators and rewrites them
 as OrionGuard equivalents.
@@ -110,7 +185,7 @@ ambition is for a typical codebase to migrate in minutes, not weeks.
 
 ---
 
-### R2. OpenAPI-First Validation `[Planned]` `L` `v6.2`
+### R2. OpenAPI-First Validation `[Planned]` `L` `v6.6`
 
 Given an OpenAPI 3 document, emit validators that enforce the schema constraints.
 The inverse of `OrionGuard.Swagger`, which goes validator to OpenAPI.
@@ -217,7 +292,7 @@ layer is unavailable.
 
 ---
 
-### R7. Validation Budget Enforcement `[Planned]` `S` `v6.2`
+### R7. Validation Budget Enforcement `[Planned]` `S` `v6.7`
 
 Per-request time ceiling; slow validators are a silent performance regression source.
 
@@ -231,7 +306,7 @@ validator.WithBudget(TimeSpan.FromMilliseconds(50))
 
 ---
 
-### R8. Top-N Failure Analytics `[Planned]` `S` `v6.3`
+### R8. Top-N Failure Analytics `[Planned]` `S` `v6.7`
 
 Rolling window of most-frequent validation failures, per property, per error code.
 
@@ -654,11 +729,26 @@ candidates for the next milestone.
 
 ## Release Cadence
 
-- **Patch releases** (`6.0.x`) -- bug fixes and minor tweaks, shipped as needed.
+- **Patch releases** (`6.x.y`) -- bug fixes and minor tweaks, shipped as needed.
 - **Minor releases** (`6.x.0`) -- feature drops targeting one or two Tier 1-2 items.
   Target cadence: every 6-8 weeks.
-- **Major releases** (`7.0`) -- breaking changes bundled; next major is open research.
-  No fixed date; likely 2026 Q3 or later.
+- **Major releases** (`7.0`) -- breaking changes bundled. The current target window for
+  v7.0 is **Q2 2027**; the headline breaking change is the removal of the in-box
+  `StronglyTypedId` source generator (soft-deprecated in v6.5 in favour of
+  [OrionKey](https://github.com/tunahanaliozturk/OrionKey)).
+
+### One-line milestone calendar
+
+| Release | Target             | Theme                                                        |
+| ------- | ------------------ | ------------------------------------------------------------ |
+| v6.4.1  | shipped 2026-05-23 | Logo refresh                                                 |
+| v6.5.0  | Q3 2026            | Family integration (OrionKey/OrionLock bridges, push outbox) |
+| v6.6.0  | Q4 2026            | FluentValidation migration codemod + OpenAPI-first           |
+| v6.7.0  | Q1 2027            | Validation budget, top-N analytics, circuit-breaker          |
+| v7.0.0  | Q2 2027            | API freeze, remove deprecated paths, docs site               |
+
+Dates are targets, not commitments. If a milestone slips by more than four weeks, the delay
+shows up here.
 
 ---
 
