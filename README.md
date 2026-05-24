@@ -541,6 +541,17 @@ workload demand is what moves items up the list.
 
 ---
 
+## More from the Orion family
+
+OrionGuard is one of a set of standalone .NET libraries:
+
+- [OrionAudit](https://github.com/tunahanaliozturk/OrionAudit) - automatic EF Core change-audit trail.
+- [OrionKey](https://github.com/tunahanaliozturk/OrionKey) - source-generated strongly-typed IDs.
+- [OrionLock](https://github.com/tunahanaliozturk/OrionLock) - distributed locking.
+- [OrionPatch](https://github.com/tunahanaliozturk/OrionPatch) - transactional outbox for EF Core (enqueue inside SaveChanges, dispatch at-least-once through a pluggable sink).
+
+---
+
 ## Contributing
 
 Contributions are welcome! Please read our [Contributing Guide](CONTRIBUTING.md) before submitting a pull request.
