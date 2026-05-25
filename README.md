@@ -549,6 +549,7 @@ OrionGuard is one of a set of standalone .NET libraries:
 - [OrionKey](https://github.com/tunahanaliozturk/OrionKey) - source-generated strongly-typed IDs.
 - [OrionLock](https://github.com/tunahanaliozturk/OrionLock) - distributed locking.
 - [OrionPatch](https://github.com/tunahanaliozturk/OrionPatch) - transactional outbox for EF Core (enqueue inside SaveChanges, dispatch at-least-once through a pluggable sink).
+- [OrionVault](https://github.com/tunahanaliozturk/OrionVault) - column-level transparent data encryption at rest for EF Core.
 
 ---
 
