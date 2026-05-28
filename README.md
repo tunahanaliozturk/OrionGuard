@@ -552,6 +552,16 @@ OrionGuard is one of a set of standalone .NET libraries:
 
 ---
 
+### See it in a real app
+
+[Moongazing.OrionShowcase](https://github.com/tunahanaliozturk/OrionShowcase) is a production-shaped banking sample integrating all six Orion packages end-to-end. OrionGuard does the most work in the showcase: every command validator is a `FluentStyleValidator<TCommand>`, Domain guards use `Ensure`/`FastGuard`/`Contract`, and `AddOrionGuardAspNetCore` + `UseOrionGuardValidation` handle ProblemDetails. Concrete usage in the showcase:
+
+- [src/Moongazing.OrionShowcase.Application/Accounts/Commands/TransferMoney/TransferMoneyValidator.cs](https://github.com/tunahanaliozturk/OrionShowcase/blob/main/src/Moongazing.OrionShowcase.Application/Accounts/Commands/TransferMoney/TransferMoneyValidator.cs)
+- [src/Moongazing.OrionShowcase.Domain/Accounts/Account.cs](https://github.com/tunahanaliozturk/OrionShowcase/blob/main/src/Moongazing.OrionShowcase.Domain/Accounts/Account.cs)
+- [src/Moongazing.OrionShowcase.Api/Program.cs](https://github.com/tunahanaliozturk/OrionShowcase/blob/main/src/Moongazing.OrionShowcase.Api/Program.cs)
+
+---
+
 ## Contributing
 
 Contributions are welcome! Please read our [Contributing Guide](CONTRIBUTING.md) before submitting a pull request.
