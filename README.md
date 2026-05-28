@@ -22,6 +22,66 @@
 
 ---
 
+## How it works
+
+OrionGuard's validation pipeline is the same regardless of where it runs (ASP.NET Core filter, MediatR behavior, manual call). Input arrives, a validator runs each rule against each targeted property, the rule outcomes collapse into a `GuardResult`, and the result is either thrown as an exception, returned as a result object, or converted to RFC 9457 ProblemDetails by the AspNetCore package.
+
+```mermaid
+flowchart LR
+    In([Input<br/>DTO / command / value]) --> V[Validator<br/>FluentStyleValidator / AbstractValidator / generated]
+    V --> R[Rule<br/>NotEmpty, Email, MinLength, ...]
+    R --> Out{Outcome}
+    Out -- pass --> Acc[Accumulate]
+    Out -- fail --> Err[Add error<br/>property + code + message]
+    Acc --> More{more rules?}
+    Err --> More
+    More -- yes --> R
+    More -- no --> Result([GuardResult])
+    Result --> Throw[throw on Ensure]
+    Result --> Return[return on Validate]
+    Result --> PD[ProblemDetails<br/>OrionGuard.AspNetCore]
+
+    classDef rule fill:#e0e7ff,stroke:#312e81,color:#1e1b4b
+    classDef pass fill:#dcfce7,stroke:#166534,color:#14532d
+    classDef fail fill:#fee2e2,stroke:#991b1b,color:#7f1d1d
+    classDef out fill:#dbeafe,stroke:#1e40af,color:#1e3a8a
+    class V,R rule
+    class Acc pass
+    class Err fail
+    class Throw,Return,PD out
+```
+
+In an ASP.NET Core minimal-API endpoint the same pipeline is wrapped by the OrionGuard endpoint filter, which intercepts the request before the handler runs and short-circuits with a ProblemDetails payload when validation fails. The default status code is 422 (Unprocessable Entity), configurable per request via `OrionGuardEndpointFilterOptions.DefaultStatusCode`.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor C as Client
+    participant API as ASP.NET Core<br/>minimal API
+    participant Filt as OrionGuardEndpointFilter
+    participant Val as IValidator&lt;T&gt;
+    participant Hnd as Handler
+    participant PD as ProblemDetails
+
+    C->>API: POST /api/users (JSON body)
+    API->>API: model binding -> CreateUserRequest
+    API->>Filt: invoke filter chain
+    Filt->>Val: Validate(request)
+    Val-->>Filt: GuardResult
+    alt valid
+        Filt->>Hnd: continue
+        Hnd-->>API: response
+        API-->>C: 2xx OK
+    else invalid
+        Filt->>PD: build ValidationProblem (errors dictionary)
+        PD-->>Filt: status = options.DefaultStatusCode (defaults to 422)
+        Filt-->>API: short-circuit (Results.Problem)
+        API-->>C: 422 (default) application/problem+json
+    end
+```
+
+---
+
 ## Why OrionGuard?
 
 | Feature | OrionGuard | FluentValidation | Ardalis.GuardClauses | Dawn.Guard |
@@ -426,70 +486,15 @@ var msg = ValidationMessages.Get("NotNull", "Email");
 
 ## Benchmarks
 
-Measured with BenchmarkDotNet v0.14.0 on an Intel Core i7-7820HQ CPU 2.90GHz (Kaby Lake), Windows 11, .NET 10.0.5 (X64 RyuJIT AVX2). Run with the `ShortRun` job (3 warmup + 3 iterations); numbers are indicative. Run `dotnet run -c Release --project benchmarks/Moongazing.OrionGuard.Benchmarks` to reproduce.
+See [benchmarks.md](benchmarks.md) for the full BenchmarkDotNet run, environment, and per-scenario interpretation (null checks, email validation, generated vs. cached regex, object validation, security guards, domain primitives). Headline numbers from the last measured run on an Intel Core i7-7820HQ (Kaby Lake), .NET 10.0.5, BenchmarkDotNet 0.14.0:
 
-### Null checks
+- `FastGuard.NotNullOrEmpty` (span-based): sub-nanosecond on the happy path, zero allocations.
+- `Guard.AgainstInvalidEmail`: ~74 ns, zero allocations. `FastGuard.Email` span-based variant: ~12 ns.
+- Generated regex patterns: 2-3x faster and zero-alloc compared to cached `Regex` instances.
+- Security guards (`AgainstSqlInjection`, `AgainstXss`) are O(N) on input length with FrozenSet lookups; sub-50 ns on short strings.
+- `record` value objects: ~6 ns equality; class-based `ValueObject` is about 17x slower due to enumerating equality components.
 
-| Method                               | Mean       | Error      | StdDev    | Median     | Ratio  | RatioSD | Gen0   | Allocated | Alloc Ratio |
-|------------------------------------- |-----------:|-----------:|----------:|-----------:|-------:|--------:|-------:|----------:|------------:|
-| RawIfThrow_NotNull                   |  0.9427 ns |  9.0955 ns | 0.4986 ns |  0.7322 ns |  1.175 |    0.72 |      - |         - |          NA |
-| Guard_AgainstNull                    |  0.1294 ns |  0.8487 ns | 0.0465 ns |  0.1418 ns |  0.161 |    0.08 |      - |         - |          NA |
-| Ensure_That_NotNull                  | 15.1543 ns | 34.4373 ns | 1.8876 ns | 14.1039 ns | 18.890 |    7.35 | 0.0191 |      80 B |          NA |
-| FastGuard_NotNull                    |  1.2557 ns |  1.3515 ns | 0.0741 ns |  1.2389 ns |  1.565 |    0.59 |      - |         - |          NA |
-| Guard_AgainstNullOrEmpty_ValidString |  1.1358 ns |  3.1390 ns | 0.1721 ns |  1.0534 ns |  1.416 |    0.56 |      - |         - |          NA |
-| FastGuard_NotNullOrEmpty_ValidString |  0.0796 ns |  1.7406 ns | 0.0954 ns |  0.0534 ns |  0.099 |    0.12 |      - |         - |          NA |
-| Ensure_NotNullOrEmpty_ValidString    |  0.0000 ns |  0.0000 ns | 0.0000 ns |  0.0000 ns |  0.000 |    0.00 |      - |         - |          NA |
-
-### Email validation
-
-| Method                    | Mean     | Error    | StdDev   | Ratio | RatioSD | Gen0   | Allocated | Alloc Ratio |
-|-------------------------- |---------:|---------:|---------:|------:|--------:|-------:|----------:|------------:|
-| RawCompiledRegex_Email    | 78.23 ns | 23.68 ns | 1.298 ns |  1.00 |    0.02 |      - |         - |          NA |
-| GeneratedRegex_Email      | 79.45 ns | 34.13 ns | 1.871 ns |  1.02 |    0.03 |      - |         - |          NA |
-| Guard_AgainstInvalidEmail | 74.11 ns | 28.21 ns | 1.546 ns |  0.95 |    0.02 |      - |         - |          NA |
-| FastGuard_Email_SpanBased | 11.66 ns | 19.49 ns | 1.068 ns |  0.15 |    0.01 |      - |         - |          NA |
-| Ensure_That_Email         | 84.45 ns | 33.18 ns | 1.819 ns |  1.08 |    0.03 | 0.0191 |      80 B |          NA |
-
-### Regex patterns
-
-| Method                      | Mean      | Error     | StdDev   | Gen0   | Allocated |
-|---------------------------- |----------:|----------:|---------:|-------:|----------:|
-| RegexCache_Email            | 155.53 ns | 51.732 ns | 2.836 ns | 0.0191 |      80 B |
-| GeneratedRegex_Email        |  75.65 ns | 30.528 ns | 1.673 ns |      - |         - |
-| RegexCache_PhoneNumber      | 120.45 ns | 10.215 ns | 0.560 ns | 0.0153 |      64 B |
-| GeneratedRegex_PhoneNumber  |  50.09 ns | 56.275 ns | 3.085 ns |      - |         - |
-| RegexCache_AlphaNumeric     | 104.81 ns | 87.034 ns | 4.771 ns | 0.0134 |      56 B |
-| GeneratedRegex_AlphaNumeric |  35.11 ns |  6.788 ns | 0.372 ns |      - |         - |
-
-### Object validation
-
-| Method                            | Mean         | Error        | StdDev     | Ratio  | RatioSD | Gen0   | Allocated | Alloc Ratio |
-|---------------------------------- |-------------:|-------------:|-----------:|-------:|--------:|-------:|----------:|------------:|
-| ManualValidation                  |     4.786 ns |     1.316 ns |  0.0721 ns |   1.00 |    0.02 |      - |         - |          NA |
-| Validate_For_AllProperties        | 2,546.446 ns |   542.276 ns | 29.7240 ns | 532.11 |    8.78 | 0.8850 |    3704 B |          NA |
-| Validate_For_WithPropertyChaining | 2,777.566 ns | 1,464.866 ns | 80.2942 ns | 580.41 |   16.38 | 0.8545 |    3576 B |          NA |
-| Validate_ForStrict_AllProperties  | 2,642.425 ns | 1,409.270 ns | 77.2468 ns | 552.17 |   15.72 | 0.8698 |    3640 B |          NA |
-
-### Security guards
-
-| Method                     | Mean         | Error        | StdDev     | Allocated |
-|--------------------------- |-------------:|-------------:|-----------:|----------:|
-| AgainstSqlInjection_Short  |     41.98 ns |     6.435 ns |   0.353 ns |         - |
-| AgainstSqlInjection_Medium |  1,266.87 ns |   607.982 ns |  33.326 ns |         - |
-| AgainstSqlInjection_Long   | 25,233.83 ns | 2,297.883 ns | 125.955 ns |         - |
-| AgainstXss_Short           |     34.03 ns |    31.848 ns |   1.746 ns |         - |
-| AgainstXss_Medium          |    297.09 ns |   217.671 ns |  11.931 ns |         - |
-| AgainstXss_Long            |  3,230.04 ns | 1,115.045 ns |  61.119 ns |         - |
-| AgainstInjection_Short     |    129.59 ns |    29.715 ns |   1.629 ns |         - |
-| AgainstInjection_Medium    |  1,735.31 ns |   451.942 ns |  24.772 ns |         - |
-
-### Domain primitives
-
-| Method                     | Mean       | Error      | StdDev    | Ratio | RatioSD | Gen0   | Allocated | Alloc Ratio |
-|--------------------------- |-----------:|-----------:|----------:|------:|--------:|-------:|----------:|------------:|
-| ValueObject_ClassEquality  | 104.908 ns | 66.1232 ns | 3.6244 ns |  1.00 |    0.04 | 0.0343 |     144 B |        1.00 |
-| ValueObject_RecordEquality |   6.187 ns |  0.9568 ns | 0.0524 ns |  0.06 |    0.00 |      - |         - |        0.00 |
-| AggregateRoot_RaiseAndPull | 160.362 ns | 25.2494 ns | 1.3840 ns |  1.53 |    0.05 | 0.0172 |      72 B |        0.50 |
+Reproduce with `dotnet run -c Release --project benchmarks/Moongazing.OrionGuard.Benchmarks`.
 
 ---
 
