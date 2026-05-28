@@ -51,17 +51,17 @@ flowchart LR
     class Throw,Return,PD out
 ```
 
-In an ASP.NET Core minimal-API endpoint the same pipeline is wrapped by the OrionGuard endpoint filter, which intercepts the request before the handler runs and short-circuits with a 400 + ProblemDetails payload when validation fails.
+In an ASP.NET Core minimal-API endpoint the same pipeline is wrapped by the OrionGuard endpoint filter, which intercepts the request before the handler runs and short-circuits with a ProblemDetails payload when validation fails. The default status code is 422 (Unprocessable Entity), configurable per request via `OrionGuardEndpointFilterOptions.DefaultStatusCode`.
 
 ```mermaid
 sequenceDiagram
     autonumber
     actor C as Client
     participant API as ASP.NET Core<br/>minimal API
-    participant Filt as OrionGuard<br/>endpoint filter
+    participant Filt as OrionGuardEndpointFilter
     participant Val as IValidator&lt;T&gt;
     participant Hnd as Handler
-    participant PD as ProblemDetails<br/>middleware
+    participant PD as ProblemDetails
 
     C->>API: POST /api/users (JSON body)
     API->>API: model binding -> CreateUserRequest
@@ -74,9 +74,9 @@ sequenceDiagram
         API-->>C: 2xx OK
     else invalid
         Filt->>PD: build ValidationProblem (errors dictionary)
-        PD-->>Filt: 400 application/problem+json
-        Filt-->>API: short-circuit
-        API-->>C: 400 ProblemDetails
+        PD-->>Filt: status = options.DefaultStatusCode (defaults to 422)
+        Filt-->>API: short-circuit (Results.Problem)
+        API-->>C: 422 (default) application/problem+json
     end
 ```
 
