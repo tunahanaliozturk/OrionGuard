@@ -58,7 +58,8 @@ Priority tiers roughly map to timing:
 - **v6.3.0** — Domain event dispatcher, MediatR bridge, EF Core `SaveChanges` interceptor.
 - **v6.4.0** — Full `BusinessRule` base class, `Guard.Against.BrokenRule`, ASP.NET Core ProblemDetails mapping; in-process `IDistributedLock` primitive (in-memory + EF Core `SKIP LOCKED`); audit-trail copy-before-delete; outbox type-map registry; archive-only outbox post-publish behaviour.
 - **v6.4.1** — Logo refresh shipped 2026-05-23 (minimalist family-style indigo shield, no code changes).
-- **v6.5.0** (next) — Soft-deprecation of the in-box `StronglyTypedId` generator in favour of the standalone [OrionKey](https://github.com/tunahanaliozturk/OrionKey) package; Redis-backed `IDistributedLock` bridge via the new [OrionLock](https://github.com/tunahanaliozturk/OrionLock) package; push-based outbox dispatch.
+- **v6.4.2** — Logo cream-bg variant for dark-mode README/NuGet card contrast (no code changes).
+- **v6.5.0** — Shipped 2026-06-01. Redis-backed `IDistributedLock` bridge (`OrionGuard.Locks.Redis`) over the standalone [OrionLock](https://github.com/tunahanaliozturk/OrionLock) Redis backend. Push-based outbox dispatcher and outbox dead-letter UI were de-scoped from this minor and deferred to v6.5.1 and v6.5.2 respectively.
 
 ---
 
@@ -72,22 +73,36 @@ mirrors the public-facing roadmaps in the sibling [[orionaudit]] and [[orionlock
 Dates are targets, not commitments. If a milestone slips by more than four weeks, the delay
 shows up here.
 
-### v6.5.0 — Family Integration *(planned, Q3 2026)*
+### v6.5.0 — Family Integration *(Shipped 2026-06-01)*
 
 Theme: *let OrionGuard quietly hand off the workloads its siblings now do better.*
 
-- **`StronglyTypedId` generator soft-deprecation.** The in-box generator emits `[Obsolete]`
-  with a migration hint pointing at [OrionKey](https://github.com/tunahanaliozturk/OrionKey).
-  No runtime break — generated ids continue to compile and run. Removal scheduled for v7.0.
-- **`OrionGuard.Locks.Redis` bridge.** Implements the v6.4 `IDistributedLock` primitive on
-  top of the standalone [OrionLock](https://github.com/tunahanaliozturk/OrionLock) Redis
-  backend. Consumers who already added OrionGuard for validation get distributed locking
-  via one extra `UseRedisLock(...)` call.
+- **`StronglyTypedId` generator soft-deprecation.** Shipped in v6.4.2. The in-box generator
+  emits `[Obsolete]` with a migration hint pointing at
+  [OrionKey](https://github.com/tunahanaliozturk/OrionKey). No runtime break — generated ids
+  continue to compile and run. Removal scheduled for v7.0.
+- **`OrionGuard.Locks.Redis` bridge.** Shipped 2026-06-01. Implements the v6.4
+  `IDistributedLock` primitive on top of the standalone
+  [OrionLock](https://github.com/tunahanaliozturk/OrionLock) Redis backend. Consumers who
+  already added OrionGuard for validation get distributed locking via one extra
+  `UseOrionLockRedis(...)` call on the EF Core options.
+
+### v6.5.1 — Push-Based Outbox Dispatch *(planned, Q3 2026)*
+
+Theme: *cut tail-latency on outbox dispatch from "polling interval" to "milliseconds".*
+
 - **Push-based outbox dispatcher.** Replaces the v6.4 polling loop with a `PostgresLISTEN` /
   `SqlServerBrokerNotification` push backend on the EF Core providers that support it.
-  Falls back to polling cleanly.
+  Falls back to polling cleanly. Deferred from v6.5.0 to keep the v6.5.0 release scoped to
+  the Locks.Redis bridge.
+
+### v6.5.2 — Outbox Operator Surface *(planned, Q4 2026)*
+
+Theme: *make poisoned messages a first-class operator concern, not a manual SQL chore.*
+
 - **Outbox dead-letter UI surface.** A read-only `MapOutboxDashboard` endpoint listing
   failed/poisoned messages with replay / discard actions. Authorization-required by default.
+  Deferred from v6.5.0 in service of the same focus discipline.
 
 ### v6.6.0 — Migration & Contract-First *(planned, Q4 2026)*
 

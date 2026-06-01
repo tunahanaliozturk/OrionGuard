@@ -5,6 +5,48 @@ All notable changes to OrionGuard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.5.0] - 2026-06-01
+
+### Added
+
+#### `OrionGuard.Locks.Redis` (NEW PACKAGE)
+
+- Redis backend for the `IDistributedLock` primitive introduced in v6.4.0. Bridges OrionGuard's `IDistributedLock` / `IDistributedLockHandle` to OrionLock's raw `IDistributedLockProvider`, with `RedisLockProvider` from `OrionLock.Redis` (v0.2.3) as the default wiring.
+- `OrionLockBridgeDistributedLock` adapter — non-blocking acquire, owner-token release via Lua compare-and-delete on Redis. No watchdog renewal, no reentrancy. Aligns with OrionGuard's at-least-once outbox semantics where lease loss is tolerated and consumer event handlers must be idempotent.
+- DI extensions on `OrionGuardEfCoreOptions`:
+  - `UseOrionLockRedis(connectionString, configure)` — builds a singleton `IConnectionMultiplexer` from the supplied connection string.
+  - `UseOrionLockRedis(configure)` — uses an already-registered `IConnectionMultiplexer` from DI (preferred when the application already shares a Redis connection).
+- `RedisLockOptions` (re-exported via the OrionLock.Redis transitive dependency) configures `KeyPrefix` (default `orionlock:`) and `Database` (default -1).
+
+### Changed
+
+- `Moongazing.OrionGuard.EntityFrameworkCore` now declares `InternalsVisibleTo` for `Moongazing.OrionGuard.Locks.Redis` and its test assembly so the bridge can use the internal `OrionGuardEfCoreOptions.ServiceCustomizations` hook the same way the built-in `UseDistributedLock<T>()` does. No public API change. Other future `OrionGuard.Locks.*` backends (Consul, Postgres advisory locks, etc.) will be added to the same list when they ship.
+
+### Deferred from v6.5.0
+
+The original v6.5.0 milestone in `docs/ROADMAP.md` listed four features. To keep this minor focused and reviewable, two were de-scoped from v6.5.0 and re-targeted:
+
+- **Push-based outbox dispatcher** — now targets **v6.5.1**. Will replace the v6.4 polling loop with a `PostgresLISTEN` / `SqlServerBrokerNotification` push backend on EF Core providers that support it, with a clean fallback to polling.
+- **Outbox dead-letter UI surface** — now targets **v6.5.2**. A read-only `MapOutboxDashboard` endpoint listing failed/poisoned messages with replay and discard actions; authorization-required by default.
+
+### Migration from v6.4.2
+
+- **No breaking source changes.**
+- **Adopting the Redis lock backend (multi-instance consumers who already use Redis):**
+  ```csharp
+  services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect("localhost:6379"));
+  services.AddOrionGuardEfCore<AppDbContext>(opts => opts
+      .UseOutbox()
+      .UseOrionLockRedis(o => o.KeyPrefix = "myapp:outbox:"));
+  ```
+  Or with a connection string:
+  ```csharp
+  services.AddOrionGuardEfCore<AppDbContext>(opts => opts
+      .UseOutbox()
+      .UseOrionLockRedis("localhost:6379"));
+  ```
+- **Consumers staying on the default DB-backed `SkipLockedDistributedLock`** require no changes — it is still wired automatically by `AddOrionGuardEfCore` in Outbox mode.
+
 ## [6.4.2] - 2026-05-26
 
 ### Changed
