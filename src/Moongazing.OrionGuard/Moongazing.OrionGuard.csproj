@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 	<PropertyGroup>
 		<TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
 		<ImplicitUsings>enable</ImplicitUsings>
@@ -16,7 +16,7 @@
 		<OutputType>Library</OutputType>
 
 		<PackageId>OrionGuard</PackageId>
-		<Version>6.4.2</Version>
+		<Version>6.5.0</Version>
 		<Authors>Tunahan Ali Ozturk</Authors>
 		<Company>Tunahan Ali Ozturk</Company>
 		<GeneratePackageOnBuild>false</GeneratePackageOnBuild>
@@ -35,7 +35,19 @@
 		<PackageProjectUrl>https://github.com/tunahanaliozturk/OrionGuard</PackageProjectUrl>
 		<PackageTags>guard;validation;fluent;exceptions;.NET;input-validation;guard-clauses;defensive-programming;security;localization;format-validation;nativeaot;source-generator;aspnetcore;mediatr</PackageTags>
 		<PackageReleaseNotes>
-v6.3.0 — Release Notes
+v6.5.0 - Family Integration
+
+NEW PACKAGE: Moongazing.OrionGuard.Locks.Redis - bridges OrionGuard's IDistributedLock primitive (introduced in v6.4.0 for the outbox dispatcher) to the standalone OrionLock.Redis backend. Two DI entry points: UseOrionLockRedis(connectionString, configure) and UseOrionLockRedis(configure). Multi-instance outbox workers can now use Redis instead of the default DB-backed SkipLockedDistributedLock.
+
+DEFERRED from v6.5.0: Push-based outbox dispatcher moved to v6.5.1 (PostgresLISTEN + ServiceBroker push backends with polling fallback). Outbox dead-letter UI moved to v6.5.2 (MapOutboxDashboard read-only endpoint with replay and discard actions).
+
+MIGRATION: No breaking changes. Default DB-backed lock continues to work. Opt in to Redis by adding Moongazing.OrionGuard.Locks.Redis and calling .UseOrionLockRedis(...) on OrionGuardEfCoreOptions.
+
+Full changelog: https://github.com/tunahanaliozturk/OrionGuard/blob/master/CHANGELOG.md
+
+PRIOR RELEASES (kept for NuGet history readers)
+
+v6.3.0 - Release Notes
 
 NEW: Domain event dispatcher — IDomainEventDispatcher and IDomainEventHandler&lt;TEvent&gt; abstractions. Default ServiceProviderDomainEventDispatcher resolves handlers from IServiceProvider; supports SequentialFailFast (default), SequentialContinueOnError, and Parallel dispatch modes. DI: services.AddOrionGuardDomainEvents() + services.AddOrionGuardDomainEventHandlers(assembly).
 
