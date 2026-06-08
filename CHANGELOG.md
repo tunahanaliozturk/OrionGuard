@@ -5,6 +5,43 @@ All notable changes to OrionGuard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.5.1] - 2026-06-04
+
+### Added
+
+#### Push-based dispatch contract (`Moongazing.OrionGuard.EntityFrameworkCore`)
+
+The push-based outbox dispatcher promised in v6.5.0 lands as a contract + in-process implementation in v6.5.1. The concrete cross-process backends (Postgres `LISTEN/NOTIFY` and SQL Server Service Broker) ship as separate add-on packages in v6.5.2 and v6.5.3 respectively. The dispatcher loop now honours the new contract; consumers who do not opt in see identical v6.5.0 behaviour because the default implementation is polling-only.
+
+- **`IOutboxWakeSignal`** abstraction in `Moongazing.OrionGuard.EntityFrameworkCore.Outbox.Push`. Two methods: `WaitForNextTickAsync(pollingInterval, ct)` (upper-bounded wait the dispatcher uses between batches) and `SignalAsync(ct)` (called by enqueue paths or push backends to wake the dispatcher immediately).
+- **`NullOutboxWakeSignal`** - default registration. Polling-only; behaviour byte-for-byte identical to v6.5.0.
+- **`ChannelOutboxWakeSignal`** - in-process bounded `Channel<bool>` implementation. Useful for unit tests and for single-process deployments where the `SaveChangesInterceptor` can publish a wake directly. Signals coalesce: repeated `SignalAsync` calls while one wait is pending all complete a single wake.
+- **`OutboxDispatcherHostedService` constructor** gains an optional `IOutboxWakeSignal` parameter (defaults to `NullOutboxWakeSignal` when null). Polling-interval upper-bound is always honoured, so a misbehaving signal cannot stall dispatch indefinitely.
+- **DI default** in `AddOrionGuardEfCore(...)` registers `NullOutboxWakeSignal` via `TryAddSingleton<IOutboxWakeSignal, NullOutboxWakeSignal>()`. Consumers replace it before `AddOrionGuardEfCore` to opt in (`services.AddSingleton<IOutboxWakeSignal, ChannelOutboxWakeSignal>()`).
+
+### Deferred from v6.5.1
+
+The concrete push backends will land as add-on packages so consumers can adopt one without dragging the others into their dependency graph:
+
+- **`Moongazing.OrionGuard.Outbox.PostgresNotify`** package (Postgres `LISTEN/NOTIFY`-backed `IOutboxWakeSignal`) -> v6.5.2.
+- **`Moongazing.OrionGuard.Outbox.SqlServerBroker`** package (SQL Server Service Broker-backed `IOutboxWakeSignal`) -> v6.5.3.
+
+The outbox dead-letter UI from the original v6.5.0 plan stays at v6.5.4.
+
+`docs/ROADMAP.md` reflects the new targets.
+
+### Migration from v6.5.0
+
+Source-compatible. No DI registration change is required. Consumers that opt into the new contract:
+
+```csharp
+// Single-process - in-process push so SaveChangesInterceptor can wake the dispatcher.
+services.AddSingleton<IOutboxWakeSignal, ChannelOutboxWakeSignal>();
+services.AddOrionGuardEfCore<AppDbContext>(o => o.UseOutbox());
+```
+
+The dispatcher continues to acquire the distributed lock before each batch, so multi-instance correctness is unchanged.
+
 ## [6.5.0] - 2026-06-01
 
 ### Added
