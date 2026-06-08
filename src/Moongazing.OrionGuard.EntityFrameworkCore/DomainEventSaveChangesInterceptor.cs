@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Moongazing.OrionGuard.Domain.Events;
 using Moongazing.OrionGuard.Domain.Primitives;
 using Moongazing.OrionGuard.EntityFrameworkCore.Outbox;
+using Moongazing.OrionGuard.EntityFrameworkCore.Outbox.Push;
 using Moongazing.OrionGuard.EntityFrameworkCore.Outbox.TypeMap;
 
 namespace Moongazing.OrionGuard.EntityFrameworkCore;
@@ -101,6 +102,14 @@ public sealed class DomainEventSaveChangesInterceptor : SaveChangesInterceptor
         var options = serviceProvider.GetRequiredService<OrionGuardEfCoreOptions>();
         if (options.Strategy != DomainEventDispatchStrategy.Inline)
         {
+            // Outbox mode: fire the optional push-dispatch wake so a ChannelOutboxWakeSignal
+            // or other push backend can wake the dispatcher mid-poll instead of waiting for
+            // the polling interval. The default NullOutboxWakeSignal makes this a no-op.
+            var wakeSignal = serviceProvider.GetService<IOutboxWakeSignal>();
+            if (wakeSignal is not null)
+            {
+                await wakeSignal.SignalAsync(cancellationToken).ConfigureAwait(false);
+            }
             return await base.SavedChangesAsync(eventData, result, cancellationToken).ConfigureAwait(false);
         }
 

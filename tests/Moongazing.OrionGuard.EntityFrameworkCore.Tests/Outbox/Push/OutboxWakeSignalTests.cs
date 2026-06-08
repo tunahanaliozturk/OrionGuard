@@ -66,13 +66,16 @@ public sealed class OutboxWakeSignalTests
     {
         IOutboxWakeSignal signal = new ChannelOutboxWakeSignal();
 
+        // Start the stopwatch before the wait begins so we measure the FULL wait duration,
+        // not just the post-signal portion. Without this, a near-zero measurement is possible
+        // if waitTask happens to complete before the stopwatch starts.
+        var sw = Stopwatch.StartNew();
         var waitTask = signal.WaitForNextTickAsync(TimeSpan.FromSeconds(30), CancellationToken.None);
 
         // Signal after a short delay. The wait should complete well before 30s.
         await Task.Delay(100);
         await signal.SignalAsync(CancellationToken.None);
 
-        var sw = Stopwatch.StartNew();
         await waitTask;
         sw.Stop();
 

@@ -64,8 +64,8 @@ public static class ServiceCollectionExtensions
                 sp.GetRequiredService<IDistributedLock>(),
                 sp.GetRequiredService<OutboxTypeMapRegistry>(),
                 sp.GetRequiredService<OutboxTypeMapOptions>(),
-                sp.GetRequiredService<IOutboxWakeSignal>(),
-                sp.GetService<ILogger<OutboxDispatcherHostedService>>()));
+                sp.GetService<ILogger<OutboxDispatcherHostedService>>(),
+                sp.GetRequiredService<IOutboxWakeSignal>()));
         }
 
         // Apply fluent customizations (UseDistributedLock / UseOutboxTypeMap / UseOutboxArchival)

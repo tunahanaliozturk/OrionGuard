@@ -66,16 +66,16 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
         IDistributedLock? distributedLock = null,
         OutboxTypeMapRegistry? typeMap = null,
         OutboxTypeMapOptions? typeMapOptions = null,
-        IOutboxWakeSignal? wakeSignal = null,
-        ILogger<OutboxDispatcherHostedService>? logger = null)
+        ILogger<OutboxDispatcherHostedService>? logger = null,
+        IOutboxWakeSignal? wakeSignal = null)
     {
         this.options = options ?? throw new ArgumentNullException(nameof(options));
         this.scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
         this.distributedLock = distributedLock ?? new NullDistributedLock();
         this.typeMap = typeMap ?? new OutboxTypeMapRegistry();
         this.typeMapOptions = typeMapOptions ?? new OutboxTypeMapOptions();
-        this.wakeSignal = wakeSignal ?? new NullOutboxWakeSignal();
         this.logger = logger;
+        this.wakeSignal = wakeSignal ?? new NullOutboxWakeSignal();
     }
 
     /// <inheritdoc />
