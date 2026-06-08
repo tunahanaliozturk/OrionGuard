@@ -105,10 +105,15 @@ public sealed class DomainEventSaveChangesInterceptor : SaveChangesInterceptor
             // Outbox mode: fire the optional push-dispatch wake so a ChannelOutboxWakeSignal
             // or other push backend can wake the dispatcher mid-poll instead of waiting for
             // the polling interval. The default NullOutboxWakeSignal makes this a no-op.
+            //
+            // Use CancellationToken.None: the rows are already committed by the time we get
+            // here, so a request-level cancellation MUST NOT skip the wake. Skipping would
+            // leave the dispatcher waiting up to PollingInterval before noticing the new rows,
+            // which is exactly what the push-dispatch contract exists to prevent.
             var wakeSignal = serviceProvider.GetService<IOutboxWakeSignal>();
             if (wakeSignal is not null)
             {
-                await wakeSignal.SignalAsync(cancellationToken).ConfigureAwait(false);
+                await wakeSignal.SignalAsync(CancellationToken.None).ConfigureAwait(false);
             }
             return await base.SavedChangesAsync(eventData, result, cancellationToken).ConfigureAwait(false);
         }
