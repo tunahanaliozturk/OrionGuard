@@ -7,6 +7,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Moongazing.OrionGuard.Domain.Events;
 using Moongazing.OrionGuard.EntityFrameworkCore.Outbox.Locking;
+using Moongazing.OrionGuard.EntityFrameworkCore.Outbox.Push;
 using Moongazing.OrionGuard.EntityFrameworkCore.Outbox.TypeMap;
 
 namespace Moongazing.OrionGuard.EntityFrameworkCore.Outbox;
@@ -33,6 +34,7 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
     private readonly IDistributedLock distributedLock;
     private readonly OutboxTypeMapRegistry typeMap;
     private readonly OutboxTypeMapOptions typeMapOptions;
+    private readonly IOutboxWakeSignal wakeSignal;
     private readonly ILogger<OutboxDispatcherHostedService>? logger;
 
     /// <summary>Initializes a new worker.</summary>
@@ -51,6 +53,11 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
     /// Controls the AQN fallback behaviour when the registry has no mapping. When <see langword="null"/>,
     /// defaults preserve v6.3 source compatibility (AQN fallback enabled).
     /// </param>
+    /// <param name="wakeSignal">
+    /// Optional push-based wake signal used to wake the dispatcher mid-poll when new rows arrive.
+    /// When <see langword="null"/>, defaults to <see cref="NullOutboxWakeSignal"/> (polling-only,
+    /// behaviour identical to v6.4 / v6.5.0).
+    /// </param>
     /// <param name="logger">Optional logger used to surface startup and per-row diagnostic messages.</param>
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="options"/> or <paramref name="scopeFactory"/> is <see langword="null"/>.</exception>
     public OutboxDispatcherHostedService(
@@ -59,7 +66,8 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
         IDistributedLock? distributedLock = null,
         OutboxTypeMapRegistry? typeMap = null,
         OutboxTypeMapOptions? typeMapOptions = null,
-        ILogger<OutboxDispatcherHostedService>? logger = null)
+        ILogger<OutboxDispatcherHostedService>? logger = null,
+        IOutboxWakeSignal? wakeSignal = null)
     {
         this.options = options ?? throw new ArgumentNullException(nameof(options));
         this.scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
@@ -67,6 +75,7 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
         this.typeMap = typeMap ?? new OutboxTypeMapRegistry();
         this.typeMapOptions = typeMapOptions ?? new OutboxTypeMapOptions();
         this.logger = logger;
+        this.wakeSignal = wakeSignal ?? new NullOutboxWakeSignal();
     }
 
     /// <inheritdoc />
@@ -92,7 +101,7 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
                 if (handle is null)
                 {
                     // Why: another instance holds the lease. Sleep and retry — do not dispatch.
-                    await Task.Delay(options.PollingInterval, stoppingToken).ConfigureAwait(false);
+                    await wakeSignal.WaitForNextTickAsync(options.PollingInterval, stoppingToken).ConfigureAwait(false);
                     continue;
                 }
 
@@ -111,7 +120,7 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
 
             try
             {
-                await Task.Delay(options.PollingInterval, stoppingToken).ConfigureAwait(false);
+                await wakeSignal.WaitForNextTickAsync(options.PollingInterval, stoppingToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {

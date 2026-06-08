@@ -16,7 +16,7 @@
 		<OutputType>Library</OutputType>
 
 		<PackageId>OrionGuard</PackageId>
-		<Version>6.5.0</Version>
+		<Version>6.5.1</Version>
 		<Authors>Tunahan Ali Ozturk</Authors>
 		<Company>Tunahan Ali Ozturk</Company>
 		<GeneratePackageOnBuild>false</GeneratePackageOnBuild>
@@ -35,13 +35,23 @@
 		<PackageProjectUrl>https://github.com/tunahanaliozturk/OrionGuard</PackageProjectUrl>
 		<PackageTags>guard;validation;fluent;exceptions;.NET;input-validation;guard-clauses;defensive-programming;security;localization;format-validation;nativeaot;source-generator;aspnetcore;mediatr</PackageTags>
 		<PackageReleaseNotes>
+v6.5.1 - Push-Dispatch Contract
+
+NEW: IOutboxWakeSignal abstraction in Moongazing.OrionGuard.EntityFrameworkCore.Outbox.Push. Lets consumers swap the dispatcher's between-batch wait from polling to push without touching the rest of the dispatch loop. Two methods: WaitForNextTickAsync(pollingInterval, ct) and SignalAsync(ct).
+
+NEW: NullOutboxWakeSignal default - polling-only, byte-for-byte v6.5.0 behaviour. ChannelOutboxWakeSignal in-process Channel-backed implementation for single-process deployments and unit tests; repeated SignalAsync calls coalesce into one wake.
+
+CHANGED: DomainEventSaveChangesInterceptor fires SignalAsync on the registered IOutboxWakeSignal after every SaveChanges that runs in Outbox mode, so an opted-in consumer sees mid-poll wakes automatically. Polling interval still upper-bounds wake latency.
+
+CHANGED: OutboxDispatcherHostedService gains an optional 8th IOutboxWakeSignal parameter; positional callers using the previous 6-argument constructor with logger last continue to compile.
+
+DEFERRED: Moongazing.OrionGuard.Outbox.PostgresNotify add-on (Postgres LISTEN/NOTIFY) -> v6.5.2. Moongazing.OrionGuard.Outbox.SqlServerBroker (SQL Server Service Broker) -> v6.5.3. Outbox dead-letter UI -> v6.5.4.
+
+MIGRATION: Source-compatible. No DI changes are required to stay on polling. Opt in to in-process push by registering ChannelOutboxWakeSignal as IOutboxWakeSignal before AddOrionGuardEfCore.
+
 v6.5.0 - Family Integration
 
-NEW PACKAGE: Moongazing.OrionGuard.Locks.Redis - bridges OrionGuard's IDistributedLock primitive (introduced in v6.4.0 for the outbox dispatcher) to the standalone OrionLock.Redis backend. Two DI entry points: UseOrionLockRedis(connectionString, configure) and UseOrionLockRedis(configure). Multi-instance outbox workers can now use Redis instead of the default DB-backed SkipLockedDistributedLock.
-
-DEFERRED from v6.5.0: Push-based outbox dispatcher moved to v6.5.1 (PostgresLISTEN + ServiceBroker push backends with polling fallback). Outbox dead-letter UI moved to v6.5.2 (MapOutboxDashboard read-only endpoint with replay and discard actions).
-
-MIGRATION: No breaking changes. Default DB-backed lock continues to work. Opt in to Redis by adding Moongazing.OrionGuard.Locks.Redis and calling .UseOrionLockRedis(...) on OrionGuardEfCoreOptions.
+NEW PACKAGE: Moongazing.OrionGuard.Locks.Redis - bridges OrionGuard's IDistributedLock primitive to the standalone OrionLock.Redis backend.
 
 Full changelog: https://github.com/tunahanaliozturk/OrionGuard/blob/master/CHANGELOG.md
 

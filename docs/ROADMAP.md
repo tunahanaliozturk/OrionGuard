@@ -87,22 +87,30 @@ Theme: *let OrionGuard quietly hand off the workloads its siblings now do better
   already added OrionGuard for validation get distributed locking via one extra
   `UseOrionLockRedis(...)` call on the EF Core options.
 
-### v6.5.1 — Push-Based Outbox Dispatch *(planned, Q3 2026)*
+### v6.5.1 — Push-Dispatch Contract *(shipped 2026-06-04)*
 
-Theme: *cut tail-latency on outbox dispatch from "polling interval" to "milliseconds".*
+Ships the push-dispatch contract + in-process implementation. Concrete cross-process backends move to follow-up patches so this minor stays small and reviewable.
 
-- **Push-based outbox dispatcher.** Replaces the v6.4 polling loop with a `PostgresLISTEN` /
-  `SqlServerBrokerNotification` push backend on the EF Core providers that support it.
-  Falls back to polling cleanly. Deferred from v6.5.0 to keep the v6.5.0 release scoped to
-  the Locks.Redis bridge.
+- **`IOutboxWakeSignal`** abstraction in `Moongazing.OrionGuard.EntityFrameworkCore.Outbox.Push`.
+- **`NullOutboxWakeSignal`** - polling-only default (byte-for-byte v6.5.0 behaviour).
+- **`ChannelOutboxWakeSignal`** - in-process `Channel<bool>` implementation for single-process deployments and unit tests.
+- Dispatcher honours the signal as the polling-loop wait, with the configured polling interval as an upper bound on wake latency.
 
-### v6.5.2 — Outbox Operator Surface *(planned, Q4 2026)*
+### v6.5.2 — Postgres Push Backend *(planned)*
+
+- **`Moongazing.OrionGuard.Outbox.PostgresNotify`** add-on package. `IOutboxWakeSignal` backed by PostgreSQL `LISTEN/NOTIFY` with auto-reconnect and a polling fallback.
+
+### v6.5.3 — SQL Server Push Backend *(planned)*
+
+- **`Moongazing.OrionGuard.Outbox.SqlServerBroker`** add-on package. `IOutboxWakeSignal` backed by SQL Server Service Broker with the same fallback contract.
+
+### v6.5.4 — Outbox Operator Surface *(planned)*
 
 Theme: *make poisoned messages a first-class operator concern, not a manual SQL chore.*
 
 - **Outbox dead-letter UI surface.** A read-only `MapOutboxDashboard` endpoint listing
   failed/poisoned messages with replay / discard actions. Authorization-required by default.
-  Deferred from v6.5.0 in service of the same focus discipline.
+  Originally deferred from v6.5.0; staged after the push-dispatch trio so the dashboard can surface push-vs-polling state honestly.
 
 ### v6.6.0 — Migration & Contract-First *(planned, Q4 2026)*
 

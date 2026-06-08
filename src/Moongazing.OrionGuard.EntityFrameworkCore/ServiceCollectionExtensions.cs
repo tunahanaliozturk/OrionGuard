@@ -5,6 +5,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Moongazing.OrionGuard.EntityFrameworkCore.Outbox;
 using Moongazing.OrionGuard.EntityFrameworkCore.Outbox.Locking;
+using Moongazing.OrionGuard.EntityFrameworkCore.Outbox.Push;
 using Moongazing.OrionGuard.EntityFrameworkCore.Outbox.TypeMap;
 
 namespace Moongazing.OrionGuard.EntityFrameworkCore;
@@ -55,6 +56,7 @@ public static class ServiceCollectionExtensions
             services.TryAddSingleton<IDistributedLock, SkipLockedDistributedLock>();
             services.TryAddSingleton(new OutboxTypeMapRegistry());
             services.TryAddSingleton(new OutboxTypeMapOptions());
+            services.TryAddSingleton<IOutboxWakeSignal, NullOutboxWakeSignal>();
 
             services.AddHostedService(sp => new OutboxDispatcherHostedService(
                 sp.GetRequiredService<OutboxOptions>(),
@@ -62,7 +64,8 @@ public static class ServiceCollectionExtensions
                 sp.GetRequiredService<IDistributedLock>(),
                 sp.GetRequiredService<OutboxTypeMapRegistry>(),
                 sp.GetRequiredService<OutboxTypeMapOptions>(),
-                sp.GetService<ILogger<OutboxDispatcherHostedService>>()));
+                sp.GetService<ILogger<OutboxDispatcherHostedService>>(),
+                sp.GetRequiredService<IOutboxWakeSignal>()));
         }
 
         // Apply fluent customizations (UseDistributedLock / UseOutboxTypeMap / UseOutboxArchival)
