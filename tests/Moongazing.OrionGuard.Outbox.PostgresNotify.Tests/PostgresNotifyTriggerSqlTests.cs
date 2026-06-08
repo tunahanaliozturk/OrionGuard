@@ -45,6 +45,32 @@ public sealed class PostgresNotifyTriggerSqlTests
     }
 
     [Fact]
+    public void Create_escapes_single_quote_in_pg_notify_channel_literal()
+    {
+        // PostgreSQL single-quote escape: the quote is doubled inside the string literal.
+        var sql = PostgresNotifyTriggerSql.Create(channelName: "te'st");
+        Assert.Contains("pg_notify('te''st'", sql, StringComparison.Ordinal);
+        // Regression: there must NOT be a bare un-doubled quote inside the literal that would
+        // close it early and splice surrounding SQL.
+        Assert.DoesNotContain("pg_notify('te'st'", sql, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Create_escapes_double_quote_in_quoted_table_identifier()
+    {
+        // PostgreSQL quoted-identifier escape: the double-quote is doubled.
+        var sql = PostgresNotifyTriggerSql.Create(tableName: "Naughty\"Outbox");
+        Assert.Contains("ON \"Naughty\"\"Outbox\"", sql, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Drop_escapes_double_quote_in_quoted_table_identifier()
+    {
+        var sql = PostgresNotifyTriggerSql.Drop(tableName: "Naughty\"Outbox");
+        Assert.Contains("ON \"Naughty\"\"Outbox\"", sql, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Create_throws_on_null_or_whitespace_table()
     {
         Assert.Throws<ArgumentException>(() => PostgresNotifyTriggerSql.Create(tableName: "  "));

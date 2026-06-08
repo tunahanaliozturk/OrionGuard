@@ -82,7 +82,10 @@ public sealed partial class PostgresNotifyOutboxWakeSignal :
                 conn.Notification += OnNotification;
                 await conn.OpenAsync(stoppingToken).ConfigureAwait(false);
 
-                await using (var cmd = new NpgsqlCommand($"LISTEN \"{channel}\";", conn))
+                // Quoted-identifier escape: PostgreSQL doubles the double quote (`""`) so a
+                // channel name containing a double-quote does not malform the LISTEN command.
+                var quotedChannel = channel.Replace("\"", "\"\"", StringComparison.Ordinal);
+                await using (var cmd = new NpgsqlCommand($"LISTEN \"{quotedChannel}\";", conn))
                 {
                     await cmd.ExecuteNonQueryAsync(stoppingToken).ConfigureAwait(false);
                 }

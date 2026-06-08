@@ -24,17 +24,25 @@ public static class PostgresNotifyTriggerSql
         var funcName = $"orionguard_outbox_notify_{Sanitize(channelName)}";
         var triggerName = $"orionguard_outbox_notify_trigger_{Sanitize(channelName)}";
 
+        // Quoted-identifier escape: PostgreSQL doubles the double quote (`""`). Quoted-literal
+        // escape: PostgreSQL doubles the single quote (`''`). Apply both so custom table or
+        // channel names containing these characters do not produce malformed SQL or open a
+        // splice. The sanitised function and trigger names already contain no quotable
+        // characters and are spliced unquoted.
+        var tableQuoted = tableName.Replace("\"", "\"\"", StringComparison.Ordinal);
+        var channelLiteral = channelName.Replace("'", "''", StringComparison.Ordinal);
+
         return $@"
 CREATE OR REPLACE FUNCTION {funcName}() RETURNS trigger AS $$
 BEGIN
-    PERFORM pg_notify('{channelName}', NEW.""Id""::text);
+    PERFORM pg_notify('{channelLiteral}', NEW.""Id""::text);
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
-DROP TRIGGER IF EXISTS {triggerName} ON ""{tableName}"";
+DROP TRIGGER IF EXISTS {triggerName} ON ""{tableQuoted}"";
 CREATE TRIGGER {triggerName}
-AFTER INSERT ON ""{tableName}""
+AFTER INSERT ON ""{tableQuoted}""
 FOR EACH ROW
 EXECUTE FUNCTION {funcName}();
 ";
@@ -51,9 +59,10 @@ EXECUTE FUNCTION {funcName}();
 
         var funcName = $"orionguard_outbox_notify_{Sanitize(channelName)}";
         var triggerName = $"orionguard_outbox_notify_trigger_{Sanitize(channelName)}";
+        var tableQuoted = tableName.Replace("\"", "\"\"", StringComparison.Ordinal);
 
         return $@"
-DROP TRIGGER IF EXISTS {triggerName} ON ""{tableName}"";
+DROP TRIGGER IF EXISTS {triggerName} ON ""{tableQuoted}"";
 DROP FUNCTION IF EXISTS {funcName}();
 ";
     }
