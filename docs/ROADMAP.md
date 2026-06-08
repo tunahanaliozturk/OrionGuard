@@ -96,9 +96,9 @@ Ships the push-dispatch contract + in-process implementation. Concrete cross-pro
 - **`ChannelOutboxWakeSignal`** - in-process `Channel<bool>` implementation for single-process deployments and unit tests.
 - Dispatcher honours the signal as the polling-loop wait, with the configured polling interval as an upper bound on wake latency.
 
-### v6.5.2 — Postgres Push Backend *(planned)*
+### v6.5.2 — Postgres Push Backend *(shipped 2026-06-09)*
 
-- **`Moongazing.OrionGuard.Outbox.PostgresNotify`** add-on package. `IOutboxWakeSignal` backed by PostgreSQL `LISTEN/NOTIFY` with auto-reconnect and a polling fallback.
+- **`Moongazing.OrionGuard.Outbox.PostgresNotify`** add-on package shipped. `PostgresNotifyOutboxWakeSignal` runs `LISTEN` on a dedicated Npgsql connection and signals the dispatcher via the in-process channel; reconnect loop with exponential back-off bounded by `MaxReconnectDelay`. `PostgresNotifyTriggerSql.Create / Drop` helpers emit the consumer-managed AFTER INSERT trigger; the package does not auto-install schema changes.
 
 ### v6.5.3 — SQL Server Push Backend *(planned)*
 

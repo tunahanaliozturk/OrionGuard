@@ -7,11 +7,11 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <NoWarn>CS1591;NU1900;NU1901;NU1902;NU1903;NU1904</NoWarn>
-    <PackageId>OrionGuard.Testing</PackageId>
+    <PackageId>OrionGuard.Outbox.PostgresNotify</PackageId>
     <Version>6.5.2</Version>
     <Authors>Tunahan Ali Ozturk</Authors>
-    <Description>Testing helpers for OrionGuard. Provides DomainEventCapture and InMemoryDomainEventDispatcher with framework-agnostic assertions (no xUnit / NUnit / FluentAssertions dependency). Works with any test runner.</Description>
-    <PackageTags>guard;validation;testing;ddd;domain-events;assertions;test-helpers</PackageTags>
+    <Description>Postgres LISTEN/NOTIFY backed IOutboxWakeSignal for OrionGuard.EntityFrameworkCore. Replaces the v6.5.1 polling fallback with an event-driven wake on every committed outbox row when the consumer's database is PostgreSQL. Falls back to polling cleanly when the LISTEN connection is unreachable.</Description>
+    <PackageTags>guard;outbox;postgres;npgsql;listen;notify;push;dispatch;entity-framework-core;efcore</PackageTags>
     <PackageReadmeFile>docs/README.md</PackageReadmeFile>
     <PackageIcon>docs/logo.png</PackageIcon>
     <RepositoryUrl>https://github.com/tunahanaliozturk/OrionGuard</RepositoryUrl>
@@ -21,7 +21,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Moongazing.OrionGuard\Moongazing.OrionGuard.csproj" />
+    <PackageReference Include="Npgsql" Version="8.0.5" />
+    <ProjectReference Include="..\Moongazing.OrionGuard.EntityFrameworkCore\Moongazing.OrionGuard.EntityFrameworkCore.csproj" />
   </ItemGroup>
 
   <ItemGroup>

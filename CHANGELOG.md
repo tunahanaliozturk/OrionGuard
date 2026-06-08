@@ -5,6 +5,44 @@ All notable changes to OrionGuard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.5.2] - 2026-06-09
+
+### Added
+
+#### `Moongazing.OrionGuard.Outbox.PostgresNotify` (NEW PACKAGE)
+
+Postgres LISTEN/NOTIFY backed `IOutboxWakeSignal` for `OrionGuard.EntityFrameworkCore`. Lifts the v6.5.1 polling-only default into an event-driven wake on every committed outbox row when the consumer's database is PostgreSQL.
+
+- **`PostgresNotifyOutboxWakeSignal`** - `BackgroundService` that holds a dedicated `NpgsqlConnection`, runs `LISTEN "<channel>";`, and signals the dispatcher via the in-process `Channel<bool>` on every notification. Reconnect loop with exponential back-off bounded by `PostgresNotifyOptions.MaxReconnectDelay`.
+- **`PostgresNotifyOptions`** - `ConnectionString` (required), `ChannelName` (default `orionguard_outbox`), `InitialReconnectDelay`, `MaxReconnectDelay`.
+- **`PostgresNotifyTriggerSql`** - static helpers `Create(tableName, channelName)` / `Drop(tableName, channelName)` returning SQL that installs a `pg_notify`-emitting AFTER INSERT trigger. The package does NOT auto-install the trigger; consumers run the SQL once via an EF Core migration. Channel name is sanitised into a SQL identifier for the function / trigger names so two outbox tables in the same database do not collide.
+- **DI**: `services.AddPostgresNotifyOutboxWakeSignal(o => o.ConnectionString = "...");` registers the signal + hosted service in one call, replacing the default `NullOutboxWakeSignal`.
+
+### Fixed
+
+- CI pack list: `Moongazing.OrionGuard.Locks.Redis` was reintroduced into the `Pack All Projects` step. The line was lost during the v6.5.0 -> v6.5.1 rebase; this restores it alongside the new `OrionGuard.Outbox.PostgresNotify` pack call so both add-on packages publish to NuGet on release.
+
+### Deferred from v6.5.2
+
+- **`Moongazing.OrionGuard.Outbox.SqlServerBroker`** add-on (SQL Server Service Broker push backend) -> v6.5.3
+- **Outbox dead-letter UI surface** -> v6.5.4
+
+`docs/ROADMAP.md` reflects the targets.
+
+### Migration from v6.5.1
+
+Source-compatible. The new add-on package is opt-in: install `OrionGuard.Outbox.PostgresNotify`, install the trigger via SQL migration, register the signal:
+
+```csharp
+services.AddPostgresNotifyOutboxWakeSignal(o =>
+{
+    o.ConnectionString = "Host=db;Database=app;Username=app;Password=app";
+});
+services.AddOrionGuardEfCore<AppDbContext>(opts => opts.UseOutbox());
+```
+
+Consumers staying on the v6.5.1 in-process channel signal or the v6.5.0 polling default see no behaviour change.
+
 ## [6.5.1] - 2026-06-04
 
 ### Added
