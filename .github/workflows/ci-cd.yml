@@ -73,6 +73,8 @@ jobs:
           dotnet pack src/Moongazing.OrionGuard.Grpc/Moongazing.OrionGuard.Grpc.csproj --no-build --configuration Release -o ./nupkgs
           dotnet pack src/Moongazing.OrionGuard.SignalR/Moongazing.OrionGuard.SignalR.csproj --no-build --configuration Release -o ./nupkgs
           dotnet pack src/Moongazing.OrionGuard.EntityFrameworkCore/Moongazing.OrionGuard.EntityFrameworkCore.csproj --no-build --configuration Release -o ./nupkgs
+          dotnet pack src/Moongazing.OrionGuard.Locks.Redis/Moongazing.OrionGuard.Locks.Redis.csproj --no-build --configuration Release -o ./nupkgs
+          dotnet pack src/Moongazing.OrionGuard.Outbox.PostgresNotify/Moongazing.OrionGuard.Outbox.PostgresNotify.csproj --no-build --configuration Release -o ./nupkgs
           dotnet pack src/Moongazing.OrionGuard.Testing/Moongazing.OrionGuard.Testing.csproj --no-build --configuration Release -o ./nupkgs
 
       - name: Push to NuGet.org
