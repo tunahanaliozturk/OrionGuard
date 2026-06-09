@@ -35,10 +35,38 @@ public sealed class SqlServerBrokerSetupSqlTests
         var sql = SqlServerBrokerSetupSql.Drop();
 
         Assert.Contains("DROP TRIGGER [orionguard_outbox_broker_notify]", sql, StringComparison.Ordinal);
+        // DML triggers are dropped by name; there must NOT be an 'ON <table>' clause.
+        Assert.DoesNotContain("DROP TRIGGER [orionguard_outbox_broker_notify] ON", sql, StringComparison.Ordinal);
         Assert.Contains("DROP SERVICE [OrionGuardOutboxService]", sql, StringComparison.Ordinal);
         Assert.Contains("DROP QUEUE [OrionGuardOutboxQueue]", sql, StringComparison.Ordinal);
         Assert.Contains("DROP CONTRACT [OrionGuardOutboxContract]", sql, StringComparison.Ordinal);
         Assert.Contains("DROP MESSAGE TYPE [OrionGuardOutboxRowInserted]", sql, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Create_escapes_close_bracket_in_contract_name()
+    {
+        var sql = SqlServerBrokerSetupSql.Create(contractName: "Naughty]Contract");
+        Assert.Contains("CREATE CONTRACT [Naughty]]Contract]", sql, StringComparison.Ordinal);
+        Assert.Contains("ON CONTRACT [Naughty]]Contract]", sql, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Create_escapes_close_bracket_in_message_type_name()
+    {
+        var sql = SqlServerBrokerSetupSql.Create(messageTypeName: "Naughty]Msg");
+        Assert.Contains("CREATE MESSAGE TYPE [Naughty]]Msg]", sql, StringComparison.Ordinal);
+        Assert.Contains("MESSAGE TYPE [Naughty]]Msg]", sql, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Drop_escapes_close_bracket_in_contract_and_message_type_names()
+    {
+        var sql = SqlServerBrokerSetupSql.Drop(
+            contractName: "Naughty]Contract",
+            messageTypeName: "Naughty]Msg");
+        Assert.Contains("DROP CONTRACT [Naughty]]Contract]", sql, StringComparison.Ordinal);
+        Assert.Contains("DROP MESSAGE TYPE [Naughty]]Msg]", sql, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -57,6 +57,11 @@ public sealed partial class SqlServerBrokerOutboxWakeSignal :
             // Polling interval elapsed without a wake; return normally so the dispatcher
             // runs a polling tick. This is the documented polling-fallback contract.
         }
+        catch (ChannelClosedException)
+        {
+            // StopAsync completed the writer. Treat as a clean wake-stop so the dispatcher's
+            // outer loop can observe its own cancellation token rather than seeing a fault.
+        }
     }
 
     /// <inheritdoc />
@@ -74,6 +79,19 @@ public sealed partial class SqlServerBrokerOutboxWakeSignal :
             ?? throw new InvalidOperationException(
                 "SqlServerBrokerOptions.ConnectionString must be set. Bind via " +
                 "services.Configure<SqlServerBrokerOptions>(...) before adding the hosted service.");
+        if (opts.ReceiveTimeout <= TimeSpan.Zero)
+        {
+            throw new InvalidOperationException("SqlServerBrokerOptions.ReceiveTimeout must be > 0.");
+        }
+        if (opts.InitialReconnectDelay <= TimeSpan.Zero)
+        {
+            throw new InvalidOperationException("SqlServerBrokerOptions.InitialReconnectDelay must be > 0.");
+        }
+        if (opts.MaxReconnectDelay < opts.InitialReconnectDelay)
+        {
+            throw new InvalidOperationException(
+                "SqlServerBrokerOptions.MaxReconnectDelay must be >= InitialReconnectDelay.");
+        }
         var receiveTimeoutMs = (int)opts.ReceiveTimeout.TotalMilliseconds;
         var delay = opts.InitialReconnectDelay;
 
@@ -81,11 +99,18 @@ public sealed partial class SqlServerBrokerOutboxWakeSignal :
         // We splice the queue name into a bracketed identifier so a misconfigured queue name
         // does not malform the RECEIVE statement.
         var quotedQueue = opts.QueueName.Replace("]", "]]", StringComparison.Ordinal);
+        // Receive the conversation_handle and END CONVERSATION it inline so target endpoints
+        // do not accumulate. Service Broker DML-trigger-style notifications open a dialog per
+        // outbox row; without ending the target side, sys.conversation_endpoints grows
+        // unboundedly. The single RECEIVE returns one row; we end its conversation, then loop.
         var commandText = $@"
+DECLARE @h UNIQUEIDENTIFIER;
 WAITFOR (
-    RECEIVE TOP(1) conversation_handle, message_type_name
+    RECEIVE TOP(1) @h = conversation_handle
     FROM [{quotedQueue}]
 ), TIMEOUT {receiveTimeoutMs};
+IF @h IS NOT NULL END CONVERSATION @h;
+SELECT @h AS conversation_handle;
 ";
 
         while (!stoppingToken.IsCancellationRequested)
