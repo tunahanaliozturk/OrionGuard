@@ -5,6 +5,34 @@ All notable changes to OrionGuard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.5.4] - 2026-06-09
+
+### Added
+
+#### `Moongazing.OrionGuard.Outbox.Dashboard` (NEW PACKAGE)
+
+Read-only operator dashboard for the OrionGuard outbox. Maps an authorized HTTP endpoint group that lists failed / poisoned messages from the consumer's DbContext.
+
+- **`MapOutboxDashboard<TDbContext>(this IEndpointRouteBuilder, configure?)`**: registers a route group under the configured `RoutePrefix` (default `/_orion/outbox`). The group calls `RequireAuthorization()` by default so the host's fallback policy applies; consumers pass a named policy or opt anonymous (NOT recommended).
+- **`GET /_orion/outbox/failed?page=N&size=M`**: paginated listing of rows where `RetryCount >= FailedRetryThreshold` (default 3, matching v6.5.0 dispatcher default) AND `ProcessedOnUtc IS NULL`. Pagination clamps to `MaxPageSize` (default 100); response includes `{page, size, total, items[]}`.
+- **`OutboxFailedMessageRow`**: read-only projection excluding `Payload` to limit blast-radius if authorization is misconfigured. Error text is truncated to `ErrorTruncationLength` (default 1024 chars); full text remains in the database.
+- **`OutboxDashboardOptions` validation**: empty `RoutePrefix`, non-positive page sizes / retry threshold, and negative truncation length all throw `InvalidOperationException` at endpoint registration time so misconfigured deployments fail fast.
+
+### Deferred
+
+- **Replay / discard actions** -> v6.5.5 (originally targeted v6.5.4; the read-only surface ships now so operators see poisoned messages while the mutation surface gets a focused review)
+
+### Migration from v6.5.3
+
+Source-compatible. The dashboard is an opt-in add-on package: install `OrionGuard.Outbox.Dashboard`, register your DbContext via `AddDbContext<TDbContext>(...)`, then call `app.MapOutboxDashboard<TDbContext>()` from your endpoint configuration.
+
+```csharp
+app.MapOutboxDashboard<AppDbContext>(o =>
+{
+    o.AuthorizationPolicyName = "OutboxOps";
+});
+```
+
 ## [6.5.3] - 2026-06-09
 
 ### Added
