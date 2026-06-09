@@ -15,10 +15,12 @@ public sealed class OutboxDashboardOptions
 
     /// <summary>
     /// Authorization policy applied to the dashboard route group via
-    /// <c>RequireAuthorization(policyName)</c>. When null (default), the endpoints call
-    /// <c>RequireAuthorization()</c> with no policy so the host's fallback policy applies.
-    /// To opt the dashboard out of authorization entirely, set <see cref="AllowAnonymous"/>
-    /// = <see langword="true"/>.
+    /// <c>RequireAuthorization(policyName)</c>. When null (default), the dashboard does
+    /// NOT call <c>RequireAuthorization()</c> at all so the host's
+    /// <c>AuthorizationOptions.FallbackPolicy</c> (if any) applies. If the host has no
+    /// fallback policy and you rely on the dashboard being protected, set this to a
+    /// concrete policy name. To opt the dashboard out of authorization entirely, set
+    /// <see cref="AllowAnonymous"/> = <see langword="true"/>.
     /// </summary>
     public string? AuthorizationPolicyName { get; set; }
 

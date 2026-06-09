@@ -35,6 +35,18 @@
 		<PackageProjectUrl>https://github.com/tunahanaliozturk/OrionGuard</PackageProjectUrl>
 		<PackageTags>guard;validation;fluent;exceptions;.NET;input-validation;guard-clauses;defensive-programming;security;localization;format-validation;nativeaot;source-generator;aspnetcore;mediatr</PackageTags>
 		<PackageReleaseNotes>
+v6.5.4 - Outbox operator read surface
+
+NEW: Moongazing.OrionGuard.Outbox.Dashboard add-on package. MapOutboxDashboard&lt;TDbContext&gt;() registers a route group; GET /_orion/outbox/failed?page=N&amp;size=M returns paginated failed-message metadata (RetryCount &gt;= threshold AND Error != null - covers both still-failing and dispatcher-dead-lettered rows). Payload deliberately excluded from the projection; error text truncated to ErrorTruncationLength.
+
+CHANGED: Default authorization wiring on the dashboard group falls through to the host's AuthorizationOptions.FallbackPolicy when no AuthorizationPolicyName is supplied, instead of calling RequireAuthorization() unconditionally (which would shadow a stricter fallback policy).
+
+DEFERRED: Replay / discard mutation actions on the dashboard group -&gt; v6.5.5.
+
+Full changelog: https://github.com/tunahanaliozturk/OrionGuard/blob/master/CHANGELOG.md
+
+---
+
 v6.5.1 - Push-Dispatch Contract
 
 NEW: IOutboxWakeSignal abstraction in Moongazing.OrionGuard.EntityFrameworkCore.Outbox.Push. Lets consumers swap the dispatcher's between-batch wait from polling to push without touching the rest of the dispatch loop. Two methods: WaitForNextTickAsync(pollingInterval, ct) and SignalAsync(ct).

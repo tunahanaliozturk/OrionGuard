@@ -38,6 +38,16 @@ public static class OutboxDashboardEndpointRouteBuilderExtensions
 
         var group = endpoints.MapGroup(options.RoutePrefix.TrimEnd('/'));
 
+        // Authorization wiring:
+        //   AllowAnonymous   -> mark anonymous (NOT recommended in production).
+        //   Named policy     -> evaluate that policy explicitly.
+        //   Neither          -> do NOT call RequireAuthorization() so the host's
+        //                       AuthorizationOptions.FallbackPolicy applies. Calling
+        //                       RequireAuthorization() unconditionally would attach auth
+        //                       metadata that bypasses a stricter FallbackPolicy (the host
+        //                       fallback only fires for endpoints WITHOUT auth metadata).
+        //                       Hosts that have no fallback policy and rely on the dashboard
+        //                       being authorized should set AuthorizationPolicyName.
         if (options.AllowAnonymous)
         {
             group.AllowAnonymous();
@@ -46,10 +56,7 @@ public static class OutboxDashboardEndpointRouteBuilderExtensions
         {
             group.RequireAuthorization(policy);
         }
-        else
-        {
-            group.RequireAuthorization();
-        }
+        // else: intentionally fall through so the host's FallbackPolicy applies.
 
         group.MapGet("/failed", async (TDbContext db, HttpContext http, int? page, int? size) =>
         {
@@ -59,9 +66,14 @@ public static class OutboxDashboardEndpointRouteBuilderExtensions
             var threshold = options.FailedRetryThreshold;
             var truncation = options.ErrorTruncationLength;
 
+            // Include BOTH still-failing rows (Error set, not yet processed) AND rows that
+            // the dispatcher dead-lettered (it stamps ProcessedOnUtc once RetryCount >=
+            // MaxRetries while preserving Error/RetryCount for operator inspection). Filtering
+            // on Error != null AND RetryCount >= threshold covers both states without
+            // double-counting successfully-dispatched rows (those have Error == null).
             var query = db.Set<OutboxMessage>()
                 .AsNoTracking()
-                .Where(m => m.ProcessedOnUtc == null && m.RetryCount >= threshold)
+                .Where(m => m.RetryCount >= threshold && m.Error != null)
                 .OrderBy(m => m.OccurredOnUtc);
 
             var total = await query.CountAsync(http.RequestAborted).ConfigureAwait(false);

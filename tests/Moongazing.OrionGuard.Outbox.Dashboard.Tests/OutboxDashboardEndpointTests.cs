@@ -73,23 +73,24 @@ public sealed class OutboxDashboardEndpointTests : IAsyncLifetime
         };
 
     [Fact]
-    public async Task Failed_endpoint_returns_only_unprocessed_rows_at_or_above_threshold()
+    public async Task Failed_endpoint_returns_failed_and_dead_lettered_rows_excluding_clean_successes()
     {
         await SeedAsync(new[]
         {
-            Row(retryCount: 0),                                        // below threshold
-            Row(retryCount: 2),                                        // below threshold
-            Row(retryCount: 3),                                        // failed
-            Row(retryCount: 5),                                        // failed
-            Row(retryCount: 4, processedOnUtc: DateTime.UtcNow),        // processed -> excluded
+            Row(retryCount: 0),                                                              // below threshold
+            Row(retryCount: 2),                                                              // below threshold
+            Row(retryCount: 3),                                                              // failed (not yet dead-lettered)
+            Row(retryCount: 5),                                                              // failed
+            Row(retryCount: 4, processedOnUtc: DateTime.UtcNow),                              // dead-lettered (still has Error) -> INCLUDED
+            Row(retryCount: 4, processedOnUtc: DateTime.UtcNow, error: null),                 // clean success with retries -> excluded
         });
 
         var response = await client.GetAsync("/_orion/outbox/failed");
         response.EnsureSuccessStatusCode();
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
 
-        Assert.Equal(2, body.GetProperty("total").GetInt32());
-        Assert.Equal(2, body.GetProperty("items").GetArrayLength());
+        Assert.Equal(3, body.GetProperty("total").GetInt32());
+        Assert.Equal(3, body.GetProperty("items").GetArrayLength());
     }
 
     [Fact]
