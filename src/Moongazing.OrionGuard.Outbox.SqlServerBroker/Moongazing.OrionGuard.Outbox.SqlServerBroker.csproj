@@ -7,11 +7,11 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <NoWarn>CS1591;NU1900;NU1901;NU1902;NU1903;NU1904</NoWarn>
-    <PackageId>OrionGuard.MediatR</PackageId>
+    <PackageId>OrionGuard.Outbox.SqlServerBroker</PackageId>
     <Version>6.5.3</Version>
     <Authors>Tunahan Ali Ozturk</Authors>
-    <Description>MediatR integration for OrionGuard validation library. Provides ValidationBehavior pipeline behavior for automatic request validation in CQRS pipelines.</Description>
-    <PackageTags>guard;validation;mediatr;cqrs;pipeline;behavior</PackageTags>
+    <Description>SQL Server Service Broker backed IOutboxWakeSignal for OrionGuard.EntityFrameworkCore. Sibling to OrionGuard.Outbox.PostgresNotify (v6.5.2) for the SQL Server provider. Replaces the v6.5.1 polling-only fallback with an event-driven wake on every committed outbox row via Service Broker's queueing primitives.</Description>
+    <PackageTags>guard;outbox;sqlserver;service-broker;push;dispatch;entity-framework-core;efcore</PackageTags>
     <PackageReadmeFile>docs/README.md</PackageReadmeFile>
     <PackageIcon>docs/logo.png</PackageIcon>
     <RepositoryUrl>https://github.com/tunahanaliozturk/OrionGuard</RepositoryUrl>
@@ -19,10 +19,12 @@
     <PackageProjectUrl>https://github.com/tunahanaliozturk/OrionGuard</PackageProjectUrl>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
   </PropertyGroup>
+
   <ItemGroup>
-    <PackageReference Include="MediatR" Version="12.4.1" />
-    <ProjectReference Include="..\Moongazing.OrionGuard\Moongazing.OrionGuard.csproj" />
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="5.2.2" />
+    <ProjectReference Include="..\Moongazing.OrionGuard.EntityFrameworkCore\Moongazing.OrionGuard.EntityFrameworkCore.csproj" />
   </ItemGroup>
+
   <ItemGroup>
     <None Include="docs\README.md" Pack="true" PackagePath="docs/" />
     <None Include="docs\logo.png" Pack="true" PackagePath="docs/" />

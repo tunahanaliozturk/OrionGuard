@@ -5,6 +5,42 @@ All notable changes to OrionGuard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.5.3] - 2026-06-09
+
+### Added
+
+#### `Moongazing.OrionGuard.Outbox.SqlServerBroker` (NEW PACKAGE)
+
+SQL Server Service Broker backed `IOutboxWakeSignal` for `OrionGuard.EntityFrameworkCore`. Sibling to v6.5.2's PostgresNotify add-on for the SQL Server provider.
+
+- **`SqlServerBrokerOutboxWakeSignal`**: `BackgroundService` that holds a dedicated `SqlConnection` and runs `WAITFOR (RECEIVE ... FROM <queue>) TIMEOUT <ms>`. On RECEIVE, the in-process channel wakes the dispatcher. Reconnect loop with exponential back-off bounded by `MaxReconnectDelay`.
+- **`SqlServerBrokerOptions`**: `ConnectionString` (required), `QueueName` (default `OrionGuardOutboxQueue`), `ServiceName` (default `OrionGuardOutboxService`), `ReceiveTimeout` (default 30s), reconnect-delay tuning.
+- **`SqlServerBrokerSetupSql.Create / Drop`**: idempotent T-SQL helpers that install the Service Broker message type, contract, queue, service, and AFTER INSERT trigger. The package deliberately does NOT auto-install schema changes; consumers run the SQL once via an EF Core migration AFTER enabling Service Broker on the database (`ALTER DATABASE [...] SET ENABLE_BROKER`).
+  - Bracketed-identifier escape (`]` -> `]]`) for table / queue / service names.
+  - Quoted-literal escape (`'` -> `''`) for service / contract / message-type names.
+  - Double-quoted escape (`'` -> `''''`) for the EXEC-nested trigger body's SEND TO SERVICE literal, so a service name containing a single quote does not malform the EXEC string.
+- **DI**: `services.AddSqlServerBrokerOutboxWakeSignal(o => o.ConnectionString = "...")` registers signal + hosted service in one call and replaces the default `NullOutboxWakeSignal`.
+
+### Fixed
+
+- CI `Pack All Projects` step now packs the new `SqlServerBroker` add-on. PostgresNotify and Locks.Redis lines are preserved.
+
+### Deferred from v6.5.3
+
+- **Outbox dead-letter UI surface** -> v6.5.4 (unchanged from the v6.5.2 deferral list)
+
+### Migration from v6.5.2
+
+Source-compatible. Add-on is opt-in: install `OrionGuard.Outbox.SqlServerBroker`, enable Service Broker on the database once, install the trigger via SQL migration, register the signal:
+
+```csharp
+services.AddSqlServerBrokerOutboxWakeSignal(o =>
+{
+    o.ConnectionString = "Server=db;Database=app;User Id=app;Password=app;TrustServerCertificate=true";
+});
+services.AddOrionGuardEfCore<AppDbContext>(opts => opts.UseOutbox());
+```
+
 ## [6.5.2] - 2026-06-09
 
 ### Added

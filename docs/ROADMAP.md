@@ -100,9 +100,9 @@ Ships the push-dispatch contract + in-process implementation. Concrete cross-pro
 
 - **`Moongazing.OrionGuard.Outbox.PostgresNotify`** add-on package shipped. `PostgresNotifyOutboxWakeSignal` runs `LISTEN` on a dedicated Npgsql connection and signals the dispatcher via the in-process channel; reconnect loop with exponential back-off bounded by `MaxReconnectDelay`. `PostgresNotifyTriggerSql.Create / Drop` helpers emit the consumer-managed AFTER INSERT trigger; the package does not auto-install schema changes.
 
-### v6.5.3 — SQL Server Push Backend *(planned)*
+### v6.5.3 — SQL Server Push Backend *(shipped 2026-06-09)*
 
-- **`Moongazing.OrionGuard.Outbox.SqlServerBroker`** add-on package. `IOutboxWakeSignal` backed by SQL Server Service Broker with the same fallback contract.
+- **`Moongazing.OrionGuard.Outbox.SqlServerBroker`** add-on package shipped. `SqlServerBrokerOutboxWakeSignal` runs `WAITFOR (RECEIVE ... TIMEOUT)` on a dedicated `SqlConnection`; reconnect loop with exponential back-off bounded by `MaxReconnectDelay`. `SqlServerBrokerSetupSql.Create / Drop` helpers install the Service Broker message type, contract, queue, service, and AFTER INSERT trigger; identifier and literal escapes (including double-escape for the EXEC-nested SEND TO SERVICE literal) prevent malformed SQL when custom names contain `]` or `'`.
 
 ### v6.5.4 — Outbox Operator Surface *(planned)*
 
