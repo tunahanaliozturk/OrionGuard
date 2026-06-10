@@ -58,26 +58,35 @@ public static class OutboxDashboardEndpointRouteBuilderExtensions
         }
         // else: intentionally fall through so the host's FallbackPolicy applies.
 
-        group.MapGet("/failed", async (TDbContext db, HttpContext http, int? page, int? size) =>
+        group.MapGet("/failed", async (TDbContext db, HttpContext http, int? page, int? size, string? sort) =>
         {
             var pageNumber = page is null or < 1 ? 1 : page.Value;
             var pageSize = ResolvePageSize(size, options);
             var skip = (pageNumber - 1) * pageSize;
             var threshold = options.FailedRetryThreshold;
             var truncation = options.ErrorTruncationLength;
+            var sortOrder = ResolveSort(sort, options.DefaultSort);
 
             // Include BOTH still-failing rows (Error set, not yet processed) AND rows that
             // the dispatcher dead-lettered (it stamps ProcessedOnUtc once RetryCount >=
             // MaxRetries while preserving Error/RetryCount for operator inspection). Filtering
             // on Error != null AND RetryCount >= threshold covers both states without
             // double-counting successfully-dispatched rows (those have Error == null).
-            var query = db.Set<OutboxMessage>()
+            var baseQuery = db.Set<OutboxMessage>()
                 .AsNoTracking()
-                .Where(m => m.RetryCount >= threshold && m.Error != null)
-                .OrderBy(m => m.OccurredOnUtc);
+                .Where(m => m.RetryCount >= threshold && m.Error != null);
 
-            var total = await query.CountAsync(http.RequestAborted).ConfigureAwait(false);
-            var rows = await query
+            IQueryable<OutboxMessage> ordered = sortOrder switch
+            {
+                OutboxFailedListingSort.NewestFirst => baseQuery.OrderByDescending(m => m.OccurredOnUtc),
+                OutboxFailedListingSort.MostRetries => baseQuery
+                    .OrderByDescending(m => m.RetryCount)
+                    .ThenBy(m => m.OccurredOnUtc),
+                _ => baseQuery.OrderBy(m => m.OccurredOnUtc),
+            };
+
+            var total = await baseQuery.CountAsync(http.RequestAborted).ConfigureAwait(false);
+            var rows = await ordered
                 .Skip(skip)
                 .Take(pageSize)
                 .Select(m => new OutboxFailedMessageRow(
@@ -92,11 +101,16 @@ public static class OutboxDashboardEndpointRouteBuilderExtensions
                 .ToListAsync(http.RequestAborted)
                 .ConfigureAwait(false);
 
+            var totalPages = (int)Math.Ceiling((double)total / pageSize);
             return Results.Ok(new
             {
                 page = pageNumber,
                 size = pageSize,
                 total,
+                totalPages,
+                hasNextPage = pageNumber < totalPages,
+                hasPreviousPage = pageNumber > 1,
+                sort = sortOrder.ToString(),
                 items = rows,
             });
         });
@@ -188,6 +202,17 @@ public static class OutboxDashboardEndpointRouteBuilderExtensions
     {
         var size = requested is null or < 1 ? options.DefaultPageSize : requested.Value;
         return size > options.MaxPageSize ? options.MaxPageSize : size;
+    }
+
+    private static OutboxFailedListingSort ResolveSort(string? requested, OutboxFailedListingSort fallback)
+    {
+        if (string.IsNullOrWhiteSpace(requested))
+        {
+            return fallback;
+        }
+        return Enum.TryParse<OutboxFailedListingSort>(requested, ignoreCase: true, out var parsed)
+            ? parsed
+            : fallback;
     }
 
     private static void ValidateOptions(OutboxDashboardOptions options)
