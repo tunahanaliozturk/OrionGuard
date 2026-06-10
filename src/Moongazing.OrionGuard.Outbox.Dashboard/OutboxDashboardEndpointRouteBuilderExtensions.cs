@@ -115,6 +115,102 @@ public static class OutboxDashboardEndpointRouteBuilderExtensions
             });
         });
 
+        group.MapGet("/failed/cursor", async (TDbContext db, HttpContext http, string? cursor, int? size, string? sort) =>
+        {
+            var pageSize = ResolvePageSize(size, options);
+            var threshold = options.FailedRetryThreshold;
+            var truncation = options.ErrorTruncationLength;
+
+            // Sort axis is taken from the cursor when present (a switched sort mid-paging
+            // would otherwise emit duplicate / skipped rows). If no cursor is supplied,
+            // fall through to the query-string / default like the offset endpoint.
+            OutboxFailedCursor.TryDecode(cursor, out var decoded);
+            var sortOrder = cursor is not null && OutboxFailedCursor.TryDecode(cursor, out var fromCursor)
+                ? fromCursor.Sort
+                : ResolveSort(sort, options.DefaultSort);
+
+            var baseQuery = db.Set<OutboxMessage>()
+                .AsNoTracking()
+                .Where(m => m.RetryCount >= threshold && m.Error != null);
+
+            // Apply cursor predicate to the WHERE so the database does a keyset seek
+            // instead of an OFFSET scan. Each branch repeats the secondary key (Id) as a
+            // stable tiebreaker so rows with identical sort values do not slip through.
+            if (cursor is not null && OutboxFailedCursor.TryDecode(cursor, out var c))
+            {
+                var lastOccurred = new DateTime(c.LastOccurredOnUtcTicks, DateTimeKind.Utc);
+                var lastId = c.LastId;
+                var lastRetries = c.LastRetryCount;
+                baseQuery = sortOrder switch
+                {
+                    OutboxFailedListingSort.NewestFirst => baseQuery.Where(m =>
+                        m.OccurredOnUtc < lastOccurred
+                        || (m.OccurredOnUtc == lastOccurred && m.Id.CompareTo(lastId) > 0)),
+                    OutboxFailedListingSort.MostRetries => baseQuery.Where(m =>
+                        m.RetryCount < lastRetries
+                        || (m.RetryCount == lastRetries && m.OccurredOnUtc > lastOccurred)
+                        || (m.RetryCount == lastRetries && m.OccurredOnUtc == lastOccurred && m.Id.CompareTo(lastId) > 0)),
+                    _ => baseQuery.Where(m =>
+                        m.OccurredOnUtc > lastOccurred
+                        || (m.OccurredOnUtc == lastOccurred && m.Id.CompareTo(lastId) > 0)),
+                };
+            }
+
+            IQueryable<OutboxMessage> ordered = sortOrder switch
+            {
+                OutboxFailedListingSort.NewestFirst => baseQuery
+                    .OrderByDescending(m => m.OccurredOnUtc).ThenBy(m => m.Id),
+                OutboxFailedListingSort.MostRetries => baseQuery
+                    .OrderByDescending(m => m.RetryCount)
+                    .ThenBy(m => m.OccurredOnUtc)
+                    .ThenBy(m => m.Id),
+                _ => baseQuery.OrderBy(m => m.OccurredOnUtc).ThenBy(m => m.Id),
+            };
+
+            // Take one extra row to detect whether another page exists without an extra
+            // round-trip; the response slices off the peek before serialisation.
+            var page = await ordered
+                .Take(pageSize + 1)
+                .Select(m => new OutboxFailedMessageRow(
+                    m.Id,
+                    m.EventType,
+                    m.OccurredOnUtc,
+                    m.RetryCount,
+                    m.Error == null
+                        ? null
+                        : m.Error.Length <= truncation ? m.Error : m.Error.Substring(0, truncation),
+                    m.CorrelationId))
+                .ToListAsync(http.RequestAborted)
+                .ConfigureAwait(false);
+
+            string? nextCursor = null;
+            if (page.Count > pageSize)
+            {
+                // Peeked one ahead - slice it off and base the next cursor on the LAST
+                // returned row (not the peek row), which is the one the client will see
+                // as their "last" position.
+                page.RemoveAt(page.Count - 1);
+                if (page.Count > 0)
+                {
+                    var last = page[^1];
+                    nextCursor = new OutboxFailedCursor(
+                        last.OccurredOnUtc.Ticks,
+                        last.Id,
+                        last.RetryCount,
+                        sortOrder).Encode();
+                }
+            }
+
+            return Results.Ok(new
+            {
+                size = pageSize,
+                sort = sortOrder.ToString(),
+                items = page,
+                nextCursor,
+                hasNextPage = nextCursor is not null,
+            });
+        });
+
         if (options.EnableMutations)
         {
             // Replay: clear RetryCount + Error so the next dispatcher pass re-attempts the

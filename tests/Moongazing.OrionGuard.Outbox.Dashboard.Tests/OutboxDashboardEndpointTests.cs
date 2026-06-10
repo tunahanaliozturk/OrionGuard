@@ -238,6 +238,106 @@ public sealed class OutboxDashboardEndpointTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Cursor_endpoint_pages_through_results_using_nextCursor()
+    {
+        var anchor = new DateTime(2026, 6, 10, 12, 0, 0, DateTimeKind.Utc);
+        var rows = Enumerable.Range(0, 25)
+            .Select(i => new OutboxMessage
+            {
+                EventType = "T",
+                Payload = "{}",
+                OccurredOnUtc = anchor.AddMinutes(i),
+                RetryCount = 3,
+                Error = $"boom-{i}",
+            })
+            .ToArray();
+        await SeedAsync(rows);
+
+        var collected = new List<Guid>();
+        string? cursor = null;
+        for (var i = 0; i < 5; i++)
+        {
+            var url = cursor is null
+                ? "/_orion/outbox/failed/cursor?size=10"
+                : $"/_orion/outbox/failed/cursor?cursor={cursor}&size=10";
+            var body = await client.GetFromJsonAsync<JsonElement>(url);
+            foreach (var item in body.GetProperty("items").EnumerateArray())
+            {
+                collected.Add(item.GetProperty("id").GetGuid());
+            }
+            cursor = body.TryGetProperty("nextCursor", out var ncEl) && ncEl.ValueKind == JsonValueKind.String
+                ? ncEl.GetString()
+                : null;
+            if (cursor is null)
+            {
+                break;
+            }
+        }
+
+        Assert.Equal(25, collected.Count);
+        Assert.Equal(25, collected.Distinct().Count());
+        Assert.Null(cursor);
+    }
+
+    [Fact]
+    public async Task Cursor_endpoint_returns_hasNextPage_true_when_more_results_exist()
+    {
+        await SeedAsync(Enumerable.Range(0, 15).Select(_ => Row(retryCount: 3)));
+
+        var body = await client.GetFromJsonAsync<JsonElement>("/_orion/outbox/failed/cursor?size=5");
+
+        Assert.True(body.GetProperty("hasNextPage").GetBoolean());
+        Assert.Equal(5, body.GetProperty("items").GetArrayLength());
+        Assert.NotNull(body.GetProperty("nextCursor").GetString());
+    }
+
+    [Fact]
+    public async Task Cursor_endpoint_returns_hasNextPage_false_on_last_page()
+    {
+        await SeedAsync(Enumerable.Range(0, 5).Select(_ => Row(retryCount: 3)));
+
+        var body = await client.GetFromJsonAsync<JsonElement>("/_orion/outbox/failed/cursor?size=10");
+
+        Assert.False(body.GetProperty("hasNextPage").GetBoolean());
+        Assert.Equal(5, body.GetProperty("items").GetArrayLength());
+        Assert.Equal(JsonValueKind.Null, body.GetProperty("nextCursor").ValueKind);
+    }
+
+    [Fact]
+    public async Task Cursor_endpoint_invalid_cursor_starts_from_beginning()
+    {
+        await SeedAsync(Enumerable.Range(0, 3).Select(_ => Row(retryCount: 3)));
+
+        var body = await client.GetFromJsonAsync<JsonElement>("/_orion/outbox/failed/cursor?cursor=garbage-not-base64");
+
+        // Falls through to default (no WHERE seek), returns all 3 rows.
+        Assert.Equal(3, body.GetProperty("items").GetArrayLength());
+    }
+
+    [Fact]
+    public async Task Cursor_endpoint_locks_sort_axis_to_cursor()
+    {
+        var anchor = new DateTime(2026, 6, 10, 12, 0, 0, DateTimeKind.Utc);
+        await SeedAsync(new[]
+        {
+            new OutboxMessage { EventType = "T", Payload = "{}", OccurredOnUtc = anchor.AddMinutes(0), RetryCount = 3, Error = "x" },
+            new OutboxMessage { EventType = "T", Payload = "{}", OccurredOnUtc = anchor.AddMinutes(10), RetryCount = 9, Error = "x" },
+        });
+
+        var first = await client.GetFromJsonAsync<JsonElement>("/_orion/outbox/failed/cursor?sort=MostRetries&size=1");
+        Assert.Equal("MostRetries", first.GetProperty("sort").GetString());
+        var nextCursor = first.GetProperty("nextCursor").GetString();
+        Assert.NotNull(nextCursor);
+
+        // Even though the caller asks for OldestFirst on the second page, the cursor
+        // forces the original axis so paging stays consistent.
+        var second = await client.GetFromJsonAsync<JsonElement>(
+            $"/_orion/outbox/failed/cursor?cursor={nextCursor}&sort=OldestFirst");
+
+        Assert.Equal("MostRetries", second.GetProperty("sort").GetString());
+    }
+
+    [Fact]
     public async Task Replay_endpoint_clears_retry_count_and_error()
     {
         var failing = Row(retryCount: 5);
