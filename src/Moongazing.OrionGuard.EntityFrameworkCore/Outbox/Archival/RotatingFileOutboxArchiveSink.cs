@@ -34,29 +34,54 @@ public sealed class RotatingFileOutboxArchiveSink : IOutboxArchiveSink
     public async Task WriteAsync(string keyHint, ReadOnlyMemory<byte> payload, CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrEmpty(keyHint);
+        // Reject payloads larger than MaxFileBytes at the door rather than silently
+        // creating an over-cap file. The archiver should split the batch before invoking
+        // the sink when batches grow this large.
+        if (payload.Length > options.MaxFileBytes)
+        {
+            throw new InvalidOperationException(
+                $"RotatingFileOutboxArchiveSink: payload size {payload.Length} bytes exceeds " +
+                $"MaxFileBytes ({options.MaxFileBytes}). Reduce the archiver's batch size or raise the cap.");
+        }
+
         var day = nowUtc().ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
         var dayDir = Path.Combine(options.RootDirectory, day);
         Directory.CreateDirectory(dayDir);
 
-        // Pick a shard index that does not collide with an existing file. We pick the
-        // lowest shard suffix whose file does not exist OR whose size + payload bytes
-        // would fit under MaxFileBytes - this lets the latest shard accumulate small
-        // batches up to the rotation threshold rather than allocating one shard per
-        // batch.
+        // Stable per-day filename prefix - the caller's keyHint is intentionally NOT
+        // mixed into the path because (a) BlobOutboxArchiver already includes a
+        // timestamp + guid in the hint, so layering both yields redundant unique names
+        // that prevent batches from packing into the same shard; and (b) using untrusted
+        // input as a path component is a path-traversal risk (`..` / `/` would escape
+        // the root directory). The shard scheme alone manages rotation.
         for (var shard = 0; shard < options.MaxShardsPerDay; shard++)
         {
-            var fileName = $"{keyHint}-{shard.ToString("D4", CultureInfo.InvariantCulture)}.jsonl";
+            var fileName = $"outbox-{shard.ToString("D4", CultureInfo.InvariantCulture)}.jsonl";
             var path = Path.Combine(dayDir, fileName);
             var existing = new FileInfo(path);
             if (!existing.Exists)
             {
-                await WriteFileAsync(path, payload, cancellationToken, mode: FileMode.CreateNew).ConfigureAwait(false);
-                return;
+                // Race-resilient create: another writer may create the same shard
+                // between FileInfo.Exists and our open. CreateNew throws IOException in
+                // that case; treat that as "shard now exists, try to append".
+                try
+                {
+                    await WriteFileAsync(path, payload, cancellationToken, mode: FileMode.CreateNew).ConfigureAwait(false);
+                    return;
+                }
+                catch (IOException) when (File.Exists(path))
+                {
+                    existing = new FileInfo(path);
+                    if (existing.Length + payload.Length <= options.MaxFileBytes)
+                    {
+                        await WriteFileAsync(path, payload, cancellationToken, mode: FileMode.Append).ConfigureAwait(false);
+                        return;
+                    }
+                    continue;
+                }
             }
             if (existing.Length + payload.Length <= options.MaxFileBytes)
             {
-                // Append to the existing shard; OPEN-OR-CREATE because a concurrent
-                // writer may have removed the file between Exists and OpenWrite.
                 await WriteFileAsync(path, payload, cancellationToken, mode: FileMode.Append).ConfigureAwait(false);
                 return;
             }

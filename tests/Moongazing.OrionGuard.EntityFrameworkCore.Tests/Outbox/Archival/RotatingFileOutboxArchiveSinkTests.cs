@@ -42,7 +42,7 @@ public sealed class RotatingFileOutboxArchiveSinkTests : IDisposable
 
         await sink.WriteAsync("outbox-batch-1", Encoding.UTF8.GetBytes("hello"), CancellationToken.None);
 
-        var expected = Path.Combine(root, "2026-06-11", "outbox-batch-1-0000.jsonl");
+        var expected = Path.Combine(root, "2026-06-11", "outbox-0000.jsonl");
         Assert.True(File.Exists(expected));
         Assert.Equal("hello", await File.ReadAllTextAsync(expected));
     }
@@ -55,7 +55,7 @@ public sealed class RotatingFileOutboxArchiveSinkTests : IDisposable
         await sink.WriteAsync("batch", Encoding.UTF8.GetBytes("aaaa"), CancellationToken.None);
         await sink.WriteAsync("batch", Encoding.UTF8.GetBytes("bbbb"), CancellationToken.None);
 
-        var path = Path.Combine(root, "2026-06-11", "batch-0000.jsonl");
+        var path = Path.Combine(root, "2026-06-11", "outbox-0000.jsonl");
         Assert.Equal("aaaabbbb", await File.ReadAllTextAsync(path));
     }
 
@@ -69,8 +69,8 @@ public sealed class RotatingFileOutboxArchiveSinkTests : IDisposable
         await sink.WriteAsync("batch", Encoding.UTF8.GetBytes("BBBBB"), CancellationToken.None);
 
         var dayDir = Path.Combine(root, "2026-06-11");
-        Assert.Equal("AAAAA", await File.ReadAllTextAsync(Path.Combine(dayDir, "batch-0000.jsonl")));
-        Assert.Equal("BBBBB", await File.ReadAllTextAsync(Path.Combine(dayDir, "batch-0001.jsonl")));
+        Assert.Equal("AAAAA", await File.ReadAllTextAsync(Path.Combine(dayDir, "outbox-0000.jsonl")));
+        Assert.Equal("BBBBB", await File.ReadAllTextAsync(Path.Combine(dayDir, "outbox-0001.jsonl")));
     }
 
     [Fact]
@@ -94,8 +94,31 @@ public sealed class RotatingFileOutboxArchiveSinkTests : IDisposable
         var sink2 = NewSink(fixedNow: new DateTime(2026, 6, 12, 0, 0, 1, DateTimeKind.Utc));
         await sink2.WriteAsync("batch", Encoding.UTF8.GetBytes("day2"), CancellationToken.None);
 
-        Assert.True(File.Exists(Path.Combine(root, "2026-06-11", "batch-0000.jsonl")));
-        Assert.True(File.Exists(Path.Combine(root, "2026-06-12", "batch-0000.jsonl")));
+        Assert.True(File.Exists(Path.Combine(root, "2026-06-11", "outbox-0000.jsonl")));
+        Assert.True(File.Exists(Path.Combine(root, "2026-06-12", "outbox-0000.jsonl")));
+    }
+
+    [Fact]
+    public async Task Throws_when_single_payload_exceeds_MaxFileBytes()
+    {
+        var sink = NewSink(maxFileBytes: 4);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => sink.WriteAsync("batch", new byte[] { 1, 2, 3, 4, 5 }, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Path_traversal_in_keyHint_does_not_escape_root_directory()
+    {
+        // Even if the caller passes a malicious keyHint, the sink uses a stable per-day
+        // file naming scheme and never mixes the hint into the path.
+        var sink = NewSink();
+
+        await sink.WriteAsync("../../../etc/passwd", Encoding.UTF8.GetBytes("payload"), CancellationToken.None);
+
+        var safePath = Path.Combine(root, "2026-06-11", "outbox-0000.jsonl");
+        Assert.True(File.Exists(safePath));
+        Assert.False(File.Exists("/etc/passwd"));
     }
 
     [Fact]
