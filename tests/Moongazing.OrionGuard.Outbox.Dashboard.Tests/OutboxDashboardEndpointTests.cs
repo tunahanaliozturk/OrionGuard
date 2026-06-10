@@ -158,6 +158,70 @@ public sealed class OutboxDashboardEndpointTests : IAsyncLifetime
         Assert.Equal(0, body.GetProperty("items").GetArrayLength());
     }
 
+    [Fact]
+    public async Task Replay_endpoint_clears_retry_count_and_error()
+    {
+        var failing = Row(retryCount: 5);
+        await SeedAsync(new[] { failing });
+
+        var response = await client.PostAsync($"/_orion/outbox/{failing.Id}/replay", content: null);
+
+        response.EnsureSuccessStatusCode();
+        using var scope = host.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<TestDbContext>();
+        var fresh = await db.Set<OutboxMessage>().AsNoTracking().FirstAsync(x => x.Id == failing.Id);
+        Assert.Equal(0, fresh.RetryCount);
+        Assert.Null(fresh.Error);
+        Assert.Null(fresh.ProcessedOnUtc);
+    }
+
+    [Fact]
+    public async Task Replay_endpoint_returns_404_for_unknown_id()
+    {
+        var response = await client.PostAsync($"/_orion/outbox/{Guid.NewGuid()}/replay", content: null);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Discard_endpoint_marks_row_processed_without_re_dispatch()
+    {
+        var failing = Row(retryCount: 5);
+        await SeedAsync(new[] { failing });
+
+        var response = await client.PostAsync($"/_orion/outbox/{failing.Id}/discard", content: null);
+
+        response.EnsureSuccessStatusCode();
+        using var scope = host.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<TestDbContext>();
+        var fresh = await db.Set<OutboxMessage>().AsNoTracking().FirstAsync(x => x.Id == failing.Id);
+        Assert.NotNull(fresh.ProcessedOnUtc);
+        // Error and RetryCount stay intact so future operators see the history.
+        Assert.Equal(5, fresh.RetryCount);
+        Assert.NotNull(fresh.Error);
+    }
+
+    [Fact]
+    public async Task Discard_endpoint_is_idempotent_for_already_processed_rows()
+    {
+        var processed = Row(retryCount: 3, processedOnUtc: DateTime.UtcNow);
+        await SeedAsync(new[] { processed });
+
+        var response = await client.PostAsync($"/_orion/outbox/{processed.Id}/discard", content: null);
+
+        response.EnsureSuccessStatusCode();
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Contains("already processed", body.GetProperty("note").GetString()!, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Discard_endpoint_returns_404_for_unknown_id()
+    {
+        var response = await client.PostAsync($"/_orion/outbox/{Guid.NewGuid()}/discard", content: null);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
     private sealed class TestDbContext : DbContext
     {
         public TestDbContext(DbContextOptions<TestDbContext> options) : base(options) { }
@@ -169,6 +233,177 @@ public sealed class OutboxDashboardEndpointTests : IAsyncLifetime
                 b.HasKey(x => x.Id);
             });
         }
+    }
+}
+
+public sealed class OutboxDashboardMutationHookTests : IAsyncLifetime
+{
+    private readonly Microsoft.EntityFrameworkCore.Storage.InMemoryDatabaseRoot inMemoryRoot = new();
+    private IHost host = default!;
+    private HttpClient client = default!;
+    private List<OutboxMutationEvent> events = default!;
+
+    public async Task InitializeAsync()
+    {
+        events = new List<OutboxMutationEvent>();
+        var dbName = "mut-hook-" + Guid.NewGuid().ToString("N");
+        host = await new HostBuilder()
+            .ConfigureWebHost(builder =>
+            {
+                builder.UseTestServer();
+                builder.ConfigureServices(s =>
+                {
+                    s.AddRouting();
+                    s.AddDbContext<MutHookCtx>(opts => opts.UseInMemoryDatabase(dbName, inMemoryRoot));
+                });
+                builder.Configure(app =>
+                {
+                    app.UseRouting();
+                    app.UseEndpoints(e => e.MapOutboxDashboard<MutHookCtx>(o =>
+                    {
+                        o.AllowAnonymous = true;
+                        o.OnMutation = evt =>
+                        {
+                            events.Add(evt);
+                            return Task.CompletedTask;
+                        };
+                    }));
+                });
+            })
+            .StartAsync();
+        client = host.GetTestClient();
+    }
+
+    public async Task DisposeAsync()
+    {
+        client.Dispose();
+        await host.StopAsync();
+        host.Dispose();
+    }
+
+    [Fact]
+    public async Task OnMutation_fires_after_successful_replay()
+    {
+        var id = Guid.NewGuid();
+        using (var scope = host.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<MutHookCtx>();
+            db.Add(new OutboxMessage
+            {
+                Id = id, EventType = "T", Payload = "{}", OccurredOnUtc = DateTime.UtcNow,
+                RetryCount = 4, Error = "boom",
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var response = await client.PostAsync($"/_orion/outbox/{id}/replay", content: null);
+        response.EnsureSuccessStatusCode();
+
+        Assert.Single(events);
+        Assert.Equal("replay", events[0].Action);
+        Assert.Equal(id, events[0].OutboxMessageId);
+    }
+
+    [Fact]
+    public async Task OnMutation_does_NOT_fire_when_replay_targets_unknown_id()
+    {
+        var response = await client.PostAsync($"/_orion/outbox/{Guid.NewGuid()}/replay", content: null);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        Assert.Empty(events);
+    }
+
+    [Fact]
+    public async Task OnMutation_does_NOT_fire_when_discard_targets_already_processed_row()
+    {
+        var id = Guid.NewGuid();
+        using (var scope = host.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<MutHookCtx>();
+            db.Add(new OutboxMessage
+            {
+                Id = id, EventType = "T", Payload = "{}", OccurredOnUtc = DateTime.UtcNow,
+                RetryCount = 3, Error = "boom", ProcessedOnUtc = DateTime.UtcNow,
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var response = await client.PostAsync($"/_orion/outbox/{id}/discard", content: null);
+        response.EnsureSuccessStatusCode();
+
+        Assert.Empty(events);
+    }
+
+    private sealed class MutHookCtx : DbContext
+    {
+        public MutHookCtx(DbContextOptions<MutHookCtx> options) : base(options) { }
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+            => modelBuilder.Entity<OutboxMessage>().ToTable("OutboxMessages").HasKey(x => x.Id);
+    }
+}
+
+public sealed class OutboxDashboardReadOnlyModeTests : IAsyncLifetime
+{
+    private readonly Microsoft.EntityFrameworkCore.Storage.InMemoryDatabaseRoot inMemoryRoot = new();
+    private IHost host = default!;
+    private HttpClient client = default!;
+
+    public async Task InitializeAsync()
+    {
+        var dbName = "readonly-" + Guid.NewGuid().ToString("N");
+        host = await new HostBuilder()
+            .ConfigureWebHost(builder =>
+            {
+                builder.UseTestServer();
+                builder.ConfigureServices(s =>
+                {
+                    s.AddRouting();
+                    s.AddDbContext<ReadOnlyCtx>(opts => opts.UseInMemoryDatabase(dbName, inMemoryRoot));
+                });
+                builder.Configure(app =>
+                {
+                    app.UseRouting();
+                    app.UseEndpoints(e => e.MapOutboxDashboard<ReadOnlyCtx>(o =>
+                    {
+                        o.AllowAnonymous = true;
+                        o.EnableMutations = false;
+                    }));
+                });
+            })
+            .StartAsync();
+        client = host.GetTestClient();
+    }
+
+    public async Task DisposeAsync()
+    {
+        client.Dispose();
+        await host.StopAsync();
+        host.Dispose();
+    }
+
+    [Fact]
+    public async Task EnableMutations_false_does_NOT_register_replay_or_discard_endpoints()
+    {
+        var replay = await client.PostAsync($"/_orion/outbox/{Guid.NewGuid()}/replay", content: null);
+        var discard = await client.PostAsync($"/_orion/outbox/{Guid.NewGuid()}/discard", content: null);
+
+        Assert.Equal(HttpStatusCode.NotFound, replay.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, discard.StatusCode);
+    }
+
+    [Fact]
+    public async Task EnableMutations_false_still_serves_the_read_listing()
+    {
+        var response = await client.GetAsync("/_orion/outbox/failed");
+
+        response.EnsureSuccessStatusCode();
+    }
+
+    private sealed class ReadOnlyCtx : DbContext
+    {
+        public ReadOnlyCtx(DbContextOptions<ReadOnlyCtx> options) : base(options) { }
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+            => modelBuilder.Entity<OutboxMessage>().ToTable("OutboxMessages").HasKey(x => x.Id);
     }
 }
 
