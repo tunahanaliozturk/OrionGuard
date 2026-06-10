@@ -5,6 +5,27 @@ All notable changes to OrionGuard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.5.9] - 2026-06-10
+
+### Added
+
+#### `IOutboxArchiveSink` + `BlobOutboxArchiver` for off-box archival
+
+Extends the v6.5.6 `IOutboxArchiver` strategy hook. v6.5.6 introduced the `CopyToTableOutboxArchiver` archive-table pattern; v6.5.9 ships the off-box version: rows leave the database entirely after archival, landing in a consumer-supplied blob sink (S3, Azure Blob, GCS, local filesystem).
+
+- `IOutboxArchiveSink` abstraction with a single `WriteAsync(string keyHint, ReadOnlyMemory<byte> payload, ct)` call.
+- `BlobOutboxArchiver` orchestrates SELECT eligible rows -> serialise to newline-delimited JSON (`.jsonl`) -> `sink.WriteAsync` -> `ExecuteDelete` with re-checked eligibility (matches v6.5.6 safety).
+- `LocalFileOutboxArchiveSink` reference implementation writes `.jsonl` files to a local directory.
+- Sink failure aborts the sweep WITHOUT deleting; rows stay on the live table for the next tick.
+
+### Tests
+
+6 new facts; 30 dashboard + 15 archival facts total.
+
+### Migration from v6.5.8
+
+Source-compatible.
+
 ## [6.5.8] - 2026-06-10
 
 ### Added
