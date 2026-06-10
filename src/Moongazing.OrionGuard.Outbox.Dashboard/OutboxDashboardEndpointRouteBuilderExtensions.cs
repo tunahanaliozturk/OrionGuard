@@ -210,7 +210,12 @@ public static class OutboxDashboardEndpointRouteBuilderExtensions
         {
             return fallback;
         }
+        // Enum.TryParse with ignoreCase=true also accepts numeric strings ("99") and
+        // returns Success when the value can be cast to the enum's underlying type. That
+        // would let a misconfigured caller smuggle an undefined sort through the response.
+        // Pair the parse with Enum.IsDefined so only declared names succeed.
         return Enum.TryParse<OutboxFailedListingSort>(requested, ignoreCase: true, out var parsed)
+               && Enum.IsDefined(typeof(OutboxFailedListingSort), parsed)
             ? parsed
             : fallback;
     }

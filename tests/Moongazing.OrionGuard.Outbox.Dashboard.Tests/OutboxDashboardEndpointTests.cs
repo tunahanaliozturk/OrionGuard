@@ -214,6 +214,19 @@ public sealed class OutboxDashboardEndpointTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Failed_endpoint_numeric_sort_outside_enum_range_falls_back_to_default()
+    {
+        await SeedAsync(new[] { Row(retryCount: 3) });
+
+        // ?sort=99 must NOT be accepted by Enum.TryParse + Enum.IsDefined - the response
+        // would otherwise echo "99" as the sort axis even though the rows came out in the
+        // default order.
+        var body = await client.GetFromJsonAsync<JsonElement>("/_orion/outbox/failed?sort=99");
+
+        Assert.Equal("OldestFirst", body.GetProperty("sort").GetString());
+    }
+
+    [Fact]
     public async Task Failed_endpoint_invalid_sort_falls_back_to_default()
     {
         await SeedAsync(new[] { Row(retryCount: 3) });
