@@ -118,7 +118,11 @@ public sealed class RotatingFileOutboxArchiveSinkTests : IDisposable
 
         var safePath = Path.Combine(root, "2026-06-11", "outbox-0000.jsonl");
         Assert.True(File.Exists(safePath));
-        Assert.False(File.Exists("/etc/passwd"));
+        // Verify the payload went exactly to the safe path - the malicious keyHint
+        // had no effect on where the bytes landed.
+        Assert.Equal("payload", await File.ReadAllTextAsync(safePath));
+        // Files under root should be exactly one: the day directory + the safe shard.
+        Assert.Equal(new[] { safePath }, Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories).Order().ToArray());
     }
 
     [Fact]
