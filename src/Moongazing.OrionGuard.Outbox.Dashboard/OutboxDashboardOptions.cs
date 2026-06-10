@@ -57,4 +57,20 @@ public sealed class OutboxDashboardOptions
     /// keep response sizes bounded.
     /// </summary>
     public int ErrorTruncationLength { get; set; } = 1024;
+
+    /// <summary>
+    /// Enable the v6.5.5 mutation endpoints (<c>POST /{id}/replay</c> and
+    /// <c>POST /{id}/discard</c>). Default <see langword="true"/>. Set false when the
+    /// dashboard should remain strictly read-only (e.g., audit-only mounts).
+    /// </summary>
+    public bool EnableMutations { get; set; } = true;
+
+    /// <summary>
+    /// Optional audit hook invoked after every successful replay / discard. The dashboard
+    /// itself never writes audit rows so consumers stay in control of storage shape and
+    /// retention. Throwing from the hook does NOT roll back the mutation; the database
+    /// commit already happened. Wrap in try/catch if you want the endpoint to fail fast on
+    /// audit failure.
+    /// </summary>
+    public Func<OutboxMutationEvent, Task>? OnMutation { get; set; }
 }

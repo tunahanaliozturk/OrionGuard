@@ -5,6 +5,44 @@ All notable changes to OrionGuard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.5.5] - 2026-06-10
+
+### Added
+
+#### Outbox dashboard mutation surface
+
+Completes the operator workflow started in v6.5.4. The read surface listed failed / dead-lettered messages; v6.5.5 lets operators actually act on them.
+
+- **`POST /_orion/outbox/{id:guid}/replay`** finds the row, clears `RetryCount`, clears `Error`, clears `ProcessedOnUtc` (in case the dispatcher had already dead-lettered it), commits via `SaveChangesAsync`, and returns `200 OK` with `{ id, action: "replay" }`. Unknown id -> `404 Not Found`.
+- **`POST /_orion/outbox/{id:guid}/discard`** stamps `ProcessedOnUtc = UtcNow` so the dispatcher loop skips the row on its next pass; `Error` and `RetryCount` stay intact so future operators see the history. Idempotent: a row that already has `ProcessedOnUtc` set returns `200 OK` with `{ id, action: "discard", note: "already processed" }` and the audit hook does NOT fire again. Unknown id -> `404 Not Found`.
+- **`OutboxDashboardOptions.OnMutation`** optional `Func<OutboxMutationEvent, Task>` audit hook fires after a successful replay / discard. The dashboard itself never writes audit rows so consumers stay in control of storage shape and retention. `OutboxMutationEvent` carries `Action`, `OutboxMessageId`, `HttpContext`, and `OccurredAtUtc` so consumers stamp `User.Identity.Name`, claims, IP, etc. Throwing from the hook does NOT roll back the database commit.
+- **`OutboxDashboardOptions.EnableMutations`** (default `true`) - set `false` for strictly read-only mounts. When false the `POST` endpoints are not registered at all (return `404`) while the existing `/failed` listing stays available.
+
+### Tests
+
+5 new endpoint tests (replay path, discard path, replay 404, discard 404, discard idempotency) + 3 mutation-hook tests (fires on replay, does NOT fire on 404, does NOT fire on already-processed discard) + 2 read-only-mode tests (POST returns 404 when disabled, GET still works). 18 facts total in the dashboard test suite.
+
+### Migration from v6.5.4
+
+Source-compatible. Existing dashboard registrations get `replay` and `discard` automatically; opt out with `o.EnableMutations = false`.
+
+```csharp
+app.MapOutboxDashboard<AppDbContext>(o =>
+{
+    o.OnMutation = async evt =>
+    {
+        await auditWriter.WriteAsync(new
+        {
+            evt.Action,
+            evt.OutboxMessageId,
+            User = evt.HttpContext.User.Identity?.Name,
+            Ip = evt.HttpContext.Connection.RemoteIpAddress?.ToString(),
+            evt.OccurredAtUtc,
+        });
+    };
+});
+```
+
 ## [6.5.4] - 2026-06-09
 
 ### Added

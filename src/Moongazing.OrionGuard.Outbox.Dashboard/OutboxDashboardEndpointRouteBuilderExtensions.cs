@@ -101,6 +101,86 @@ public static class OutboxDashboardEndpointRouteBuilderExtensions
             });
         });
 
+        if (options.EnableMutations)
+        {
+            // Replay: clear RetryCount + Error so the next dispatcher pass re-attempts the
+            // row. ProcessedOnUtc stays null (or is cleared if the dispatcher already
+            // dead-lettered). Returns 200 on success, 404 if the id is unknown.
+            group.MapPost("/{id:guid}/replay",
+                async (TDbContext db, HttpContext http, Guid id) =>
+                {
+                    var row = await db.Set<OutboxMessage>()
+                        .FirstOrDefaultAsync(m => m.Id == id, http.RequestAborted)
+                        .ConfigureAwait(false);
+                    if (row is null)
+                    {
+                        return Results.NotFound();
+                    }
+                    // Reject replay for cleanly-processed rows (Error null AND already
+                    // processed). Without this guard a caller could clear ProcessedOnUtc
+                    // on a successful event, causing the dispatcher to re-dispatch it as
+                    // if the original handler never ran. Failed + dead-lettered rows
+                    // (Error != null) remain replayable - that's the whole point.
+                    if (row.ProcessedOnUtc is not null && row.Error is null)
+                    {
+                        return Results.Conflict(new
+                        {
+                            id,
+                            error = "already-processed-success",
+                            message = "Row was dispatched successfully and has no error; replay would re-deliver a clean event.",
+                        });
+                    }
+                    row.RetryCount = 0;
+                    row.Error = null;
+                    row.ProcessedOnUtc = null;
+                    await db.SaveChangesAsync(http.RequestAborted).ConfigureAwait(false);
+
+                    if (options.OnMutation is { } hook)
+                    {
+                        await hook(new OutboxMutationEvent(
+                            Action: "replay",
+                            OutboxMessageId: id,
+                            HttpContext: http,
+                            OccurredAtUtc: DateTime.UtcNow)).ConfigureAwait(false);
+                    }
+                    return Results.Ok(new { id, action = "replay" });
+                });
+
+            // Discard: mark the row processed without re-dispatch. ProcessedOnUtc is set so
+            // the dispatcher loop skips it; Error/RetryCount stay intact so future operators
+            // can still see what failed. Returns 200 on success, 404 if the id is unknown.
+            group.MapPost("/{id:guid}/discard",
+                async (TDbContext db, HttpContext http, Guid id) =>
+                {
+                    var row = await db.Set<OutboxMessage>()
+                        .FirstOrDefaultAsync(m => m.Id == id, http.RequestAborted)
+                        .ConfigureAwait(false);
+                    if (row is null)
+                    {
+                        return Results.NotFound();
+                    }
+                    if (row.ProcessedOnUtc is not null)
+                    {
+                        // Already processed (either by successful dispatch or a prior discard).
+                        // Idempotent: report 200 without re-stamping so audit hooks don't fire
+                        // again.
+                        return Results.Ok(new { id, action = "discard", note = "already processed" });
+                    }
+                    row.ProcessedOnUtc = DateTime.UtcNow;
+                    await db.SaveChangesAsync(http.RequestAborted).ConfigureAwait(false);
+
+                    if (options.OnMutation is { } hook)
+                    {
+                        await hook(new OutboxMutationEvent(
+                            Action: "discard",
+                            OutboxMessageId: id,
+                            HttpContext: http,
+                            OccurredAtUtc: DateTime.UtcNow)).ConfigureAwait(false);
+                    }
+                    return Results.Ok(new { id, action = "discard" });
+                });
+        }
+
         return group;
     }
 
