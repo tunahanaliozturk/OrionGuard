@@ -70,7 +70,12 @@ public sealed class BlobOutboxArchiver : IOutboxArchiver
         // Serialise to JSON Lines before the sink call so a serialisation failure also
         // aborts the sweep without partial state.
         var payload = SerializeJsonLines(rows);
-        var keyHint = $"outbox-{nowUtc().ToString("yyyy-MM-ddTHH-mm-ssZ", System.Globalization.CultureInfo.InvariantCulture)}";
+        // Append a short id suffix so two batches that land in the same UTC second do
+        // not collide on the key hint. LocalFileOutboxArchiveSink uses CreateNew and many
+        // object-store sinks naturally use the hint as the object key; without the
+        // suffix the second batch would fail with a duplicate-key error or, worse,
+        // overwrite the first.
+        var keyHint = $"outbox-{nowUtc().ToString("yyyy-MM-ddTHH-mm-ssZ", System.Globalization.CultureInfo.InvariantCulture)}-{Guid.NewGuid():N}";
         await sink.WriteAsync(keyHint, payload, cancellationToken).ConfigureAwait(false);
 
         // Re-check eligibility against the live state before deleting; matches the

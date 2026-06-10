@@ -84,7 +84,8 @@ public sealed class BlobOutboxArchiverTests
 
         Assert.Equal(2, deleted);
         var write = Assert.Single(sink.Writes);
-        Assert.Equal("outbox-2026-07-01T12-00-00Z", write.KeyHint);
+        Assert.StartsWith("outbox-2026-07-01T12-00-00Z-", write.KeyHint, StringComparison.Ordinal);
+        Assert.Equal(60, write.KeyHint.Length); // "outbox-" + 20 char iso + 1 + 32 hex
         var lines = Encoding.UTF8.GetString(write.Bytes)
             .Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries);
         Assert.Equal(2, lines.Length);
