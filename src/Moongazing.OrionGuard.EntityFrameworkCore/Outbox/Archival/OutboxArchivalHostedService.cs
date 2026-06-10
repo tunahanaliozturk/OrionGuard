@@ -17,6 +17,7 @@ public sealed class OutboxArchivalHostedService : BackgroundService
     private readonly OutboxArchivalOptions options;
     private readonly IServiceScopeFactory scopeFactory;
     private readonly IDistributedLock distributedLock;
+    private readonly IOutboxArchiver archiver;
     private readonly ILogger<OutboxArchivalHostedService>? logger;
 
     /// <summary>Initializes a new archival worker.</summary>
@@ -26,53 +27,60 @@ public sealed class OutboxArchivalHostedService : BackgroundService
     /// Distributed lock used to coordinate archival across instances. Use
     /// <see cref="NullDistributedLock"/> for single-instance deployments.
     /// </param>
+    /// <param name="archiver">
+    /// Pluggable archival strategy. When <see langword="null"/>, defaults to
+    /// <see cref="DeleteOutboxArchiver"/> (drop-in equivalent to the pre-v6.5.6 behaviour).
+    /// Consumers register <see cref="CopyToTableOutboxArchiver{TArchiveRow}"/> or their own
+    /// implementation for copy-to-archive-table / push-to-object-storage flows.
+    /// </param>
     /// <param name="logger">Optional logger.</param>
-    /// <exception cref="ArgumentNullException">
-    /// Thrown when <paramref name="options"/>, <paramref name="scopeFactory"/>, or
-    /// <paramref name="distributedLock"/> is <see langword="null"/>.
-    /// </exception>
+    public OutboxArchivalHostedService(
+        OutboxArchivalOptions options,
+        IServiceScopeFactory scopeFactory,
+        IDistributedLock distributedLock,
+        ILogger<OutboxArchivalHostedService>? logger,
+        IOutboxArchiver? archiver)
+    {
+        this.options = options ?? throw new ArgumentNullException(nameof(options));
+        this.scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
+        this.distributedLock = distributedLock ?? throw new ArgumentNullException(nameof(distributedLock));
+        this.archiver = archiver ?? new DeleteOutboxArchiver();
+        this.logger = logger;
+    }
+
+    /// <summary>
+    /// Source-compatible 4-arg constructor matching the pre-v6.5.6 ABI. Existing
+    /// applications compiled against v6.5.5 directly instantiate this signature; the v6.5.6
+    /// 5-arg ctor would otherwise be a binary break that surfaces as MissingMethodException
+    /// at runtime. Defaults the archiver to <see cref="DeleteOutboxArchiver"/>.
+    /// </summary>
     public OutboxArchivalHostedService(
         OutboxArchivalOptions options,
         IServiceScopeFactory scopeFactory,
         IDistributedLock distributedLock,
         ILogger<OutboxArchivalHostedService>? logger = null)
+        : this(options, scopeFactory, distributedLock, logger, archiver: null)
     {
-        this.options = options ?? throw new ArgumentNullException(nameof(options));
-        this.scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
-        this.distributedLock = distributedLock ?? throw new ArgumentNullException(nameof(distributedLock));
-        this.logger = logger;
     }
 
-    /// <summary>Deletes one batch of processed rows older than the retention cutoff. Public for tests.</summary>
+    /// <summary>Archives one batch of processed rows older than the retention cutoff. Public for tests.</summary>
     /// <param name="cancellationToken">Token used to observe cancellation requests.</param>
-    /// <returns>The number of rows deleted in this batch.</returns>
+    /// <returns>The number of rows archived in this batch.</returns>
     public async Task<int> ArchiveBatchAsync(CancellationToken cancellationToken)
     {
         var cutoff = DateTime.UtcNow - options.RetentionPeriod;
         await using var scope = scopeFactory.CreateAsyncScope();
         var ctx = scope.ServiceProvider.GetRequiredService<DbContext>();
 
-        var query = ctx.Set<OutboxMessage>()
-            .Where(m => m.ProcessedOnUtc != null && m.ProcessedOnUtc < cutoff);
+        var archived = await archiver.ArchiveAsync(ctx, cutoff, options, cancellationToken).ConfigureAwait(false);
 
-        if (options.PreserveDeadLetters)
-        {
-            query = query.Where(m => m.Error == null);
-        }
-
-        var deleted = await query
-            .OrderBy(m => m.ProcessedOnUtc)
-            .Take(options.BatchSize)
-            .ExecuteDeleteAsync(cancellationToken)
-            .ConfigureAwait(false);
-
-        if (deleted > 0)
+        if (archived > 0)
         {
             logger?.LogInformation(
-                "Outbox archival deleted {Count} rows older than {Cutoff:O}.", deleted, cutoff);
+                "Outbox archival processed {Count} rows older than {Cutoff:O}.", archived, cutoff);
         }
 
-        return deleted;
+        return archived;
     }
 
     /// <inheritdoc />

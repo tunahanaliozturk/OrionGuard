@@ -5,6 +5,38 @@ All notable changes to OrionGuard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.5.6] - 2026-06-10
+
+### Added
+
+#### `IOutboxArchiver` strategy hook
+
+Outbox archival worker (pre-existing) gains a pluggable strategy hook so consumers can swap the default delete-on-retention behaviour for compliance-friendly archive-table copies without forking the hosted service.
+
+- **`IOutboxArchiver`** interface: `Task<int> ArchiveAsync(DbContext, DateTime cutoff, OutboxArchivalOptions, CancellationToken)`. Implementations honour `OutboxArchivalOptions.PreserveDeadLetters` and `BatchSize`; return value is the row count for the hosted service's logging / metrics.
+- **`DeleteOutboxArchiver`**: the default. Same `ExecuteDeleteAsync` semantics as the pre-v6.5.6 inline code; ordering by `ProcessedOnUtc` so the oldest rows leave first. Honours `PreserveDeadLetters`.
+- **`CopyToTableOutboxArchiver<TArchiveRow>`** (generic): COPIES eligible rows into a consumer-owned archive table, then deletes the originals in the SAME transaction so no row is lost across the boundary. Consumer supplies a `Func<OutboxMessage, TArchiveRow>` projection. Useful for retention regimes that must keep the dispatched-event trail past the live-table window.
+- **`OutboxArchivalHostedService`** ctor gains an optional `IOutboxArchiver?` parameter (position 5, after the existing `ILogger?`). Null defaults to `DeleteOutboxArchiver` so existing wiring keeps working without changes. `ArchiveBatchAsync` now delegates to the archiver instead of executing the delete inline.
+
+### Tests
+
+2 new facts cover the strategy hook: `CopyToTableOutboxArchiver` copies rows to a separate table AND deletes originals; a custom no-op archiver is honoured (default delete path is bypassed). 9 archival facts total.
+
+### Migration from v6.5.5
+
+Source-compatible. Existing `new OutboxArchivalHostedService(opts, scopeFactory, distributedLock, logger)` calls keep the delete-on-retention behaviour. Opt into copy-to-table archival:
+
+```csharp
+services.AddSingleton<IOutboxArchiver>(_ => new CopyToTableOutboxArchiver<OutboxArchiveRow>(m => new OutboxArchiveRow
+{
+    Id = m.Id,
+    EventType = m.EventType,
+    Payload = m.Payload,
+    OccurredOnUtc = m.OccurredOnUtc,
+    ArchivedOnUtc = DateTime.UtcNow,
+}));
+```
+
 ## [6.5.5] - 2026-06-10
 
 ### Added
