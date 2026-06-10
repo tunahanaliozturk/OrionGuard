@@ -38,14 +38,29 @@ public sealed class OutboxArchivalHostedService : BackgroundService
         OutboxArchivalOptions options,
         IServiceScopeFactory scopeFactory,
         IDistributedLock distributedLock,
-        ILogger<OutboxArchivalHostedService>? logger = null,
-        IOutboxArchiver? archiver = null)
+        ILogger<OutboxArchivalHostedService>? logger,
+        IOutboxArchiver? archiver)
     {
         this.options = options ?? throw new ArgumentNullException(nameof(options));
         this.scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
         this.distributedLock = distributedLock ?? throw new ArgumentNullException(nameof(distributedLock));
         this.archiver = archiver ?? new DeleteOutboxArchiver();
         this.logger = logger;
+    }
+
+    /// <summary>
+    /// Source-compatible 4-arg constructor matching the pre-v6.5.6 ABI. Existing
+    /// applications compiled against v6.5.5 directly instantiate this signature; the v6.5.6
+    /// 5-arg ctor would otherwise be a binary break that surfaces as MissingMethodException
+    /// at runtime. Defaults the archiver to <see cref="DeleteOutboxArchiver"/>.
+    /// </summary>
+    public OutboxArchivalHostedService(
+        OutboxArchivalOptions options,
+        IServiceScopeFactory scopeFactory,
+        IDistributedLock distributedLock,
+        ILogger<OutboxArchivalHostedService>? logger = null)
+        : this(options, scopeFactory, distributedLock, logger, archiver: null)
+    {
     }
 
     /// <summary>Archives one batch of processed rows older than the retention cutoff. Public for tests.</summary>

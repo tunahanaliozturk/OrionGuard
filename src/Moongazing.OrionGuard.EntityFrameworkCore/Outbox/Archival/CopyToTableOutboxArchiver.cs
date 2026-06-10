@@ -69,9 +69,18 @@ public sealed class CopyToTableOutboxArchiver<TArchiveRow> : IOutboxArchiver
         await dbContext.Set<TArchiveRow>().AddRangeAsync(archiveRows, cancellationToken).ConfigureAwait(false);
         await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
+        // Re-check eligibility against the live state before deleting. Between the SELECT
+        // above and this DELETE, another caller may have flipped the row state back to
+        // unprocessed (the v6.5.5 dashboard replay endpoint clears ProcessedOnUtc for
+        // failed rows). Without the predicate the delete would still remove the row by id
+        // and the replay would silently lose its intent.
         var ids = live.Select(m => m.Id).ToList();
+        var preserveDeadLetters = options.PreserveDeadLetters;
         var deleted = await dbContext.Set<OutboxMessage>()
-            .Where(m => ids.Contains(m.Id))
+            .Where(m => ids.Contains(m.Id)
+                     && m.ProcessedOnUtc != null
+                     && m.ProcessedOnUtc < cutoff
+                     && (!preserveDeadLetters || m.Error == null))
             .ExecuteDeleteAsync(cancellationToken)
             .ConfigureAwait(false);
 
