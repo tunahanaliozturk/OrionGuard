@@ -5,6 +5,36 @@ All notable changes to OrionGuard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.5.7] - 2026-06-10
+
+### Added
+
+#### Dashboard sort + richer pagination metadata
+
+The v6.5.4 `/failed` listing only supported `OccurredOnUtc` ascending and returned `{page, size, total, items}`. v6.5.7 adds an explicit sort axis and the navigation metadata operators expect for paged tables.
+
+- **`OutboxFailedListingSort`** enum: `OldestFirst` (default), `NewestFirst`, `MostRetries`. Query string: `?sort=newestfirst` (case-insensitive enum name match).
+- **`OutboxDashboardOptions.DefaultSort`** controls the default when the consumer omits the query string. Default `OldestFirst` so operators triage the longest-failing rows first.
+- **Response shape extended** with `totalPages`, `hasNextPage`, `hasPreviousPage`, and `sort` (the resolved enum name). Existing `page` / `size` / `total` / `items` fields unchanged; consumers depending on the v6.5.4-6.5.6 shape continue to parse cleanly.
+- **`MostRetries`** order falls back to `OccurredOnUtc` ascending as a stable tiebreaker so rows with the same retry count stay in deterministic order.
+
+### Tests
+
+4 new facts: pagination metadata returned (total/totalPages/hasNextPage/hasPreviousPage), `NewestFirst` orders descending by `OccurredOnUtc`, `MostRetries` orders descending by `RetryCount`, invalid sort falls back to default. 24 dashboard facts total.
+
+`ConfigureWarnings(w => w.Ignore(CoreEventId.ManyServiceProvidersCreatedWarning))` added to the in-memory test fixture - additional fixtures pushed the EF Core internal-service-provider count past the framework's 20-instance warning threshold.
+
+### Migration from v6.5.6
+
+Source-compatible. Existing query strings without `?sort=...` use the configured `DefaultSort`.
+
+```csharp
+app.MapOutboxDashboard<AppDbContext>(o =>
+{
+    o.DefaultSort = OutboxFailedListingSort.MostRetries; // triage most-retried first by default
+});
+```
+
 ## [6.5.6] - 2026-06-10
 
 ### Added
