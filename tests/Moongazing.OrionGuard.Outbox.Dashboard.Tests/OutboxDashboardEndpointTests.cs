@@ -29,7 +29,7 @@ public sealed class OutboxDashboardEndpointTests : IAsyncLifetime
                 builder.ConfigureServices(s =>
                 {
                     s.AddRouting();
-                    s.AddDbContext<TestDbContext>(opts => opts.UseInMemoryDatabase(dbName, inMemoryRoot));
+                    s.AddDbContext<TestDbContext>(opts => opts.UseInMemoryDatabase(dbName, inMemoryRoot).ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.CoreEventId.ManyServiceProvidersCreatedWarning)));
                 });
                 builder.Configure(app =>
                 {
@@ -159,6 +159,85 @@ public sealed class OutboxDashboardEndpointTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Failed_endpoint_returns_pagination_metadata()
+    {
+        await SeedAsync(Enumerable.Range(0, 25).Select(_ => Row(retryCount: 3)));
+
+        var body = await client.GetFromJsonAsync<JsonElement>("/_orion/outbox/failed?page=2&size=10");
+
+        Assert.Equal(25, body.GetProperty("total").GetInt32());
+        Assert.Equal(3, body.GetProperty("totalPages").GetInt32());
+        Assert.True(body.GetProperty("hasNextPage").GetBoolean());
+        Assert.True(body.GetProperty("hasPreviousPage").GetBoolean());
+    }
+
+    [Fact]
+    public async Task Failed_endpoint_sort_NewestFirst_orders_descending_by_OccurredOnUtc()
+    {
+        var anchor = DateTime.UtcNow;
+        await SeedAsync(new[]
+        {
+            new OutboxMessage { EventType = "T", Payload = "{}", OccurredOnUtc = anchor.AddMinutes(-30), RetryCount = 3, Error = "boom1" },
+            new OutboxMessage { EventType = "T", Payload = "{}", OccurredOnUtc = anchor.AddMinutes(-10), RetryCount = 3, Error = "boom2" },
+            new OutboxMessage { EventType = "T", Payload = "{}", OccurredOnUtc = anchor.AddMinutes(-20), RetryCount = 3, Error = "boom3" },
+        });
+
+        var body = await client.GetFromJsonAsync<JsonElement>("/_orion/outbox/failed?sort=NewestFirst");
+
+        var items = body.GetProperty("items");
+        Assert.Equal(3, items.GetArrayLength());
+        for (var i = 0; i < items.GetArrayLength() - 1; i++)
+        {
+            var current = items[i].GetProperty("occurredOnUtc").GetDateTime();
+            var next = items[i + 1].GetProperty("occurredOnUtc").GetDateTime();
+            Assert.True(current >= next, "rows must be in descending OccurredOnUtc order");
+        }
+        Assert.Equal("NewestFirst", body.GetProperty("sort").GetString());
+    }
+
+    [Fact]
+    public async Task Failed_endpoint_sort_MostRetries_orders_descending_by_RetryCount()
+    {
+        await SeedAsync(new[]
+        {
+            new OutboxMessage { EventType = "T", Payload = "{}", OccurredOnUtc = DateTime.UtcNow, RetryCount = 5, Error = "x" },
+            new OutboxMessage { EventType = "T", Payload = "{}", OccurredOnUtc = DateTime.UtcNow, RetryCount = 9, Error = "x" },
+            new OutboxMessage { EventType = "T", Payload = "{}", OccurredOnUtc = DateTime.UtcNow, RetryCount = 3, Error = "x" },
+        });
+
+        var body = await client.GetFromJsonAsync<JsonElement>("/_orion/outbox/failed?sort=MostRetries");
+
+        var items = body.GetProperty("items");
+        Assert.Equal(9, items[0].GetProperty("retryCount").GetInt32());
+        Assert.Equal(5, items[1].GetProperty("retryCount").GetInt32());
+        Assert.Equal(3, items[2].GetProperty("retryCount").GetInt32());
+    }
+
+    [Fact]
+    public async Task Failed_endpoint_numeric_sort_outside_enum_range_falls_back_to_default()
+    {
+        await SeedAsync(new[] { Row(retryCount: 3) });
+
+        // ?sort=99 must NOT be accepted by Enum.TryParse + Enum.IsDefined - the response
+        // would otherwise echo "99" as the sort axis even though the rows came out in the
+        // default order.
+        var body = await client.GetFromJsonAsync<JsonElement>("/_orion/outbox/failed?sort=99");
+
+        Assert.Equal("OldestFirst", body.GetProperty("sort").GetString());
+    }
+
+    [Fact]
+    public async Task Failed_endpoint_invalid_sort_falls_back_to_default()
+    {
+        await SeedAsync(new[] { Row(retryCount: 3) });
+
+        var body = await client.GetFromJsonAsync<JsonElement>("/_orion/outbox/failed?sort=garbage");
+
+        // Default is OldestFirst; the response echoes the resolved sort regardless.
+        Assert.Equal("OldestFirst", body.GetProperty("sort").GetString());
+    }
+
+    [Fact]
     public async Task Replay_endpoint_clears_retry_count_and_error()
     {
         var failing = Row(retryCount: 5);
@@ -271,7 +350,7 @@ public sealed class OutboxDashboardMutationHookTests : IAsyncLifetime
                 builder.ConfigureServices(s =>
                 {
                     s.AddRouting();
-                    s.AddDbContext<MutHookCtx>(opts => opts.UseInMemoryDatabase(dbName, inMemoryRoot));
+                    s.AddDbContext<MutHookCtx>(opts => opts.UseInMemoryDatabase(dbName, inMemoryRoot).ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.CoreEventId.ManyServiceProvidersCreatedWarning)));
                 });
                 builder.Configure(app =>
                 {
@@ -398,7 +477,7 @@ public sealed class OutboxDashboardReadOnlyModeTests : IAsyncLifetime
                 builder.ConfigureServices(s =>
                 {
                     s.AddRouting();
-                    s.AddDbContext<ReadOnlyCtx>(opts => opts.UseInMemoryDatabase(dbName, inMemoryRoot));
+                    s.AddDbContext<ReadOnlyCtx>(opts => opts.UseInMemoryDatabase(dbName, inMemoryRoot).ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.CoreEventId.ManyServiceProvidersCreatedWarning)));
                 });
                 builder.Configure(app =>
                 {
@@ -459,7 +538,7 @@ public sealed class OutboxDashboardConfigurationTests
                 builder.ConfigureServices(s =>
                 {
                     s.AddRouting();
-                    s.AddDbContext<DummyDbContext>(opts => opts.UseInMemoryDatabase("opts-test"));
+                    s.AddDbContext<DummyDbContext>(opts => opts.UseInMemoryDatabase("opts-test").ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.CoreEventId.ManyServiceProvidersCreatedWarning)));
                 });
                 builder.Configure(app =>
                 {
@@ -488,7 +567,7 @@ public sealed class OutboxDashboardConfigurationTests
                 builder.ConfigureServices(s =>
                 {
                     s.AddRouting();
-                    s.AddDbContext<DummyDbContext>(opts => opts.UseInMemoryDatabase("opts-" + Guid.NewGuid()));
+                    s.AddDbContext<DummyDbContext>(opts => opts.UseInMemoryDatabase("opts-" + Guid.NewGuid()).ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.CoreEventId.ManyServiceProvidersCreatedWarning)));
                 });
                 builder.Configure(app =>
                 {

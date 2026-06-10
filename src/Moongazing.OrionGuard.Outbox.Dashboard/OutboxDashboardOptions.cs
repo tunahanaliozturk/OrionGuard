@@ -73,4 +73,28 @@ public sealed class OutboxDashboardOptions
     /// audit failure.
     /// </summary>
     public Func<OutboxMutationEvent, Task>? OnMutation { get; set; }
+
+    /// <summary>
+    /// Default sort applied to the failed-listing when the consumer omits the
+    /// <c>sort</c> query string. Default <see cref="OutboxFailedListingSort.OldestFirst"/>;
+    /// most operators want to triage the longest-failing rows first.
+    /// </summary>
+    public OutboxFailedListingSort DefaultSort { get; set; } = OutboxFailedListingSort.OldestFirst;
+}
+
+/// <summary>
+/// Sort options accepted by the failed-listing endpoint's <c>sort</c> query string. The
+/// query string value matches the enum name case-insensitively (e.g. <c>?sort=newestfirst</c>
+/// or <c>?sort=mostretries</c>).
+/// </summary>
+public enum OutboxFailedListingSort
+{
+    /// <summary>Order by <see cref="EntityFrameworkCore.Outbox.OutboxMessage.OccurredOnUtc"/> ascending - the dispatcher's natural FIFO order.</summary>
+    OldestFirst = 0,
+
+    /// <summary>Order by <see cref="EntityFrameworkCore.Outbox.OutboxMessage.OccurredOnUtc"/> descending - newest events first.</summary>
+    NewestFirst = 1,
+
+    /// <summary>Order by <see cref="EntityFrameworkCore.Outbox.OutboxMessage.RetryCount"/> descending - the most-retried rows first.</summary>
+    MostRetries = 2,
 }
