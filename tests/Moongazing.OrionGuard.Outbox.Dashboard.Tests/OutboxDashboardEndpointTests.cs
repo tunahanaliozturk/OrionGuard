@@ -176,6 +176,23 @@ public sealed class OutboxDashboardEndpointTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Replay_endpoint_rejects_cleanly_processed_rows_with_409()
+    {
+        // ProcessedOnUtc set + Error null => the row dispatched successfully. Replay would
+        // re-deliver a clean event so the endpoint must refuse.
+        var successful = Row(retryCount: 1, processedOnUtc: DateTime.UtcNow, error: null);
+        await SeedAsync(new[] { successful });
+
+        var response = await client.PostAsync($"/_orion/outbox/{successful.Id}/replay", content: null);
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        using var scope = host.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<TestDbContext>();
+        var fresh = await db.Set<OutboxMessage>().AsNoTracking().FirstAsync(x => x.Id == successful.Id);
+        Assert.NotNull(fresh.ProcessedOnUtc); // Must NOT have been cleared.
+    }
+
+    [Fact]
     public async Task Replay_endpoint_returns_404_for_unknown_id()
     {
         var response = await client.PostAsync($"/_orion/outbox/{Guid.NewGuid()}/replay", content: null);
@@ -301,6 +318,29 @@ public sealed class OutboxDashboardMutationHookTests : IAsyncLifetime
 
         Assert.Single(events);
         Assert.Equal("replay", events[0].Action);
+        Assert.Equal(id, events[0].OutboxMessageId);
+    }
+
+    [Fact]
+    public async Task OnMutation_fires_after_successful_discard()
+    {
+        var id = Guid.NewGuid();
+        using (var scope = host.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<MutHookCtx>();
+            db.Add(new OutboxMessage
+            {
+                Id = id, EventType = "T", Payload = "{}", OccurredOnUtc = DateTime.UtcNow,
+                RetryCount = 4, Error = "boom",
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var response = await client.PostAsync($"/_orion/outbox/{id}/discard", content: null);
+        response.EnsureSuccessStatusCode();
+
+        Assert.Single(events);
+        Assert.Equal("discard", events[0].Action);
         Assert.Equal(id, events[0].OutboxMessageId);
     }
 

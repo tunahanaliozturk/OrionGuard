@@ -116,6 +116,20 @@ public static class OutboxDashboardEndpointRouteBuilderExtensions
                     {
                         return Results.NotFound();
                     }
+                    // Reject replay for cleanly-processed rows (Error null AND already
+                    // processed). Without this guard a caller could clear ProcessedOnUtc
+                    // on a successful event, causing the dispatcher to re-dispatch it as
+                    // if the original handler never ran. Failed + dead-lettered rows
+                    // (Error != null) remain replayable - that's the whole point.
+                    if (row.ProcessedOnUtc is not null && row.Error is null)
+                    {
+                        return Results.Conflict(new
+                        {
+                            id,
+                            error = "already-processed-success",
+                            message = "Row was dispatched successfully and has no error; replay would re-deliver a clean event.",
+                        });
+                    }
                     row.RetryCount = 0;
                     row.Error = null;
                     row.ProcessedOnUtc = null;
