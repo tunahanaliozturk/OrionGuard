@@ -6,12 +6,12 @@
     <LangVersion>latest</LangVersion>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <NoWarn>CS1591;NU1900;NU1901;NU1902;NU1903;NU1904</NoWarn>
-    <PackageId>OrionGuard.Locks.Redis</PackageId>
+    <NoWarn>CS1591;NU1900;NU1901;NU1902;NU1903;NU1904;AD0001</NoWarn>
+    <PackageId>OrionGuard.Outbox.Dashboard</PackageId>
     <Version>6.5.4</Version>
     <Authors>Tunahan Ali Ozturk</Authors>
-    <Description>Redis-backed IDistributedLock for OrionGuard.EntityFrameworkCore's outbox dispatcher. Bridges OrionGuard's IDistributedLock contract to the OrionLock.Redis backend so multi-instance outbox workers can share a Redis-coordinated lease instead of the default SkipLocked DB lock.</Description>
-    <PackageTags>guard;outbox;distributed-lock;redis;orionlock;entity-framework-core;efcore</PackageTags>
+    <Description>Read-only outbox operator dashboard for OrionGuard. Maps an authorized listing of failed / poisoned messages from the consumer's DbContext to an ASP.NET Core endpoint group. Replay and discard actions stage to v6.5.5.</Description>
+    <PackageTags>guard;outbox;dashboard;aspnetcore;poisoned-messages;dead-letter</PackageTags>
     <PackageReadmeFile>docs/README.md</PackageReadmeFile>
     <PackageIcon>docs/logo.png</PackageIcon>
     <RepositoryUrl>https://github.com/tunahanaliozturk/OrionGuard</RepositoryUrl>
@@ -21,7 +21,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="OrionLock.Redis" Version="0.2.3" />
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <ProjectReference Include="..\Moongazing.OrionGuard.EntityFrameworkCore\Moongazing.OrionGuard.EntityFrameworkCore.csproj" />
   </ItemGroup>
 
