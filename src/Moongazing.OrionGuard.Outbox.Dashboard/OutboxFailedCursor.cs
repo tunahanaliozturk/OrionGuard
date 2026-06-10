@@ -73,11 +73,16 @@ internal readonly record struct OutboxFailedCursor(
             return false;
         }
         if (!long.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out var ticks)
+            || ticks < DateTime.MinValue.Ticks
+            || ticks > DateTime.MaxValue.Ticks
             || !Guid.TryParseExact(parts[1], "N", out var id)
             || !int.TryParse(parts[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out var retries)
             || !int.TryParse(parts[3], NumberStyles.Integer, CultureInfo.InvariantCulture, out var sortRaw)
             || !Enum.IsDefined(typeof(OutboxFailedListingSort), sortRaw))
         {
+            // Reject out-of-range ticks here so the endpoint's `new DateTime(ticks, Utc)`
+            // cannot throw ArgumentOutOfRangeException - a malformed cursor MUST fall
+            // back to the start of results, not surface as a 500.
             return false;
         }
         cursor = new OutboxFailedCursor(ticks, id, retries, (OutboxFailedListingSort)sortRaw);
