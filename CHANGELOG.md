@@ -5,6 +5,35 @@ All notable changes to OrionGuard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.5.8] - 2026-06-10
+
+### Added
+
+#### Outbox dashboard cursor-based pagination
+
+The v6.5.4-6.5.7 `/failed` endpoint used offset pagination (`?page=N&size=M`). Offset pagination grows expensive on large failed-message tables (each page does an OFFSET scan of every preceding row) and is unstable when new rows arrive mid-paging (the same row can appear on consecutive pages, or be skipped entirely). v6.5.8 adds a cursor variant that uses keyset pagination: the next page's WHERE predicate seeks past the last-seen `(sortKey, Id)` pair so the database does an index seek instead of an OFFSET scan.
+
+- **`GET /_orion/outbox/failed/cursor?cursor=<token>&size=N&sort=<axis>`**: paginated endpoint that returns up to `size` rows past the cursor's last position, plus the `nextCursor` for the page after. The first call sends no cursor; subsequent calls send the `nextCursor` from the previous response.
+- **`OutboxFailedCursor`** opaque token: base64Url-encoded `(LastOccurredOnUtcTicks, LastId, LastRetryCount, Sort)`. Internal-only - clients treat it as opaque. The sort axis is encoded INTO the cursor so a caller cannot switch sort mid-paging and get duplicate / skipped rows.
+- **One-extra-row peek**: the endpoint fetches `size + 1` rows; if the peek row exists, slice it off and emit a `nextCursor` based on the LAST returned row (not the peek). Detects "is there another page" without a separate COUNT round-trip.
+- **Invalid / garbage cursors** fall back to the no-cursor path (start of results) rather than 400. Matches the dashboard's existing forgiving query-string behaviour (invalid `sort` also falls back rather than failing the request).
+- **Stable tiebreaker**: every sort axis appends `Id` as a secondary key so rows with identical `OccurredOnUtc` / `RetryCount` stay in deterministic order across pages.
+
+### Tests
+
+5 new facts: cursor pages through 25 rows in chunks of 10 with no duplicates / no skips, `hasNextPage=true` + `nextCursor` set when more rows remain, `hasNextPage=false` + `nextCursor=null` on last page, invalid cursor falls back to beginning, cursor locks sort axis (switched `?sort=` on a follow-up call is ignored). 30 dashboard facts total.
+
+### Migration from v6.5.7
+
+Source-compatible. The existing `/failed` offset endpoint continues to work; the cursor endpoint is an additive new route. Operator UIs that page through large tables should switch to the cursor variant:
+
+```
+GET /_orion/outbox/failed/cursor?size=50&sort=MostRetries
+-> { items: [...], nextCursor: "AAAB...", hasNextPage: true, ... }
+GET /_orion/outbox/failed/cursor?cursor=AAAB...&size=50
+-> next page
+```
+
 ## [6.5.7] - 2026-06-10
 
 ### Added

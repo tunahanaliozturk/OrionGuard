@@ -8,7 +8,7 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <NoWarn>CS1591;NU1900;NU1901;NU1902;NU1903;NU1904</NoWarn>
     <PackageId>OrionGuard.Locks.Redis</PackageId>
-    <Version>6.5.7</Version>
+    <Version>6.5.8</Version>
     <Authors>Tunahan Ali Ozturk</Authors>
     <Description>Redis-backed IDistributedLock for OrionGuard.EntityFrameworkCore's outbox dispatcher. Bridges OrionGuard's IDistributedLock contract to the OrionLock.Redis backend so multi-instance outbox workers can share a Redis-coordinated lease instead of the default SkipLocked DB lock.</Description>
     <PackageTags>guard;outbox;distributed-lock;redis;orionlock;entity-framework-core;efcore</PackageTags>
