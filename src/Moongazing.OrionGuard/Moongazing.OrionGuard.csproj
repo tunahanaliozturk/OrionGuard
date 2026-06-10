@@ -16,7 +16,7 @@
 		<OutputType>Library</OutputType>
 
 		<PackageId>OrionGuard</PackageId>
-		<Version>6.5.4</Version>
+		<Version>6.5.5</Version>
 		<Authors>Tunahan Ali Ozturk</Authors>
 		<Company>Tunahan Ali Ozturk</Company>
 		<GeneratePackageOnBuild>false</GeneratePackageOnBuild>
@@ -35,6 +35,17 @@
 		<PackageProjectUrl>https://github.com/tunahanaliozturk/OrionGuard</PackageProjectUrl>
 		<PackageTags>guard;validation;fluent;exceptions;.NET;input-validation;guard-clauses;defensive-programming;security;localization;format-validation;nativeaot;source-generator;aspnetcore;mediatr</PackageTags>
 		<PackageReleaseNotes>
+v6.5.5 - Outbox operator mutation surface
+
+NEW: POST /_orion/outbox/{id}/replay clears RetryCount + Error + ProcessedOnUtc so the next dispatcher pass re-attempts the row; returns 404 if the id is unknown.
+NEW: POST /_orion/outbox/{id}/discard stamps ProcessedOnUtc=UtcNow without re-dispatch; Error and RetryCount stay intact so later operators see the history. Idempotent for already-processed rows (returns 200 with note).
+NEW: OutboxDashboardOptions.OnMutation Func&lt;OutboxMutationEvent, Task&gt; audit hook fires after a successful replay/discard; consumers stamp User.Identity.Name and store wherever they want. Hook does NOT roll back the commit.
+NEW: OutboxDashboardOptions.EnableMutations (default true) - set false for read-only mounts; the POST endpoints are simply not registered.
+
+Full changelog: https://github.com/tunahanaliozturk/OrionGuard/blob/master/CHANGELOG.md
+
+---
+
 v6.5.4 - Outbox operator read surface
 
 NEW: Moongazing.OrionGuard.Outbox.Dashboard add-on package. MapOutboxDashboard&lt;TDbContext&gt;() registers a route group; GET /_orion/outbox/failed?page=N&amp;size=M returns paginated failed-message metadata (RetryCount &gt;= threshold AND Error != null - covers both still-failing and dispatcher-dead-lettered rows). Payload deliberately excluded from the projection; error text truncated to ErrorTruncationLength.

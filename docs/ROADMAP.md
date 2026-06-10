@@ -108,9 +108,12 @@ Ships the push-dispatch contract + in-process implementation. Concrete cross-pro
 
 - **`Moongazing.OrionGuard.Outbox.Dashboard` add-on shipped.** `MapOutboxDashboard<TDbContext>` registers an authorized read-only endpoint group; `GET /_orion/outbox/failed?page=N&size=M` returns paginated failed-message metadata (payload deliberately excluded). Authorization required by default; pagination clamped to a configurable `MaxPageSize`; error text truncated to `ErrorTruncationLength`.
 
-### v6.5.5 — Outbox Operator Mutation Surface *(planned)*
+### v6.5.5 — Outbox Operator Mutation Surface *(shipped 2026-06-10)*
 
-- **Replay / discard actions on the dashboard endpoint group.** Authenticated mutations to retry a single poisoned message (resets `RetryCount` + clears `Error`) or discard it. Audit log entries to track who-did-what. Deferred from v6.5.4 so the read surface ships first and the mutation surface gets a focused review.
+- `POST /_orion/outbox/{id:guid}/replay` clears `RetryCount`, `Error`, and `ProcessedOnUtc` so the next dispatcher pass re-attempts the row. 404 for unknown ids.
+- `POST /_orion/outbox/{id:guid}/discard` stamps `ProcessedOnUtc = UtcNow` so the dispatcher skips the row; idempotent for already-processed rows.
+- `OutboxDashboardOptions.OnMutation` audit hook (consumer-controlled storage shape; the dashboard never writes audit rows).
+- `OutboxDashboardOptions.EnableMutations` (default `true`) - false leaves the dashboard strictly read-only.
 
 ### v6.6.0 — Migration & Contract-First *(planned, Q4 2026)*
 
