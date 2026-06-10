@@ -5,6 +5,27 @@ All notable changes to OrionGuard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.5.10] - 2026-06-11
+
+### Added
+
+#### `RotatingFileOutboxArchiveSink` - production-grade local archive sink
+
+Extends the v6.5.9 `IOutboxArchiveSink` abstraction. v6.5.9 shipped `LocalFileOutboxArchiveSink` as a single-file reference; v6.5.10 ships the production-grade rotating variant for deployments that ship archives to a local NFS / EFS mount + a downstream batch job that uploads to cold storage.
+
+- `RotatingFileOutboxArchiveSink` writes JSON Lines payloads under `{Root}/{yyyy-MM-dd}/{keyHint}-{shard:D4}.jsonl`.
+- One subdirectory per UTC day so the operator can prune by date.
+- Within a day, files split at `MaxFileBytes` (default 64 MiB). The sink appends to the lowest-numbered shard whose size + payload fits under the cap; otherwise it rolls to the next shard.
+- `MaxShardsPerDay` (default 9999) bounds the per-day shard count - reaching the cap throws so a runaway archive load surfaces as an explicit configuration error rather than silently overwriting.
+
+### Tests
+
+6 new facts.
+
+### Migration from v6.5.9
+
+Source-compatible.
+
 ## [6.5.9] - 2026-06-10
 
 ### Added
