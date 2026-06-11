@@ -163,6 +163,11 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
             // after SaveChangesAsync confirms persistence (avoids double-count on
             // re-dispatch).
             double? pendingQueueLagMs = null;
+            // v6.5.19: stash payload size and emit AFTER SaveChangesAsync confirms the
+            // row is persisted, matching v6.5.16's queue_lag pattern. Recording before
+            // persistence would double-count on a SaveChanges failure that re-dispatches
+            // the row on the next cycle.
+            int? pendingRowPayloadBytes = null;
             Activity? activity = null;
             if (!string.IsNullOrEmpty(msg.TraceParent)
                 && ActivityContext.TryParse(msg.TraceParent, msg.TraceState, out var parentContext))
@@ -231,9 +236,9 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
                         // double-count when SaveChanges fails and the row is re-dispatched on
                         // the next poll.
                         pendingQueueLagMs = (processedUtc - msg.OccurredOnUtc).TotalMilliseconds;
-                        // v6.5.19: record payload size on the success path so operators
-                        // see per-row byte distribution alongside the dispatch lag.
-                        OutboxDispatcherDiagnostics.RecordRowPayloadSize(msg.Payload?.Length ?? 0);
+                        // v6.5.19: stash for post-SaveChanges emit so a SaveChanges
+                        // failure does NOT cause a double count on re-dispatch.
+                        pendingRowPayloadBytes = msg.Payload?.Length;
                     }
                 }
             }
@@ -272,6 +277,11 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
                 {
                     OutboxDispatcherDiagnostics.RecordQueueLag(lag);
                     pendingQueueLagMs = null;
+                }
+                if (pendingRowPayloadBytes is { } bytes)
+                {
+                    OutboxDispatcherDiagnostics.RecordRowPayloadSize(bytes);
+                    pendingRowPayloadBytes = null;
                 }
             }
             catch (OperationCanceledException)
