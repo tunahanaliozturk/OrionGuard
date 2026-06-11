@@ -47,4 +47,18 @@ public static class OutboxDispatcherDiagnostics
 
     /// <summary>Record one idle poll. Public so consumer-owned dispatchers can opt in.</summary>
     public static void RecordIdlePoll() => IdlePolls.Add(1);
+
+    /// <summary>
+    /// v6.5.18 per-row dispatch failure counter. Increments for EVERY swallowed exception
+    /// in the dispatcher's row loop (transient + terminal). Distinct from the dead-letter
+    /// path which only fires when RetryCount >= MaxRetries; this counter exposes the full
+    /// failure surface so operators see the upstream pressure that precedes a dead-letter.
+    /// </summary>
+    internal static readonly Counter<long> DispatchErrors = Meter.CreateCounter<long>(
+        "orionguard.outbox.dispatcher.errors", unit: "{errors}",
+        description: "Per-row dispatch failures swallowed by the dispatcher (transient + terminal).");
+
+    /// <summary>Record a per-row dispatch failure tagged with the exception type.</summary>
+    public static void RecordDispatchError(string exceptionType)
+        => DispatchErrors.Add(1, new System.Collections.Generic.KeyValuePair<string, object?>("exception_type", exceptionType));
 }

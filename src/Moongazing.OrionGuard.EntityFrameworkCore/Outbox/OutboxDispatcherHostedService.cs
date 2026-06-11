@@ -240,6 +240,11 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
             }
             catch (Exception ex)
             {
+                // v6.5.18: emit the dispatch error counter for EVERY swallowed failure
+                // (transient + terminal). Pairs with the dead-letter path (which only
+                // fires when MaxRetries is reached) so operators see the upstream
+                // pressure leading to a dead-letter.
+                OutboxDispatcherDiagnostics.RecordDispatchError(ex.GetType().Name);
                 msg.RetryCount++;
                 msg.Error = ex.ToString();
                 if (msg.RetryCount >= options.MaxRetries)
