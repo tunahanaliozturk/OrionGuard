@@ -151,6 +151,9 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
 
         if (batch.Count == 0)
         {
+            // v6.5.17 idle-poll counter: lets operators see what fraction of the
+            // dispatcher's wakeups produced nothing and tune PollingInterval / BatchSize.
+            OutboxDispatcherDiagnostics.RecordIdlePoll();
             return;
         }
 
