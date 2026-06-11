@@ -5,6 +5,32 @@ All notable changes to OrionGuard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.5.15] - 2026-06-11
+
+### Added
+
+#### `OutboxDashboardOptions.SecurityHeaders`
+
+Every dashboard response now carries production-friendly hardening headers via an endpoint filter on the route group.
+
+Defaults:
+- `X-Frame-Options: DENY` (clickjacking guard)
+- `X-Content-Type-Options: nosniff` (MIME-sniff guard)
+- `Referrer-Policy: no-referrer`
+- `Cache-Control: no-store`
+
+The filter writes headers BEFORE the response body so they apply even when the endpoint short-circuits via `Results.NotFound()`.
+
+Consumers can set `SecurityHeaders` to an empty dictionary to disable defaults, or assign a custom dictionary to replace them entirely (no merge).
+
+### Tests
+
+3 new facts.
+
+### Migration from v6.5.14
+
+Source-compatible. Existing deployments inherit the defaults transparently.
+
 ## [6.5.14] - 2026-06-11
 
 ### Added
