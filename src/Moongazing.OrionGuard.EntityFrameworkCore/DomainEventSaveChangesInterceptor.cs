@@ -33,6 +33,11 @@ public sealed class DomainEventSaveChangesInterceptor : SaveChangesInterceptor
         this.serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
     }
 
+    // v6.5.22 fix (codex P2): AsyncLocal stash so concurrent SaveChanges on different
+    // DbContexts do not race a single field. SavingChangesAsync writes the count;
+    // SavedChangesAsync (commit-confirmed) emits the histogram sample.
+    private readonly AsyncLocal<int?> pendingEnqueueCount = new();
+
     /// <inheritdoc />
     public override async ValueTask<InterceptionResult<int>> SavingChangesAsync(
         DbContextEventData eventData,
@@ -81,10 +86,11 @@ public sealed class DomainEventSaveChangesInterceptor : SaveChangesInterceptor
                     enqueued++;
                 }
             }
-            // v6.5.22: per-save enqueue size for operator visibility into producer-side
-            // fan-out. Zero-row saves intentionally skipped (every SaveChanges would
-            // otherwise emit, drowning the histogram tail signal in idle samples).
-            Outbox.OutboxDispatcherDiagnostics.RecordEnqueuedRowsPerSave(enqueued);
+            // v6.5.22 fix (codex P2): stash the count and emit AFTER the commit succeeds
+            // inside SavedChangesAsync. Emitting here (before EF flushes) would record a
+            // positive batch even when the save later fails on a constraint violation /
+            // cancellation, polluting the producer-side p99 with phantom enqueues.
+            pendingEnqueueCount.Value = enqueued;
         }
         return await base.SavingChangesAsync(eventData, result, cancellationToken).ConfigureAwait(false);
     }
@@ -106,6 +112,15 @@ public sealed class DomainEventSaveChangesInterceptor : SaveChangesInterceptor
     {
         ArgumentNullException.ThrowIfNull(eventData);
         var options = serviceProvider.GetRequiredService<OrionGuardEfCoreOptions>();
+        // v6.5.22: post-commit emission of the producer enqueue size. Pulled regardless
+        // of strategy so non-outbox SavingChangesAsync branches that did set a count
+        // (none today, but future strategies might) still benefit from the same fate
+        // model. Cleared after emit so a subsequent failure path does not double-count.
+        if (pendingEnqueueCount.Value is { } enqueuedCount)
+        {
+            Outbox.OutboxDispatcherDiagnostics.RecordEnqueuedRowsPerSave(enqueuedCount);
+            pendingEnqueueCount.Value = null;
+        }
         if (options.Strategy != DomainEventDispatchStrategy.Inline)
         {
             // Outbox mode: fire the optional push-dispatch wake so a ChannelOutboxWakeSignal
@@ -150,6 +165,9 @@ public sealed class DomainEventSaveChangesInterceptor : SaveChangesInterceptor
         // without draining, so the aggregate retains its domain events for the retry to observe.
         var collector = serviceProvider.GetRequiredService<DomainEventCollector>();
         collector.Reset();
+        // v6.5.22: clear the pending enqueue count on failure so a subsequent
+        // successful SaveChanges does not emit the failed batch's number.
+        pendingEnqueueCount.Value = null;
         return base.SaveChangesFailedAsync(eventData, cancellationToken);
     }
 }
