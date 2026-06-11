@@ -64,6 +64,7 @@ public sealed class DomainEventSaveChangesInterceptor : SaveChangesInterceptor
         {
             var current = Activity.Current;
             var typeMap = serviceProvider.GetService<OutboxTypeMapRegistry>();
+            int enqueued = 0;
             foreach (var aggregate in aggregates)
             {
                 var events = aggregate.PullDomainEvents();
@@ -77,8 +78,13 @@ public sealed class DomainEventSaveChangesInterceptor : SaveChangesInterceptor
                         TraceParent = current?.Id,
                         TraceState = current?.TraceStateString,
                     });
+                    enqueued++;
                 }
             }
+            // v6.5.22: per-save enqueue size for operator visibility into producer-side
+            // fan-out. Zero-row saves intentionally skipped (every SaveChanges would
+            // otherwise emit, drowning the histogram tail signal in idle samples).
+            Outbox.OutboxDispatcherDiagnostics.RecordEnqueuedRowsPerSave(enqueued);
         }
         return await base.SavingChangesAsync(eventData, result, cancellationToken).ConfigureAwait(false);
     }
