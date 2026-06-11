@@ -5,6 +5,27 @@ All notable changes to OrionGuard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.5.16] - 2026-06-11
+
+### Added
+
+#### `orionguard.outbox.dispatcher.queue_lag` histogram
+
+`Histogram<double>` exposed via the new `Moongazing.OrionGuard.Outbox.Dispatcher` Meter. Records per-row dispatch lag (`OccurredOnUtc -> ProcessedOnUtc`) on the success path so operators graph p50/p99 and spot dispatcher slowdown BEFORE rows pile up beyond the steady-state dispatched-count rate.
+
+- Recorded in `OutboxDispatcherHostedService` immediately after `dispatcher.DispatchAsync` succeeds.
+- Clock-skew negative deltas are clamped to 0 so they do not pull p50 down.
+- Public `OutboxDispatcherDiagnostics.RecordQueueLag(double)` so consumer-owned dispatchers can opt in.
+- Dead-letter paths do NOT emit; that latency is a separate operational signal.
+
+### Tests
+
+2 new facts.
+
+### Migration from v6.5.15
+
+Source-compatible.
+
 ## [6.5.15] - 2026-06-11
 
 ### Added
