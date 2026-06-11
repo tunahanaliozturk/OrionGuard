@@ -87,13 +87,21 @@ public sealed class OutboxArchivalHostedService : BackgroundService
         await using var scope = scopeFactory.CreateAsyncScope();
         var ctx = scope.ServiceProvider.GetRequiredService<DbContext>();
 
-        // v6.5.21: time the full archival round-trip including the scope/context
-        // resolution above. Records on EVERY cycle (zero-row included) so a slow sink
-        // surfaces even when the backlog is empty.
+        // v6.5.21: time the archiver round-trip (excluding the cheap DI scope/DbContext
+        // resolution above). Records on EVERY cycle (success AND failure, zero-row
+        // included) so slow OR failing sinks both surface; try/finally guarantees the
+        // sample fires even if ArchiveAsync throws.
         var cycleSw = System.Diagnostics.Stopwatch.StartNew();
-        var archived = await archiver.ArchiveAsync(ctx, cutoff, options, cancellationToken).ConfigureAwait(false);
-        cycleSw.Stop();
-        OutboxArchivalDiagnostics.RecordArchiveCycleDuration(cycleSw.Elapsed.TotalMilliseconds);
+        int archived;
+        try
+        {
+            archived = await archiver.ArchiveAsync(ctx, cutoff, options, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            cycleSw.Stop();
+            OutboxArchivalDiagnostics.RecordArchiveCycleDuration(cycleSw.Elapsed.TotalMilliseconds);
+        }
 
         if (archived > 0)
         {
