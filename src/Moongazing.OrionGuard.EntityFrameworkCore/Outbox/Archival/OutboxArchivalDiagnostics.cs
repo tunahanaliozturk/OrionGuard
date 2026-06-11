@@ -29,6 +29,7 @@ public static class OutboxArchivalDiagnostics
     /// </summary>
     public static void RecordBytes(long bytes, string sinkName)
     {
+        ArgumentException.ThrowIfNullOrEmpty(sinkName);
         if (bytes <= 0)
         {
             return;
