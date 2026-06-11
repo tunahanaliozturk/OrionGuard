@@ -44,10 +44,13 @@ public sealed class RetryingOutboxArchiveSink : IOutboxArchiveSink
                 await inner.WriteAsync(keyHint, payload, cancellationToken).ConfigureAwait(false);
                 return;
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
-                // Cancellation is not a transient failure - propagate without consuming
-                // a retry slot.
+                // CALLER cancellation. Propagate without consuming a retry slot. We gate
+                // on the caller's token because inner sinks built on HttpClient can
+                // surface request timeouts as TaskCanceledException even when the
+                // caller's token never fired - those are transient and SHOULD go through
+                // the IsRetryable predicate, not bypass the retry loop.
                 throw;
             }
 #pragma warning disable CA1031 // decorator catches by design - the IsRetryable predicate triages
@@ -64,12 +67,15 @@ public sealed class RetryingOutboxArchiveSink : IOutboxArchiveSink
                 {
                     await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
                 }
-                catch (OperationCanceledException)
+                catch (OperationCanceledException oce)
                 {
                     // Cancelled while waiting to retry - surface the last failure as the
-                    // cause so the caller sees the underlying problem rather than a
-                    // synthetic TaskCanceledException.
-                    throw;
+                    // InnerException so the caller sees the underlying problem rather
+                    // than a synthetic TaskCanceledException with no context.
+                    throw new OperationCanceledException(
+                        "RetryingOutboxArchiveSink cancelled while waiting to retry.",
+                        innerException: lastFailure ?? oce,
+                        token: oce.CancellationToken);
                 }
             }
         }
@@ -135,6 +141,23 @@ public sealed class RetryingOutboxArchiveSinkOptions
         {
             throw new ArgumentException(
                 $"RetryingOutboxArchiveSinkOptions: MaxDelay ({MaxDelay}) must be >= BaseDelay ({BaseDelay}).");
+        }
+        // Configuration binding (IConfiguration.Bind / Options.Configure with null
+        // explicit assignments) can leave these delegates null even when callers pass an
+        // options object that nominally satisfies the type. Surface that as a fast
+        // construction failure so the first WriteAsync call does not blow up with a
+        // NullReferenceException.
+        if (IsRetryable is null)
+        {
+            throw new ArgumentNullException(
+                nameof(IsRetryable),
+                "RetryingOutboxArchiveSinkOptions.IsRetryable must not be null. Default retries everything.");
+        }
+        if (RandomFactory is null)
+        {
+            throw new ArgumentNullException(
+                nameof(RandomFactory),
+                "RetryingOutboxArchiveSinkOptions.RandomFactory must not be null. Default returns Random.Shared.");
         }
     }
 }
