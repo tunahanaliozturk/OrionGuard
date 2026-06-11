@@ -61,4 +61,24 @@ public static class OutboxDispatcherDiagnostics
     /// <summary>Record a per-row dispatch failure tagged with the exception type.</summary>
     public static void RecordDispatchError(string exceptionType)
         => DispatchErrors.Add(1, new System.Collections.Generic.KeyValuePair<string, object?>("exception_type", exceptionType));
+
+    /// <summary>
+    /// v6.5.19 distribution of dispatched row payload sizes in bytes (the JSON Payload
+    /// column length). Operators graph p99 to size storage column types, connection-
+    /// pool buffers, and spot tenant bulk-import paths whose payloads grew suddenly.
+    /// Recorded only on the successful dispatch path.
+    /// </summary>
+    internal static readonly Histogram<int> RowPayloadSizeBytes = Meter.CreateHistogram<int>(
+        "orionguard.outbox.dispatcher.row_size_bytes", unit: "By",
+        description: "Per-row dispatched payload size in bytes.");
+
+    /// <summary>Record one successfully-dispatched row's payload size in bytes.</summary>
+    public static void RecordRowPayloadSize(int bytes)
+    {
+        if (bytes <= 0)
+        {
+            return;
+        }
+        RowPayloadSizeBytes.Record(bytes);
+    }
 }
