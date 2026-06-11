@@ -5,6 +5,28 @@ All notable changes to OrionGuard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.5.12] - 2026-06-11
+
+### Added
+
+#### `CompositeOutboxArchiveSink` - fan-out to multiple sinks
+
+Deployments wanting archival redundancy can now wire two or more `IOutboxArchiveSink` instances (e.g. S3 + local rotating file) and the composite forwards every write to each in registration order.
+
+- `CompositeOutboxArchiveSink(IEnumerable<IOutboxArchiveSink>, CompositeOutboxArchiveSinkMode)`.
+- `FailFast` (default): first failure aborts and bubbles. Use when cross-sink consistency matters.
+- `BestEffort`: every sink is called; AggregateException is thrown ONLY if every sink threw. Use when archive needs to land in at least one destination.
+- Cancellation propagates without consuming remaining sinks.
+- Sequential fan-out by design - cloud-object-store clients benefit from serial calls more than from fan-out concurrency.
+
+### Tests
+
+8 new facts.
+
+### Migration from v6.5.11
+
+Source-compatible.
+
 ## [6.5.11] - 2026-06-11
 
 ### Added
