@@ -93,6 +93,10 @@ public sealed class OutboxArchivalHostedService : BackgroundService
         {
             logger?.LogInformation(
                 "Outbox archival processed {Count} rows older than {Cutoff:O}.", archived, cutoff);
+            // v6.5.20: record batch size on non-empty cycles only so the histogram
+            // tail reflects produced batches, not idle polls. archived == 0 cycles
+            // are tracked by the v6.5.14 liveness gauge.
+            OutboxArchivalDiagnostics.RecordArchiveBatchSize(archived);
         }
         // v6.5.14: record liveness regardless of whether rows were archived. A successful
         // call with archived == 0 still proves the worker reached the backend - exactly
