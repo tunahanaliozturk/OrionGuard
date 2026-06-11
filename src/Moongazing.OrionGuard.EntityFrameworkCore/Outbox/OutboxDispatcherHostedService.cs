@@ -156,6 +156,10 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
 
         foreach (var msg in batch)
         {
+            // v6.5.16: per-row queue lag captured during the success path and emitted
+            // after SaveChangesAsync confirms persistence (avoids double-count on
+            // re-dispatch).
+            double? pendingQueueLagMs = null;
             Activity? activity = null;
             if (!string.IsNullOrEmpty(msg.TraceParent)
                 && ActivityContext.TryParse(msg.TraceParent, msg.TraceState, out var parentContext))
@@ -216,8 +220,14 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
                     else
                     {
                         await dispatcher.DispatchAsync(@event, cancellationToken).ConfigureAwait(false);
-                        msg.ProcessedOnUtc = DateTime.UtcNow;
+                        var processedUtc = DateTime.UtcNow;
+                        msg.ProcessedOnUtc = processedUtc;
                         msg.Error = null;
+                        // v6.5.16: stash the lag so it can be recorded AFTER SaveChangesAsync
+                        // confirms the row is persisted. Recording before persistence would
+                        // double-count when SaveChanges fails and the row is re-dispatched on
+                        // the next poll.
+                        pendingQueueLagMs = (processedUtc - msg.OccurredOnUtc).TotalMilliseconds;
                     }
                 }
             }
@@ -247,6 +257,11 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
             try
             {
                 await ctx.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+                if (pendingQueueLagMs is { } lag)
+                {
+                    OutboxDispatcherDiagnostics.RecordQueueLag(lag);
+                    pendingQueueLagMs = null;
+                }
             }
             catch (OperationCanceledException)
             {
