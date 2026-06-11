@@ -63,6 +63,27 @@ public static class OutboxDispatcherDiagnostics
         => DispatchErrors.Add(1, new System.Collections.Generic.KeyValuePair<string, object?>("exception_type", exceptionType));
 
     /// <summary>
+    /// v6.5.22 distribution of OutboxMessage rows added per SaveChangesAsync invocation
+    /// on the producer side. Operators graph p99 to spot a SaveChanges call that emits
+    /// an unusually large batch (often a sign of bulk-imports or accidental fan-out
+    /// from aggregate domain events). Zero-row saves do NOT emit (every SaveChanges
+    /// would otherwise pollute the histogram with 0 samples).
+    /// </summary>
+    internal static readonly Histogram<int> EnqueuedRowsPerSave = Meter.CreateHistogram<int>(
+        "orionguard.outbox.enqueued_rows_per_save", unit: "{rows}",
+        description: "Outbox rows added by the DomainEventSaveChangesInterceptor per SaveChanges (non-zero only).");
+
+    /// <summary>Record one non-empty SaveChanges enqueue batch. Public for consumer-owned producers.</summary>
+    public static void RecordEnqueuedRowsPerSave(int rowCount)
+    {
+        if (rowCount <= 0)
+        {
+            return;
+        }
+        EnqueuedRowsPerSave.Record(rowCount);
+    }
+
+    /// <summary>
     /// v6.5.19 distribution of dispatched row payload sizes in bytes (the JSON Payload
     /// column length). Operators graph p99 to size storage column types, connection-
     /// pool buffers, and spot tenant bulk-import paths whose payloads grew suddenly.
