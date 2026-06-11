@@ -33,4 +33,18 @@ public static class OutboxDispatcherDiagnostics
     /// </summary>
     public static void RecordQueueLag(double milliseconds)
         => QueueLag.Record(System.Math.Max(0d, milliseconds));
+
+    /// <summary>
+    /// v6.5.17 idle-poll counter. Increments each time <c>ProcessBatchAsync</c> finds
+    /// an empty backlog. Operators graph the rate vs the total poll rate to answer
+    /// "is the dispatcher running too often for the actual traffic? raise PollingInterval".
+    /// A high idle-poll fraction is a cost-of-poll signal; a low fraction means the
+    /// dispatcher is busy and BatchSize / parallelism may need raising instead.
+    /// </summary>
+    internal static readonly Counter<long> IdlePolls = Meter.CreateCounter<long>(
+        "orionguard.outbox.dispatcher.poll.idle", unit: "{polls}",
+        description: "Dispatcher cycles that found an empty backlog.");
+
+    /// <summary>Record one idle poll. Public so consumer-owned dispatchers can opt in.</summary>
+    public static void RecordIdlePoll() => IdlePolls.Add(1);
 }
