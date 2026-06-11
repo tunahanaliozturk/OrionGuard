@@ -38,6 +38,24 @@ public static class OutboxDashboardEndpointRouteBuilderExtensions
 
         var group = endpoints.MapGroup(options.RoutePrefix.TrimEnd('/'));
 
+        // v6.5.15 security headers: stamped via AddEndpointFilter so the dashboard's HTML
+        // / JSON responses carry hardening defaults without the consumer having to wire
+        // a separate middleware. The filter runs per-request and writes headers BEFORE
+        // the response body so they apply even when the endpoint short-circuits via
+        // Results.NotFound() or similar.
+        if (options.SecurityHeaders is { Count: > 0 })
+        {
+            var headers = options.SecurityHeaders;
+            group.AddEndpointFilter(async (ctx, next) =>
+            {
+                foreach (var (k, v) in headers)
+                {
+                    ctx.HttpContext.Response.Headers[k] = v;
+                }
+                return await next(ctx);
+            });
+        }
+
         // Authorization wiring:
         //   AllowAnonymous   -> mark anonymous (NOT recommended in production).
         //   Named policy     -> evaluate that policy explicitly.
