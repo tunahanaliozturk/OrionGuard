@@ -37,5 +37,6 @@ public sealed class LocalFileOutboxArchiveSink : IOutboxArchiveSink
             useAsync: true);
         await stream.WriteAsync(payload, cancellationToken).ConfigureAwait(false);
         await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
+        OutboxArchivalDiagnostics.RecordBytes(payload.Length, "local-file");
     }
 }

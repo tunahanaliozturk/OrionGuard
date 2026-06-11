@@ -98,6 +98,7 @@ public sealed class RotatingFileOutboxArchiveSink : IOutboxArchiveSink
             path, mode, FileAccess.Write, FileShare.None, bufferSize: 4096, useAsync: true);
         await stream.WriteAsync(payload, ct).ConfigureAwait(false);
         await stream.FlushAsync(ct).ConfigureAwait(false);
+        OutboxArchivalDiagnostics.RecordBytes(payload.Length, "rotating-file");
     }
 }
 
