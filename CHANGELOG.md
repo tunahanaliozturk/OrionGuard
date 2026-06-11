@@ -5,6 +5,30 @@ All notable changes to OrionGuard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.5.21] - 2026-06-11
+
+### Added
+
+#### `orionguard.outbox.archival.duration_ms` histogram
+
+`Histogram<double>` measuring `OutboxArchivalHostedService.ArchiveBatchAsync` wall-clock per cycle. Operators graph p99 to spot a backend whose archive write throughput has regressed independently of row count (slow blob sink keeps the dispatcher honest but hurts throughput).
+
+- ALL cycles emit including zero-row (poll cost matters too).
+- Recorded around the full `archiver.ArchiveAsync` round-trip.
+- Public `OutboxArchivalDiagnostics.RecordArchiveCycleDuration(double)` helper; negative inputs are clamped to 0 to tolerate clock skew across hosts.
+
+### Tests
+
+2 facts.
+
+### Migration from v6.5.20
+
+Source-compatible.
+
+## [6.5.17] - [6.5.20]
+
+Released to NuGet; see GitHub release notes for `orionguard.outbox.dispatcher.poll.idle` counter (v6.5.17), `dispatcher.errors` counter (v6.5.18), `dispatcher.row_size_bytes` histogram (v6.5.19), `archival.batch_size` histogram (v6.5.20).
+
 ## [6.5.16] - 2026-06-11
 
 ### Added
