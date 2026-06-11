@@ -17,9 +17,10 @@ public static class OutboxDispatcherDiagnostics
 
     /// <summary>
     /// Per-row dispatch lag: <c>now - OccurredOnUtc</c> at the moment the dispatcher
-    /// completes the dispatch (success OR dead-letter). Operators graph p50/p99 to spot
-    /// dispatcher slowdown before rows pile up beyond the steady-state
-    /// <c>orionguard.outbox.dispatched_count</c> rate.
+    /// successfully dispatches AND persists the row. Dead-letter paths emit their own
+    /// signals and are intentionally excluded here so the histogram tail reflects only
+    /// successful dispatch latency. Operators graph p50/p99 to spot dispatcher slowdown
+    /// before rows pile up beyond the steady-state <c>orionguard.outbox.dispatched_count</c> rate.
     /// </summary>
     internal static readonly Histogram<double> QueueLag = Meter.CreateHistogram<double>(
         "orionguard.outbox.dispatcher.queue_lag", unit: "ms",
