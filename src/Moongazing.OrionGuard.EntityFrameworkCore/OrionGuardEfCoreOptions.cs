@@ -96,7 +96,25 @@ public sealed class OrionGuardEfCoreOptions
         ServiceCustomizations.Add(services =>
         {
             services.Replace(ServiceDescriptor.Singleton(options));
-            services.AddHostedService<OutboxArchivalHostedService>();
+            // v6.5.14: register the optional liveness mirror as a singleton so the
+            // OutboxArchivalHealthCheck can observe RecordSuccessfulBatch updates.
+            // The hosted service resolves it via the new 6-arg constructor path.
+            services.TryAddSingleton<OutboxArchivalState>();
+            // Register the default health-check options so consumers can wire the check
+            // with AddCheck<OutboxArchivalHealthCheck>(...) without also writing
+            // services.AddSingleton(new OutboxArchivalHealthCheckOptions()) by hand.
+            services.TryAddSingleton<OutboxArchivalHealthCheckOptions>();
+            // Force the DI container to pick the 6-arg state-aware constructor by
+            // registering the hosted service via a factory that explicitly resolves
+            // OutboxArchivalState. Otherwise MS.DI falls back to the 4-arg ctor (which
+            // hard-codes state: null) when IOutboxArchiver is not registered.
+            services.AddHostedService(sp => new OutboxArchivalHostedService(
+                sp.GetRequiredService<OutboxArchivalOptions>(),
+                sp.GetRequiredService<IServiceScopeFactory>(),
+                sp.GetRequiredService<IDistributedLock>(),
+                sp.GetService<Microsoft.Extensions.Logging.ILogger<OutboxArchivalHostedService>>(),
+                sp.GetService<IOutboxArchiver>(),
+                sp.GetRequiredService<OutboxArchivalState>()));
         });
         return this;
     }
