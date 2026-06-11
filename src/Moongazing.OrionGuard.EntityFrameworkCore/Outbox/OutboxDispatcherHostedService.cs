@@ -231,6 +231,9 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
                         // double-count when SaveChanges fails and the row is re-dispatched on
                         // the next poll.
                         pendingQueueLagMs = (processedUtc - msg.OccurredOnUtc).TotalMilliseconds;
+                        // v6.5.19: record payload size on the success path so operators
+                        // see per-row byte distribution alongside the dispatch lag.
+                        OutboxDispatcherDiagnostics.RecordRowPayloadSize(msg.Payload?.Length ?? 0);
                     }
                 }
             }
