@@ -80,6 +80,21 @@ public sealed class OutboxDashboardOptions
     /// most operators want to triage the longest-failing rows first.
     /// </summary>
     public OutboxFailedListingSort DefaultSort { get; set; } = OutboxFailedListingSort.OldestFirst;
+
+    /// <summary>
+    /// v6.5.15 security headers applied to every dashboard response. The defaults are
+    /// production-friendly: X-Frame-Options=DENY (clickjacking guard),
+    /// X-Content-Type-Options=nosniff (MIME-sniff guard), Referrer-Policy=no-referrer,
+    /// Cache-Control=no-store. Set <see cref="SecurityHeaders"/> to an empty dictionary
+    /// to disable all defaults; assign your own dictionary to merge custom headers.
+    /// </summary>
+    public IDictionary<string, string> SecurityHeaders { get; set; } = new Dictionary<string, string>(StringComparer.Ordinal)
+    {
+        ["X-Frame-Options"] = "DENY",
+        ["X-Content-Type-Options"] = "nosniff",
+        ["Referrer-Policy"] = "no-referrer",
+        ["Cache-Control"] = "no-store",
+    };
 }
 
 /// <summary>
