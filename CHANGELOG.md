@@ -5,6 +5,35 @@ All notable changes to OrionGuard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.5.14] - 2026-06-11
+
+### Added
+
+#### `OutboxArchivalHealthCheck` and `OutboxArchivalState`
+
+`IHealthCheck` that watches the `OutboxArchivalHostedService` liveness via a shared `OutboxArchivalState` singleton. Operators wire it into ASP.NET Core / generic-host pipelines so a stuck archival worker downgrades the `/health` probe before rows pile up.
+
+- `OutboxArchivalState.RecordSuccessfulBatch(DateTime)` called by the hosted service after every batch (including 0-row batches - the goal is liveness, not throughput).
+- `OutboxArchivalHealthCheck` returns `Healthy` / `Degraded` / `Unhealthy` based on the elapsed time since the last successful batch.
+- `OutboxArchivalHealthCheckOptions` (`DegradedAfter` default 5 min, `UnhealthyAfter` default 15 min) validated at construction.
+- Pre-startup state (no batch yet) reported as `Degraded` so operators can tell "warming up" apart from "stuck".
+- New 6-arg hosted-service ctor wires the optional state mirror; existing 5- and 4-arg ctors still work (zero-binary-break).
+- `Microsoft.Extensions.Diagnostics.HealthChecks.Abstractions` added as a package reference.
+
+### Tests
+
+6 new facts.
+
+### Migration from v6.5.13
+
+Source-compatible.
+
+```csharp
+services.AddSingleton<OutboxArchivalState>();
+services.AddHealthChecks()
+    .AddCheck<OutboxArchivalHealthCheck>("orionguard-outbox-archival");
+```
+
 ## [6.5.13] - 2026-06-11
 
 ### Added
