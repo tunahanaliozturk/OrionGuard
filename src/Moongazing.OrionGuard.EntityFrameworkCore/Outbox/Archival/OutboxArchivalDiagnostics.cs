@@ -36,4 +36,25 @@ public static class OutboxArchivalDiagnostics
         }
         ArchiveBytesWritten.Add(bytes, new System.Collections.Generic.KeyValuePair<string, object?>("sink", sinkName));
     }
+
+    /// <summary>
+    /// v6.5.20 distribution of rows archived per <see cref="OutboxArchivalHostedService.ArchiveBatchAsync"/>
+    /// call. Operators graph p99 to spot a backend that is consistently maxing out the
+    /// archival batch size (sign that throughput needs raising) or staying near zero (sign
+    /// that the polling cadence is over-sized). Zero-row cycles do NOT emit; idle archival
+    /// is tracked by the existing OutboxArchivalState liveness gauge.
+    /// </summary>
+    internal static readonly Histogram<int> ArchiveBatchSize = Meter.CreateHistogram<int>(
+        "orionguard.outbox.archival.batch_size", unit: "{rows}",
+        description: "Rows archived per archival cycle (non-empty cycles only).");
+
+    /// <summary>Record one non-empty archival cycle's row count. Public for consumer-owned archivers.</summary>
+    public static void RecordArchiveBatchSize(int rowCount)
+    {
+        if (rowCount <= 0)
+        {
+            return;
+        }
+        ArchiveBatchSize.Record(rowCount);
+    }
 }
