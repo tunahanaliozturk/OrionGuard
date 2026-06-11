@@ -19,6 +19,8 @@ public sealed class OutboxArchivalHostedService : BackgroundService
     private readonly IDistributedLock distributedLock;
     private readonly IOutboxArchiver archiver;
     private readonly ILogger<OutboxArchivalHostedService>? logger;
+    // v6.5.14: optional liveness mirror consumed by OutboxArchivalHealthCheck.
+    private readonly OutboxArchivalState? state;
 
     /// <summary>Initializes a new archival worker.</summary>
     /// <param name="options">Archival configuration.</param>
@@ -40,12 +42,25 @@ public sealed class OutboxArchivalHostedService : BackgroundService
         IDistributedLock distributedLock,
         ILogger<OutboxArchivalHostedService>? logger,
         IOutboxArchiver? archiver)
+        : this(options, scopeFactory, distributedLock, logger, archiver, state: null)
+    {
+    }
+
+    /// <summary>v6.5.14 6-arg overload that wires the optional <see cref="OutboxArchivalState"/> mirror.</summary>
+    public OutboxArchivalHostedService(
+        OutboxArchivalOptions options,
+        IServiceScopeFactory scopeFactory,
+        IDistributedLock distributedLock,
+        ILogger<OutboxArchivalHostedService>? logger,
+        IOutboxArchiver? archiver,
+        OutboxArchivalState? state)
     {
         this.options = options ?? throw new ArgumentNullException(nameof(options));
         this.scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
         this.distributedLock = distributedLock ?? throw new ArgumentNullException(nameof(distributedLock));
         this.archiver = archiver ?? new DeleteOutboxArchiver();
         this.logger = logger;
+        this.state = state;
     }
 
     /// <summary>
@@ -79,6 +94,10 @@ public sealed class OutboxArchivalHostedService : BackgroundService
             logger?.LogInformation(
                 "Outbox archival processed {Count} rows older than {Cutoff:O}.", archived, cutoff);
         }
+        // v6.5.14: record liveness regardless of whether rows were archived. A successful
+        // call with archived == 0 still proves the worker reached the backend - exactly
+        // what the OutboxArchivalHealthCheck needs to distinguish "stuck" from "idle".
+        state?.RecordSuccessfulBatch(DateTime.UtcNow);
 
         return archived;
     }

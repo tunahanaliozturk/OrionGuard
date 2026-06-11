@@ -7,3 +7,4 @@ using System.Runtime.CompilerServices;
 // added here as they ship.
 [assembly: InternalsVisibleTo("Moongazing.OrionGuard.Locks.Redis")]
 [assembly: InternalsVisibleTo("Moongazing.OrionGuard.Locks.Redis.Tests")]
+[assembly: InternalsVisibleTo("Moongazing.OrionGuard.EntityFrameworkCore.Tests")]
