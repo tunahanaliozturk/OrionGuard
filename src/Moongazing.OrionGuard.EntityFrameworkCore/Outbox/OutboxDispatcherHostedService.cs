@@ -216,8 +216,14 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
                     else
                     {
                         await dispatcher.DispatchAsync(@event, cancellationToken).ConfigureAwait(false);
-                        msg.ProcessedOnUtc = DateTime.UtcNow;
+                        var processedUtc = DateTime.UtcNow;
+                        msg.ProcessedOnUtc = processedUtc;
                         msg.Error = null;
+                        // v6.5.16: record dispatch lag from OccurredOnUtc -> now. Sits on
+                        // the success path only; dead-letter paths above already recorded
+                        // their own ProcessedOnUtc and operators care about successful
+                        // dispatch latency (dead-letter latency is a separate signal).
+                        OutboxDispatcherDiagnostics.RecordQueueLag((processedUtc - msg.OccurredOnUtc).TotalMilliseconds);
                     }
                 }
             }
