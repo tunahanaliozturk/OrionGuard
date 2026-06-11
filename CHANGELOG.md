@@ -5,6 +5,28 @@ All notable changes to OrionGuard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.5.11] - 2026-06-11
+
+### Added
+
+#### `RetryingOutboxArchiveSink` decorator
+
+Decorator that wraps any `IOutboxArchiveSink` with jittered exponential retry. Useful for cloud-object-store sinks (S3, Azure Blob, GCS) where transient 503 / socket errors are common - instead of failing the archival sweep on the first transient failure, the decorator retries up to `MaxAttempts` times before giving up.
+
+- `RetryingOutboxArchiveSink(inner, options)`.
+- `RetryingOutboxArchiveSinkOptions`: `MaxAttempts` (default 5), `BaseDelay` (100 ms), `MaxDelay` (5 s), `IsRetryable` predicate (default retries everything), `RandomFactory` for seeded testing.
+- Backoff: `BaseDelay * 2^(attempt-1)` capped at `MaxDelay`, jittered in `[0.5x, 1.0x]` of the computed value.
+- Cancellation propagates immediately without consuming a retry slot.
+- Options validated at construction.
+
+### Tests
+
+6 new facts.
+
+### Migration from v6.5.10
+
+Source-compatible.
+
 ## [6.5.10] - 2026-06-11
 
 ### Added
