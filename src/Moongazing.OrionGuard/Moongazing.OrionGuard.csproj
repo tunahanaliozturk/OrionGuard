@@ -16,7 +16,7 @@
 		<OutputType>Library</OutputType>
 
 		<PackageId>OrionGuard</PackageId>
-		<Version>6.5.12</Version>
+		<Version>6.5.13</Version>
 		<Authors>Tunahan Ali Ozturk</Authors>
 		<Company>Tunahan Ali Ozturk</Company>
 		<GeneratePackageOnBuild>false</GeneratePackageOnBuild>

@@ -5,6 +5,27 @@ All notable changes to OrionGuard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.5.13] - 2026-06-11
+
+### Added
+
+#### `orionguard.outbox.archive.bytes_written` counter
+
+OTel `Counter<long>` exposed via the new `Moongazing.OrionGuard.Outbox.Archival` Meter. Lets operators graph archival throughput / storage growth without scraping S3 / blob listings.
+
+- Tag: `sink` - short identifier each sink supplies (`local-file`, `rotating-file`).
+- `OutboxArchivalDiagnostics.RecordBytes(long bytes, string sinkName)` public so consumer-owned sinks (Azure Blob, S3, GCS) can opt in.
+- `LocalFileOutboxArchiveSink` and `RotatingFileOutboxArchiveSink` now record on every successful flush.
+- Non-positive payloads ignored.
+
+### Tests
+
+3 new facts.
+
+### Migration from v6.5.12
+
+Source-compatible. Custom sinks opt-in by calling `RecordBytes` after their inner write succeeds.
+
 ## [6.5.12] - 2026-06-11
 
 ### Added
