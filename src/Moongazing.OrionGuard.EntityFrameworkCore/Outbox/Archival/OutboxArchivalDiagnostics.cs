@@ -57,4 +57,18 @@ public static class OutboxArchivalDiagnostics
         }
         ArchiveBatchSize.Record(rowCount);
     }
+
+    /// <summary>
+    /// v6.5.21 wall-clock duration of one archival cycle in milliseconds. Operators
+    /// graph p99 to spot a backend whose archive write throughput has regressed
+    /// independently of the row count (e.g. a slow blob sink keeps the dispatcher
+    /// honest but hurts throughput).
+    /// </summary>
+    internal static readonly Histogram<double> ArchiveCycleDuration = Meter.CreateHistogram<double>(
+        "orionguard.outbox.archival.duration_ms", unit: "ms",
+        description: "Wall-clock duration of one archival cycle (all cycles, including zero-row).");
+
+    /// <summary>Record an archival cycle's wall-clock. ALL cycles emit including zero-row.</summary>
+    public static void RecordArchiveCycleDuration(double milliseconds)
+        => ArchiveCycleDuration.Record(System.Math.Max(0d, milliseconds));
 }
