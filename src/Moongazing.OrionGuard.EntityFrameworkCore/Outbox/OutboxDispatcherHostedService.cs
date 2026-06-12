@@ -274,7 +274,19 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
                     }
                     else
                     {
-                        await dispatcher.DispatchAsync(@event, cancellationToken).ConfigureAwait(false);
+                        // v6.5.24: time the DispatchAsync wall-clock. try/finally so a
+                        // throwing dispatcher still emits the sample (slow failing
+                        // dispatches are the most operator-relevant tail).
+                        var dispatchSw = System.Diagnostics.Stopwatch.StartNew();
+                        try
+                        {
+                            await dispatcher.DispatchAsync(@event, cancellationToken).ConfigureAwait(false);
+                        }
+                        finally
+                        {
+                            dispatchSw.Stop();
+                            OutboxDispatcherDiagnostics.RecordDispatchDuration(dispatchSw.Elapsed.TotalMilliseconds);
+                        }
                         var processedUtc = DateTime.UtcNow;
                         msg.ProcessedOnUtc = processedUtc;
                         msg.Error = null;
