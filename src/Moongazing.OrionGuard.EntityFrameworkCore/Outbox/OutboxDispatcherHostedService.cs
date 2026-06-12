@@ -194,6 +194,9 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
             OutboxDispatcherDiagnostics.RecordIdlePoll();
             return;
         }
+        // v6.5.25: claimed batch size on non-empty cycles only; pairs with the idle
+        // poll counter above to give the full poll-outcome picture.
+        OutboxDispatcherDiagnostics.RecordDispatcherBatchSize(batch.Count);
 
         foreach (var msg in batch)
         {
