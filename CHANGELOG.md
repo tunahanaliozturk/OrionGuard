@@ -5,6 +5,26 @@ All notable changes to OrionGuard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.5.24] - 2026-06-12
+
+### Added
+
+#### `orionguard.outbox.dispatcher.dispatch_duration_ms` histogram
+
+`Histogram<double>` measuring per-row `IDomainEventDispatcher.DispatchAsync` wall-clock. Operators graph p99 to isolate consumer-side dispatch cost from queue_lag (which sums queue time + dispatch + commit).
+
+- ALL outcomes emit (try/finally).
+- Negative values clamped to 0.
+- Public `RecordDispatchDuration(double)` helper.
+
+### Tests
+
+2 facts.
+
+### Migration from v6.5.23
+
+Source-compatible.
+
 ## [6.5.23] - 2026-06-12
 
 ### Added
