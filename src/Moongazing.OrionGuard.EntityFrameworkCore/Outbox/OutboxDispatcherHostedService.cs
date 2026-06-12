@@ -89,6 +89,33 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
         this.rowFailureObserver = rowFailureObserver is NullOutboxRowFailureObserver ? null : rowFailureObserver;
     }
 
+    // v6.5.23 fix (codex P2 + coderabbit Major): centralised observer notification so
+    // every terminal/transient failure path calls the observer. OperationCanceledException
+    // unconditionally propagates so cancellation is never downgraded to a warning.
+    private async Task NotifyRowFailureAsync(OutboxMessage msg, int attempt, bool isTerminal, Exception exception, CancellationToken cancellationToken)
+    {
+        var observerRef = rowFailureObserver;
+        if (observerRef is null or NullOutboxRowFailureObserver)
+        {
+            return;
+        }
+        try
+        {
+            await observerRef.OnRowFailedAsync(msg.Id, msg.EventType, attempt, isTerminal, exception, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+#pragma warning disable CA1031
+        catch (Exception observerEx)
+#pragma warning restore CA1031
+        {
+            logger?.LogWarning(observerEx,
+                "IOutboxRowFailureObserver faulted for row {RowId}; dispatcher continued.", msg.Id);
+        }
+    }
+
     /// <inheritdoc />
     [SuppressMessage("Design", "CA1031:Do not catch general exception types",
         Justification = "Per-batch faults are intentionally swallowed; per-row faults are already recorded on the OutboxMessage row.")]
@@ -216,6 +243,11 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
                     logger?.LogWarning(
                         "Outbox row {RowId} dead-lettered: type '{EventType}' could not be resolved.",
                         msg.Id, msg.EventType);
+                    // v6.5.23 fix (codex P2): notify observer on validation dead-letter
+                    // paths too, not just the catch block. Synthesise an exception so
+                    // the contract surface stays uniform across all terminal paths.
+                    await NotifyRowFailureAsync(msg, msg.RetryCount, isTerminal: true,
+                        new InvalidOperationException(msg.Error), cancellationToken).ConfigureAwait(false);
                 }
                 else if (!typeof(IDomainEvent).IsAssignableFrom(type))
                 {
@@ -224,6 +256,8 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
                     logger?.LogWarning(
                         "Outbox row {RowId} dead-lettered: type '{EventType}' is not IDomainEvent.",
                         msg.Id, msg.EventType);
+                    await NotifyRowFailureAsync(msg, msg.RetryCount, isTerminal: true,
+                        new InvalidOperationException(msg.Error), cancellationToken).ConfigureAwait(false);
                 }
                 else
                 {
@@ -235,6 +269,8 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
                         logger?.LogWarning(
                             "Outbox row {RowId} dead-lettered: payload deserialized to null or wrong type.",
                             msg.Id);
+                        await NotifyRowFailureAsync(msg, msg.RetryCount, isTerminal: true,
+                            new InvalidOperationException(msg.Error), cancellationToken).ConfigureAwait(false);
                     }
                     else
                     {
@@ -273,34 +309,7 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
                     // while preserving Error/RetryCount for operators to inspect (dead-letter).
                     msg.ProcessedOnUtc = DateTime.UtcNow;
                 }
-                // v6.5.23 IOutboxRowFailureObserver: notify the optional consumer-
-                // registered observer AFTER we have written the in-memory row state but
-                // BEFORE SaveChangesAsync. The DB state is not yet durable here; the
-                // observer must therefore treat its notification as 'best-effort' (the
-                // commit could still fail and the row would be re-attempted). Observer
-                // exceptions are caught and logged so a misbehaving observer cannot
-                // abort the dispatcher loop.
-                var observerRef = rowFailureObserver;
-                if (observerRef is not null and not NullOutboxRowFailureObserver)
-                {
-                    try
-                    {
-                        await observerRef.OnRowFailedAsync(
-                            msg.Id, msg.EventType, msg.RetryCount, isTerminal, ex, cancellationToken)
-                            .ConfigureAwait(false);
-                    }
-                    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-                    {
-                        throw;
-                    }
-#pragma warning disable CA1031
-                    catch (Exception observerEx)
-#pragma warning restore CA1031
-                    {
-                        logger?.LogWarning(observerEx,
-                            "IOutboxRowFailureObserver faulted for row {RowId}; dispatcher continued.", msg.Id);
-                    }
-                }
+                await NotifyRowFailureAsync(msg, msg.RetryCount, isTerminal, ex, cancellationToken).ConfigureAwait(false);
             }
             finally
             {

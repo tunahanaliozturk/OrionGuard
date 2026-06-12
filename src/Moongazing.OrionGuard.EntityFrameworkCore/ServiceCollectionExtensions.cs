@@ -65,7 +65,11 @@ public static class ServiceCollectionExtensions
                 sp.GetRequiredService<OutboxTypeMapRegistry>(),
                 sp.GetRequiredService<OutboxTypeMapOptions>(),
                 sp.GetService<ILogger<OutboxDispatcherHostedService>>(),
-                sp.GetRequiredService<IOutboxWakeSignal>()));
+                sp.GetRequiredService<IOutboxWakeSignal>(),
+                // v6.5.23: wire the optional row failure observer; GetService returns
+                // null when the consumer has not registered one, which the hosted
+                // service treats as 'no observer' at the call site.
+                sp.GetService<Outbox.IOutboxRowFailureObserver>()));
         }
 
         // Apply fluent customizations (UseDistributedLock / UseOutboxTypeMap / UseOutboxArchival)
