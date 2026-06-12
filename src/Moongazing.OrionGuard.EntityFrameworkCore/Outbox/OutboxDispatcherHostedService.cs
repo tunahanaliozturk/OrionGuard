@@ -36,6 +36,10 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
     private readonly OutboxTypeMapOptions typeMapOptions;
     private readonly IOutboxWakeSignal wakeSignal;
     private readonly ILogger<OutboxDispatcherHostedService>? logger;
+    // v6.5.23 optional consumer-registered failure observer. Null and
+    // NullOutboxRowFailureObserver are both treated as 'no observer' so the dispatcher
+    // skips the call entirely.
+    private readonly IOutboxRowFailureObserver? rowFailureObserver;
 
     /// <summary>Initializes a new worker.</summary>
     /// <param name="options">Outbox dispatch configuration.</param>
@@ -59,6 +63,11 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
     /// behaviour identical to v6.4 / v6.5.0).
     /// </param>
     /// <param name="logger">Optional logger used to surface startup and per-row diagnostic messages.</param>
+    /// <param name="rowFailureObserver">
+    /// v6.5.23 optional consumer-registered observer notified for EVERY swallowed per-row
+    /// failure (transient + terminal). Defaults to no-op when null or
+    /// <see cref="NullOutboxRowFailureObserver"/> is supplied.
+    /// </param>
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="options"/> or <paramref name="scopeFactory"/> is <see langword="null"/>.</exception>
     public OutboxDispatcherHostedService(
         OutboxOptions options,
@@ -67,7 +76,8 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
         OutboxTypeMapRegistry? typeMap = null,
         OutboxTypeMapOptions? typeMapOptions = null,
         ILogger<OutboxDispatcherHostedService>? logger = null,
-        IOutboxWakeSignal? wakeSignal = null)
+        IOutboxWakeSignal? wakeSignal = null,
+        IOutboxRowFailureObserver? rowFailureObserver = null)
     {
         this.options = options ?? throw new ArgumentNullException(nameof(options));
         this.scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
@@ -76,6 +86,34 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
         this.typeMapOptions = typeMapOptions ?? new OutboxTypeMapOptions();
         this.logger = logger;
         this.wakeSignal = wakeSignal ?? new NullOutboxWakeSignal();
+        this.rowFailureObserver = rowFailureObserver is NullOutboxRowFailureObserver ? null : rowFailureObserver;
+    }
+
+    // v6.5.23 fix (codex P2 + coderabbit Major): centralised observer notification so
+    // every terminal/transient failure path calls the observer. OperationCanceledException
+    // unconditionally propagates so cancellation is never downgraded to a warning.
+    private async Task NotifyRowFailureAsync(OutboxMessage msg, int attempt, bool isTerminal, Exception exception, CancellationToken cancellationToken)
+    {
+        var observerRef = rowFailureObserver;
+        if (observerRef is null or NullOutboxRowFailureObserver)
+        {
+            return;
+        }
+        try
+        {
+            await observerRef.OnRowFailedAsync(msg.Id, msg.EventType, attempt, isTerminal, exception, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+#pragma warning disable CA1031
+        catch (Exception observerEx)
+#pragma warning restore CA1031
+        {
+            logger?.LogWarning(observerEx,
+                "IOutboxRowFailureObserver faulted for row {RowId}; dispatcher continued.", msg.Id);
+        }
     }
 
     /// <inheritdoc />
@@ -205,6 +243,11 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
                     logger?.LogWarning(
                         "Outbox row {RowId} dead-lettered: type '{EventType}' could not be resolved.",
                         msg.Id, msg.EventType);
+                    // v6.5.23 fix (codex P2): notify observer on validation dead-letter
+                    // paths too, not just the catch block. Synthesise an exception so
+                    // the contract surface stays uniform across all terminal paths.
+                    await NotifyRowFailureAsync(msg, msg.RetryCount, isTerminal: true,
+                        new InvalidOperationException(msg.Error), cancellationToken).ConfigureAwait(false);
                 }
                 else if (!typeof(IDomainEvent).IsAssignableFrom(type))
                 {
@@ -213,6 +256,8 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
                     logger?.LogWarning(
                         "Outbox row {RowId} dead-lettered: type '{EventType}' is not IDomainEvent.",
                         msg.Id, msg.EventType);
+                    await NotifyRowFailureAsync(msg, msg.RetryCount, isTerminal: true,
+                        new InvalidOperationException(msg.Error), cancellationToken).ConfigureAwait(false);
                 }
                 else
                 {
@@ -224,6 +269,8 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
                         logger?.LogWarning(
                             "Outbox row {RowId} dead-lettered: payload deserialized to null or wrong type.",
                             msg.Id);
+                        await NotifyRowFailureAsync(msg, msg.RetryCount, isTerminal: true,
+                            new InvalidOperationException(msg.Error), cancellationToken).ConfigureAwait(false);
                     }
                     else
                     {
@@ -255,12 +302,14 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
                 OutboxDispatcherDiagnostics.RecordDispatchError(ex.GetType().Name);
                 msg.RetryCount++;
                 msg.Error = ex.ToString();
-                if (msg.RetryCount >= options.MaxRetries)
+                var isTerminal = msg.RetryCount >= options.MaxRetries;
+                if (isTerminal)
                 {
                     // Why: stamping ProcessedOnUtc removes the row from the unprocessed-rows query
                     // while preserving Error/RetryCount for operators to inspect (dead-letter).
                     msg.ProcessedOnUtc = DateTime.UtcNow;
                 }
+                await NotifyRowFailureAsync(msg, msg.RetryCount, isTerminal, ex, cancellationToken).ConfigureAwait(false);
             }
             finally
             {
