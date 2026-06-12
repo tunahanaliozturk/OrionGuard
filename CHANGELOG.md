@@ -5,6 +5,31 @@ All notable changes to OrionGuard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.5.23] - 2026-06-12
+
+### Added
+
+#### `IOutboxRowFailureObserver` extensibility
+
+Consumer-supplied observer invoked when the dispatcher swallows a per-row failure. Mirror of v0.2.18 Patch `IDeadLetterSink` on the Guard side.
+
+- `IOutboxRowFailureObserver` interface + `NullOutboxRowFailureObserver` default.
+- Optional 8th ctor parameter on `OutboxDispatcherHostedService`.
+- Fires for EVERY swallowed failure with `attempt` + `isTerminal` flags.
+- Observer fires BEFORE `SaveChangesAsync` so the notification is best-effort.
+
+### Tests
+
+2 facts.
+
+### Migration from v6.5.22
+
+Source-compatible.
+
+## [6.5.22] - 2026-06-11
+
+OrionGuard `orionguard.outbox.enqueued_rows_per_save` histogram (post-commit AsyncLocal pattern).
+
 ## [6.5.21] - 2026-06-11
 
 ### Added
