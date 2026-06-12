@@ -102,4 +102,19 @@ public static class OutboxDispatcherDiagnostics
         }
         RowPayloadSizeBytes.Record(bytes);
     }
+
+    /// <summary>
+    /// v6.5.24 per-row <c>IDomainEventDispatcher.DispatchAsync</c> wall-clock. Operators
+    /// graph p99 to isolate the consumer's downstream dispatch cost from the v6.5.16
+    /// queue_lag (which sums queue time + dispatch + commit) and from the v6.5.21
+    /// archival cycle duration. ALL outcomes emit (try/finally) so a slow timing-out
+    /// dispatcher surfaces even on the failure path.
+    /// </summary>
+    internal static readonly Histogram<double> DispatchDurationMs = Meter.CreateHistogram<double>(
+        "orionguard.outbox.dispatcher.dispatch_duration_ms", unit: "ms",
+        description: "Per-row IDomainEventDispatcher.DispatchAsync wall-clock (success + failure).");
+
+    /// <summary>Record one DispatchAsync call's wall-clock. Negatives are clamped to 0.</summary>
+    public static void RecordDispatchDuration(double milliseconds)
+        => DispatchDurationMs.Record(System.Math.Max(0d, milliseconds));
 }
