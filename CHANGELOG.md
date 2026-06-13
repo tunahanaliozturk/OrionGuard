@@ -5,6 +5,26 @@ All notable changes to OrionGuard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.5.26] - 2026-06-13
+
+### Added
+
+#### `orionguard.outbox.archival.failures` counter
+
+`Counter<long>` increments when an archival batch throws and is swallowed by the worker's catch block. Operators alert on the rate to catch a stuck archival pipeline that the v6.5.14 liveness gauge alone cannot distinguish from a healthy-but-idle worker.
+
+- Tag: `exception_type`.
+- Public `OutboxArchivalDiagnostics.RecordArchiveFailure(string)` helper.
+- Completes the archival health picture: batch_size (v6.5.20) + duration_ms (v6.5.21) + liveness (v6.5.14) + failures (v6.5.26).
+
+### Tests
+
+1 fact.
+
+### Migration from v6.5.25
+
+Source-compatible.
+
 ## [6.5.25] - 2026-06-12
 
 ### Added
