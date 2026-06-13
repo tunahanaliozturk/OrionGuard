@@ -117,4 +117,25 @@ public static class OutboxDispatcherDiagnostics
     /// <summary>Record one DispatchAsync call's wall-clock. Negatives are clamped to 0.</summary>
     public static void RecordDispatchDuration(double milliseconds)
         => DispatchDurationMs.Record(System.Math.Max(0d, milliseconds));
+
+    /// <summary>
+    /// v6.5.25 distribution of rows claimed per dispatcher poll cycle. Operators graph
+    /// p99 to spot a dispatcher consistently maxing out <c>BatchSize</c> (raise the
+    /// batch / parallelism) or staying near zero (over-sized polling cadence).
+    /// Zero-row cycles do NOT emit; idle polling is the v6.5.17 idle-poll counter's job.
+    /// Mirrors v0.7.18 Audit and v0.2.16 Patch batch_size shapes on the Guard side.
+    /// </summary>
+    internal static readonly Histogram<int> DispatcherBatchSize = Meter.CreateHistogram<int>(
+        "orionguard.outbox.dispatcher.batch_size", unit: "{rows}",
+        description: "Outbox rows claimed per dispatcher poll cycle (non-empty cycles only).");
+
+    /// <summary>Record one non-empty poll cycle's row count. Public for consumer-owned dispatchers.</summary>
+    public static void RecordDispatcherBatchSize(int rowCount)
+    {
+        if (rowCount <= 0)
+        {
+            return;
+        }
+        DispatcherBatchSize.Record(rowCount);
+    }
 }

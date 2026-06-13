@@ -5,6 +5,26 @@ All notable changes to OrionGuard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.5.25] - 2026-06-12
+
+### Added
+
+#### `orionguard.outbox.dispatcher.batch_size` histogram
+
+`Histogram<int>` of rows claimed per dispatcher poll cycle. Operators graph p99 to spot a dispatcher consistently maxing out `BatchSize` (raise the batch / parallelism) or staying near zero (over-sized polling cadence).
+
+- Zero-row cycles do NOT emit (idle polling is the v6.5.17 idle-poll counter's job).
+- Mirrors v0.7.18 Audit and v0.2.16 Patch batch_size shapes on the Guard side - all three outbox families now expose the same poll-outcome triple (batch_size + idle + errors).
+- Public `OutboxDispatcherDiagnostics.RecordDispatcherBatchSize(int)` helper.
+
+### Tests
+
+2 facts.
+
+### Migration from v6.5.24
+
+Source-compatible.
+
 ## [6.5.24] - 2026-06-12
 
 ### Added
