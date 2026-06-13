@@ -71,4 +71,19 @@ public static class OutboxArchivalDiagnostics
     /// <summary>Record an archival cycle's wall-clock. ALL cycles emit including zero-row.</summary>
     public static void RecordArchiveCycleDuration(double milliseconds)
         => ArchiveCycleDuration.Record(System.Math.Max(0d, milliseconds));
+
+    /// <summary>
+    /// v6.5.26 archival failure counter. Increments when an archival batch throws and
+    /// is swallowed by the worker's catch block (transient backend faults, sink errors).
+    /// Operators alert on the rate to catch a stuck archival pipeline that the v6.5.14
+    /// liveness gauge alone cannot distinguish from a healthy-but-idle worker. Tagged
+    /// with <c>exception_type</c>.
+    /// </summary>
+    internal static readonly Counter<long> ArchiveFailures = Meter.CreateCounter<long>(
+        "orionguard.outbox.archival.failures", unit: "{failures}",
+        description: "Archival batches that threw and were swallowed by the worker (transient + terminal).");
+
+    /// <summary>Record one swallowed archival failure tagged with the exception type.</summary>
+    public static void RecordArchiveFailure(string exceptionType)
+        => ArchiveFailures.Add(1, new System.Collections.Generic.KeyValuePair<string, object?>("exception_type", exceptionType));
 }
