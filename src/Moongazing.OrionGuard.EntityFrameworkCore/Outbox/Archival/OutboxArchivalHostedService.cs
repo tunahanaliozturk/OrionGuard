@@ -153,6 +153,10 @@ public sealed class OutboxArchivalHostedService : BackgroundService
             }
             catch (Exception ex)
             {
+                // v6.5.26: emit the archival failure counter so operators can alert on
+                // the rate. The v6.5.14 liveness gauge only proves the worker is
+                // running; this counter proves it is SUCCEEDING (or not).
+                OutboxArchivalDiagnostics.RecordArchiveFailure(ex.GetType().Name);
                 logger?.LogError(ex, "Outbox archival batch failed.");
             }
 
