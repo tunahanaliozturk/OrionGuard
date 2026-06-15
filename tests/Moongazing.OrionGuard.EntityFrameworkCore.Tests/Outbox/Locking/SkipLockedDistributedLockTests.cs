@@ -37,6 +37,35 @@ public class SkipLockedDistributedLockTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task TryAcquireAsync_WhenSlotIsHeld_RecordsLockContended()
+    {
+        // Genuine contention: a live owner already holds the lease. The >= 1 assertion is robust
+        // to the process-global Outbox.Dispatcher meter receiving emissions from parallel tests;
+        // what matters is that THIS contended acquire produced at least one lock_contended sample.
+        long observed = 0;
+        using var listener = new System.Diagnostics.Metrics.MeterListener();
+        listener.InstrumentPublished = (instrument, l) =>
+        {
+            if (instrument.Meter.Name == Moongazing.OrionGuard.EntityFrameworkCore.Outbox.OutboxDispatcherDiagnostics.MeterName
+                && instrument.Name == "orionguard.outbox.dispatcher.lock_contended")
+            {
+                l.EnableMeasurementEvents(instrument);
+            }
+        };
+        listener.SetMeasurementEventCallback<long>((_, val, _, _) =>
+            System.Threading.Interlocked.Add(ref observed, val));
+        listener.Start();
+
+        var @lock = NewLock();
+        var first = await @lock.TryAcquireAsync("k", TimeSpan.FromSeconds(30));
+        Assert.NotNull(first);
+
+        var second = await @lock.TryAcquireAsync("k", TimeSpan.FromSeconds(30));
+        Assert.Null(second);
+        Assert.True(System.Threading.Interlocked.Read(ref observed) >= 1);
+    }
+
+    [Fact]
     public async Task TryAcquireAsync_ShouldSucceedAgain_AfterFirstHandleIsDisposed()
     {
         var @lock = NewLock();

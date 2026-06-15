@@ -80,6 +80,8 @@ public sealed class SkipLockedDistributedLock : IDistributedLock
                 catch (DbUpdateException)
                 {
                     await tx.RollbackAsync(cancellationToken).ConfigureAwait(false);
+                    // v6.5.29: a concurrent caller won the INSERT race - genuine contention.
+                    OutboxDispatcherDiagnostics.RecordLockContended();
                     return null;
                 }
             }
@@ -96,6 +98,8 @@ public sealed class SkipLockedDistributedLock : IDistributedLock
 
             if (ownerCheck != holderId)
             {
+                // v6.5.29: another holder owns the lease - genuine contention.
+                OutboxDispatcherDiagnostics.RecordLockContended();
                 return null;
             }
 
@@ -103,6 +107,9 @@ public sealed class SkipLockedDistributedLock : IDistributedLock
         }
         catch (Exception ex) when (IsMissingTable(ex))
         {
+            // NOT contention: the lock table is missing (migration not applied). Deliberately does
+            // NOT record lock_contended so the counter stays a clean standby-vs-active signal
+            // rather than masking a broken dispatcher setup as healthy contention.
             LogMissingTableOnce();
             return null;
         }

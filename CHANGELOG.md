@@ -13,13 +13,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 `Counter<long>` increments each dispatcher cycle in which this replica fails to acquire the multi-instance distributed lock because another replica holds the lease.
 
+- Recorded by the default `SkipLockedDistributedLock` on its GENUINE contention paths only (an INSERT race lost, or a live owner found), and deliberately NOT when the lock table is missing (migration not applied), so a broken dispatcher setup is never mis-reported as healthy standby contention (codex P2).
 - Distinct from the v6.5.17 `poll.idle` counter, which fires only AFTER the lock is held and the backlog is found empty. `lock_contended` fires when the replica never became the active dispatcher at all.
-- Operators graph it per replica to confirm exactly one replica is dispatching (the others should sit mostly contended), to spot a stuck or dead leader (a sudden drop in one replica's contention rate without another picking up), and to right-size the dispatcher replica count.
-- Public `OutboxDispatcherDiagnostics.RecordLockContended()` helper.
+- Operators graph it per replica to confirm exactly one replica is dispatching (the others should sit mostly contended), to spot a stuck or dead leader, and to right-size the dispatcher replica count.
+- Public `OutboxDispatcherDiagnostics.RecordLockContended()` helper for consumer-owned lock backends (Redis, etc.) to emit from their own genuine contention path.
 
 ### Tests
 
 - `LockContendedCounterTests`: `RecordLockContended` increments the counter.
+- `SkipLockedDistributedLockTests.TryAcquireAsync_WhenSlotIsHeld_RecordsLockContended`: a contended acquire against a live owner records the counter.
 
 ## [6.5.28] - 2026-06-15
 

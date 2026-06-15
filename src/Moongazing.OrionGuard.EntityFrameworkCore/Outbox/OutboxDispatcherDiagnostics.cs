@@ -179,19 +179,25 @@ public static class OutboxDispatcherDiagnostics
         => DeadLettered.Add(1, new System.Collections.Generic.KeyValuePair<string, object?>("exception_type", exceptionType));
 
     /// <summary>
-    /// v6.5.29 lock-contention counter. Increments each dispatcher cycle in which THIS replica
-    /// fails to acquire the multi-instance distributed lock because another replica holds the
-    /// lease. Distinct from the v6.5.17 <c>poll.idle</c> counter, which fires only AFTER the lock
-    /// is held and the backlog is found empty: this counter fires when the replica never became
-    /// the active dispatcher at all. Operators graph it per replica to confirm exactly one replica
-    /// is dispatching (the others should sit mostly contended), to spot a stuck or dead leader (a
-    /// sudden drop in one replica's contention rate without another picking up), and to right-size
-    /// the dispatcher replica count.
+    /// v6.5.29 lock-contention counter. Increments when a replica fails to acquire the
+    /// multi-instance distributed lock because ANOTHER replica genuinely holds the lease. The
+    /// default <see cref="Locking.SkipLockedDistributedLock"/> records it only on its true
+    /// contention paths (an INSERT race lost, or a live owner found) and deliberately NOT when the
+    /// lock table is missing (migration not applied), so a broken dispatcher setup is never
+    /// mis-reported as healthy standby contention. Distinct from the v6.5.17 <c>poll.idle</c>
+    /// counter, which fires only AFTER the lock is held and the backlog is found empty: this
+    /// counter fires when the replica never became the active dispatcher at all. Operators graph it
+    /// per replica to confirm exactly one replica is dispatching (the others should sit mostly
+    /// contended), to spot a stuck or dead leader, and to right-size the dispatcher replica count.
     /// </summary>
     internal static readonly Counter<long> LockContended = Meter.CreateCounter<long>(
         "orionguard.outbox.dispatcher.lock_contended", unit: "{cycles}",
-        description: "Dispatcher cycles where this replica did not acquire the distributed lock (another replica is active).");
+        description: "Cycles where a replica lost the distributed lock to a genuine concurrent holder (another replica is active).");
 
-    /// <summary>Record one lock-contended cycle. Public so consumer-owned dispatchers can opt in.</summary>
+    /// <summary>
+    /// Record one genuine lock-contention event. Public so consumer-owned lock backends (Redis,
+    /// etc.) can emit the same signal from their true contention path - they should NOT record it
+    /// for configuration/availability errors.
+    /// </summary>
     public static void RecordLockContended() => LockContended.Add(1);
 }
