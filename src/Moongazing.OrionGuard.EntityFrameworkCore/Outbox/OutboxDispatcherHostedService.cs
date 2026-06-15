@@ -94,6 +94,15 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
     // unconditionally propagates so cancellation is never downgraded to a warning.
     private async Task NotifyRowFailureAsync(OutboxMessage msg, int attempt, bool isTerminal, Exception exception, CancellationToken cancellationToken)
     {
+        // v6.5.28: count a terminal dead-letter here, BEFORE the observer-null early return, so
+        // the metric fires on the common no-observer path too. Every terminal site (unresolvable
+        // type, non-IDomainEvent, deserialize failure, retry exhaustion) routes through this
+        // method with isTerminal: true, so this is the single choke point for the signal.
+        if (isTerminal)
+        {
+            OutboxDispatcherDiagnostics.RecordDeadLetter(exception.GetType().Name);
+        }
+
         var observerRef = rowFailureObserver;
         if (observerRef is null or NullOutboxRowFailureObserver)
         {
