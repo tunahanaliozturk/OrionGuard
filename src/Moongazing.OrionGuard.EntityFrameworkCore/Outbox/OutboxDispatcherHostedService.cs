@@ -150,6 +150,9 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
                 if (handle is null)
                 {
                     // Why: another instance holds the lease. Sleep and retry — do not dispatch.
+                    // v6.5.29: count the contended cycle so operators can see which replica is the
+                    // active dispatcher and which are standing by.
+                    OutboxDispatcherDiagnostics.RecordLockContended();
                     await wakeSignal.WaitForNextTickAsync(options.PollingInterval, stoppingToken).ConfigureAwait(false);
                     continue;
                 }

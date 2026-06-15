@@ -177,4 +177,21 @@ public static class OutboxDispatcherDiagnostics
     /// <summary>Record one dead-lettered row tagged with the terminal exception type.</summary>
     public static void RecordDeadLetter(string exceptionType)
         => DeadLettered.Add(1, new System.Collections.Generic.KeyValuePair<string, object?>("exception_type", exceptionType));
+
+    /// <summary>
+    /// v6.5.29 lock-contention counter. Increments each dispatcher cycle in which THIS replica
+    /// fails to acquire the multi-instance distributed lock because another replica holds the
+    /// lease. Distinct from the v6.5.17 <c>poll.idle</c> counter, which fires only AFTER the lock
+    /// is held and the backlog is found empty: this counter fires when the replica never became
+    /// the active dispatcher at all. Operators graph it per replica to confirm exactly one replica
+    /// is dispatching (the others should sit mostly contended), to spot a stuck or dead leader (a
+    /// sudden drop in one replica's contention rate without another picking up), and to right-size
+    /// the dispatcher replica count.
+    /// </summary>
+    internal static readonly Counter<long> LockContended = Meter.CreateCounter<long>(
+        "orionguard.outbox.dispatcher.lock_contended", unit: "{cycles}",
+        description: "Dispatcher cycles where this replica did not acquire the distributed lock (another replica is active).");
+
+    /// <summary>Record one lock-contended cycle. Public so consumer-owned dispatchers can opt in.</summary>
+    public static void RecordLockContended() => LockContended.Add(1);
 }
