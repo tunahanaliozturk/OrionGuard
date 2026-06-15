@@ -138,4 +138,26 @@ public static class OutboxDispatcherDiagnostics
         }
         DispatcherBatchSize.Record(rowCount);
     }
+
+    /// <summary>
+    /// v6.5.27 distribution of how many retries a row had accumulated at the moment it
+    /// dispatched successfully (its <c>RetryCount</c> on the success path: 0 = succeeded on
+    /// the first attempt). Distinct from the v6.5.18 <c>errors</c> counter (which tallies
+    /// failures) and the dead-letter path (terminal only): this histogram measures the
+    /// successful side, so operators can answer "are retries quietly papering over downstream
+    /// flakiness?". A healthy system sits at p50 = 0; a rising upper percentile means rows are
+    /// increasingly succeeding only after transient downstream failures. Unlike the batch-size
+    /// histograms, the zero sample IS recorded here: the fraction of first-try successes is
+    /// exactly the signal, so dropping zeros would erase the healthy baseline.
+    /// </summary>
+    internal static readonly Histogram<int> RetriesBeforeSuccess = Meter.CreateHistogram<int>(
+        "orionguard.outbox.dispatcher.retries_before_success", unit: "{retries}",
+        description: "Retries a row had accumulated when it dispatched successfully (0 = first-try).");
+
+    /// <summary>
+    /// Record the retry count of a successfully-dispatched row. Negative inputs are clamped to 0.
+    /// Public so consumer-owned dispatchers can emit the same signal.
+    /// </summary>
+    public static void RecordRetriesBeforeSuccess(int retries)
+        => RetriesBeforeSuccess.Record(System.Math.Max(0, retries));
 }
