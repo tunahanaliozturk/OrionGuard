@@ -209,6 +209,11 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
             // persistence would double-count on a SaveChanges failure that re-dispatches
             // the row on the next cycle.
             int? pendingRowPayloadBytes = null;
+            // v6.5.27: stash the row's retry count captured on the success path and emit it
+            // AFTER SaveChangesAsync confirms persistence, matching the v6.5.16 queue_lag
+            // pattern. Recording before persistence would double-count when SaveChanges fails
+            // and the row is re-dispatched on the next poll.
+            int? pendingRetriesBeforeSuccess = null;
             Activity? activity = null;
             if (!string.IsNullOrEmpty(msg.TraceParent)
                 && ActivityContext.TryParse(msg.TraceParent, msg.TraceState, out var parentContext))
@@ -301,6 +306,10 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
                         // v6.5.19: stash for post-SaveChanges emit so a SaveChanges
                         // failure does NOT cause a double count on re-dispatch.
                         pendingRowPayloadBytes = msg.Payload?.Length;
+                        // v6.5.27: capture the retry count this successful row carried so the
+                        // retries_before_success histogram is emitted post-persist alongside
+                        // queue_lag and row_size. A first-try success records 0.
+                        pendingRetriesBeforeSuccess = msg.RetryCount;
                     }
                 }
             }
@@ -346,6 +355,11 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
                 {
                     OutboxDispatcherDiagnostics.RecordRowPayloadSize(bytes);
                     pendingRowPayloadBytes = null;
+                }
+                if (pendingRetriesBeforeSuccess is { } retries)
+                {
+                    OutboxDispatcherDiagnostics.RecordRetriesBeforeSuccess(retries);
+                    pendingRetriesBeforeSuccess = null;
                 }
             }
             catch (OperationCanceledException)

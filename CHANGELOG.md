@@ -5,6 +5,23 @@ All notable changes to OrionGuard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.5.27] - 2026-06-15
+
+### Added
+
+#### `orionguard.outbox.dispatcher.retries_before_success` histogram
+
+`Histogram<int>` records the retry count a row had accumulated at the moment it dispatched successfully (its `RetryCount` on the success path: 0 = succeeded on the first attempt). It measures the successful side of the dispatch loop, complementing the v6.5.18 `errors` counter (failures) and the dead-letter path (terminal only), so operators can answer "are retries quietly papering over downstream flakiness?".
+
+- A healthy system sits at p50 = 0; a rising upper percentile means rows are increasingly succeeding only after transient downstream failures.
+- Unlike the batch-size histograms, the zero sample IS recorded: the fraction of first-try successes is exactly the signal, so dropping zeros would erase the healthy baseline.
+- Emitted post-persist (after `SaveChangesAsync`), alongside `queue_lag` (v6.5.16) and `row_size_bytes` (v6.5.19), so a SaveChanges failure that re-dispatches the row does not double-count.
+- Public `OutboxDispatcherDiagnostics.RecordRetriesBeforeSuccess(int)` helper (negatives clamped to 0).
+
+### Tests
+
+- `RetriesBeforeSuccessHistogramTests`: first-try zero is recorded, the retry count is emitted, negatives clamp to 0.
+
 ## [6.5.26] - 2026-06-13
 
 ### Added
