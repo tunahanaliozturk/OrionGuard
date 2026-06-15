@@ -14,13 +14,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 `Counter<long>` increments once for every row the dispatcher permanently abandons: an unresolvable or non-`IDomainEvent` type, a payload that fails to deserialize, or a transient failure that finally exhausted `MaxRetries`.
 
 - Distinct from the v6.5.18 `errors` counter, which fires on EVERY swallowed failure (transient retries included). Operators alert on the dead-letter rate as the SLO signal that rows are being lost, which the much higher errors rate dilutes.
-- Recorded at the single `NotifyRowFailureAsync` choke point that every terminal path routes through, and emitted BEFORE the observer-null early return so the metric fires even on the common no-observer path.
+- Emitted only AFTER the row's terminal state is persisted (the post-`SaveChangesAsync` block, alongside the deferred success metrics): `NotifyRowFailureAsync` now returns the terminal exception type and the loop records it post-persist, so a `SaveChanges` failure that re-dispatches the row does not double-count (codex/CodeRabbit P2).
 - Tag: `exception_type` (the terminal cause), for triage.
 - Public `OutboxDispatcherDiagnostics.RecordDeadLetter(string)` helper.
 
 ### Tests
 
 - `DeadLetteredCounterTests`: emits a measurement tagged with the exception type.
+- `OutboxDispatcherTests.ProcessBatch_DeadLetter_EmitsTheDeadLetteredCounterAfterPersistence`: a real dead-letter driven through the loop emits the counter via the post-persist path.
 
 ## [6.5.27] - 2026-06-15
 
