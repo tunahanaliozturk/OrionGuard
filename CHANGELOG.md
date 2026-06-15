@@ -5,6 +5,24 @@ All notable changes to OrionGuard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.5.28] - 2026-06-15
+
+### Added
+
+#### `orionguard.outbox.dispatcher.dead_lettered` counter
+
+`Counter<long>` increments once for every row the dispatcher permanently abandons: an unresolvable or non-`IDomainEvent` type, a payload that fails to deserialize, or a transient failure that finally exhausted `MaxRetries`.
+
+- Distinct from the v6.5.18 `errors` counter, which fires on EVERY swallowed failure (transient retries included). Operators alert on the dead-letter rate as the SLO signal that rows are being lost, which the much higher errors rate dilutes.
+- Emitted only AFTER the row's terminal state is persisted (the post-`SaveChangesAsync` block, alongside the deferred success metrics): `NotifyRowFailureAsync` now returns the terminal exception type and the loop records it post-persist, so a `SaveChanges` failure that re-dispatches the row does not double-count (codex/CodeRabbit P2).
+- Tag: `exception_type` (the terminal cause), for triage.
+- Public `OutboxDispatcherDiagnostics.RecordDeadLetter(string)` helper.
+
+### Tests
+
+- `DeadLetteredCounterTests`: emits a measurement tagged with the exception type.
+- `OutboxDispatcherTests.ProcessBatch_DeadLetter_EmitsTheDeadLetteredCounterAfterPersistence`: a real dead-letter driven through the loop emits the counter via the post-persist path.
+
 ## [6.5.27] - 2026-06-15
 
 ### Added

@@ -160,4 +160,21 @@ public static class OutboxDispatcherDiagnostics
     /// </summary>
     public static void RecordRetriesBeforeSuccess(int retries)
         => RetriesBeforeSuccess.Record(System.Math.Max(0, retries));
+
+    /// <summary>
+    /// v6.5.28 terminal dead-letter counter. Increments once for every row the dispatcher
+    /// permanently abandons: an unresolvable or non-<c>IDomainEvent</c> type, a payload that
+    /// fails to deserialize, or a transient failure that finally exhausted <c>MaxRetries</c>.
+    /// Distinct from the v6.5.18 <c>errors</c> counter, which fires on EVERY swallowed failure
+    /// (transient retries included): operators alert on the dead-letter rate as the SLO signal
+    /// that rows are being lost, which the much higher errors rate dilutes. Tagged
+    /// <c>exception_type</c> so terminal causes can be triaged.
+    /// </summary>
+    internal static readonly Counter<long> DeadLettered = Meter.CreateCounter<long>(
+        "orionguard.outbox.dispatcher.dead_lettered", unit: "{rows}",
+        description: "Rows permanently abandoned (unresolvable/invalid type, deserialize failure, or retry exhaustion).");
+
+    /// <summary>Record one dead-lettered row tagged with the terminal exception type.</summary>
+    public static void RecordDeadLetter(string exceptionType)
+        => DeadLettered.Add(1, new System.Collections.Generic.KeyValuePair<string, object?>("exception_type", exceptionType));
 }

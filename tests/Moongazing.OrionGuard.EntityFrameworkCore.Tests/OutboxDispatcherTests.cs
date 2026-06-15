@@ -216,6 +216,54 @@ public class OutboxDispatcherTests
     }
 
     [Fact]
+    public async Task ProcessBatch_DeadLetter_EmitsTheDeadLetteredCounterAfterPersistence()
+    {
+        // Drive a real terminal dead-letter through the loop and confirm the v6.5.28
+        // dead_lettered counter is emitted via the post-SaveChanges deferral path. The
+        // assertion is >= 1 because the process-global Outbox.Dispatcher meter may also
+        // receive emissions from other dead-letter tests running in parallel; what matters
+        // here is that driving exactly one dead-letter produces at least one measurement.
+        long observed = 0;
+        using var listener = new System.Diagnostics.Metrics.MeterListener();
+        listener.InstrumentPublished = (instrument, l) =>
+        {
+            if (instrument.Meter.Name == OutboxDispatcherDiagnostics.MeterName
+                && instrument.Name == "orionguard.outbox.dispatcher.dead_lettered")
+            {
+                l.EnableMeasurementEvents(instrument);
+            }
+        };
+        listener.SetMeasurementEventCallback<long>((_, val, _, _) =>
+            System.Threading.Interlocked.Add(ref observed, val));
+        listener.Start();
+
+        var dispatcher = new InMemoryDomainEventDispatcher();
+        await using var sp = BuildSp(dispatcher);
+        await using var scope = sp.CreateAsyncScope();
+        var ctx = scope.ServiceProvider.GetRequiredService<TestDbContext>();
+        await ctx.Database.OpenConnectionAsync();
+        await ctx.Database.EnsureCreatedAsync();
+
+        ctx.OutboxMessages.Add(new OutboxMessage
+        {
+            EventType = "SomeApp.Domain.Events.OrderShipped, NonExistentAssembly, Version=1.0.0.0",
+            Payload = "{}",
+            OccurredOnUtc = DateTime.UtcNow,
+        });
+        await ctx.SaveChangesAsync();
+
+        var worker = new OutboxDispatcherHostedService(
+            sp.GetRequiredService<OutboxOptions>(),
+            sp.GetRequiredService<IServiceScopeFactory>());
+
+        await worker.ProcessBatchAsync(default);
+
+        var row = await ctx.OutboxMessages.AsNoTracking().SingleAsync();
+        Assert.NotNull(row.ProcessedOnUtc);                               // persisted as dead-lettered
+        Assert.True(System.Threading.Interlocked.Read(ref observed) >= 1); // counter emitted via the loop
+    }
+
+    [Fact]
     public void OutboxOptions_RejectsNonPositivePollingInterval()
     {
         Assert.Throws<ArgumentOutOfRangeException>(() =>

@@ -92,12 +92,21 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
     // v6.5.23 fix (codex P2 + coderabbit Major): centralised observer notification so
     // every terminal/transient failure path calls the observer. OperationCanceledException
     // unconditionally propagates so cancellation is never downgraded to a warning.
-    private async Task NotifyRowFailureAsync(OutboxMessage msg, int attempt, bool isTerminal, Exception exception, CancellationToken cancellationToken)
+    /// <summary>
+    /// Notifies the row-failure observer and, for a terminal failure, returns the exception type
+    /// so the caller can emit the v6.5.28 dead_lettered metric AFTER the row's terminal state is
+    /// persisted. Emitting here (before <c>SaveChangesAsync</c>) would double-count when the save
+    /// fails and the row is re-dispatched, mirroring why the success metrics are also deferred.
+    /// Returns null for a non-terminal (transient) failure.
+    /// </summary>
+    private async Task<string?> NotifyRowFailureAsync(OutboxMessage msg, int attempt, bool isTerminal, Exception exception, CancellationToken cancellationToken)
     {
+        var deadLetterType = isTerminal ? exception.GetType().Name : null;
+
         var observerRef = rowFailureObserver;
         if (observerRef is null or NullOutboxRowFailureObserver)
         {
-            return;
+            return deadLetterType;
         }
         try
         {
@@ -114,6 +123,8 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
             logger?.LogWarning(observerEx,
                 "IOutboxRowFailureObserver faulted for row {RowId}; dispatcher continued.", msg.Id);
         }
+
+        return deadLetterType;
     }
 
     /// <inheritdoc />
@@ -214,6 +225,9 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
             // pattern. Recording before persistence would double-count when SaveChanges fails
             // and the row is re-dispatched on the next poll.
             int? pendingRetriesBeforeSuccess = null;
+            // v6.5.28: stash the terminal exception type for a dead-lettered row, emitted AFTER
+            // SaveChanges for the same anti-double-count reason as the success metrics above.
+            string? pendingDeadLetterType = null;
             Activity? activity = null;
             if (!string.IsNullOrEmpty(msg.TraceParent)
                 && ActivityContext.TryParse(msg.TraceParent, msg.TraceState, out var parentContext))
@@ -254,7 +268,7 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
                     // v6.5.23 fix (codex P2): notify observer on validation dead-letter
                     // paths too, not just the catch block. Synthesise an exception so
                     // the contract surface stays uniform across all terminal paths.
-                    await NotifyRowFailureAsync(msg, msg.RetryCount, isTerminal: true,
+                    pendingDeadLetterType = await NotifyRowFailureAsync(msg, msg.RetryCount, isTerminal: true,
                         new InvalidOperationException(msg.Error), cancellationToken).ConfigureAwait(false);
                 }
                 else if (!typeof(IDomainEvent).IsAssignableFrom(type))
@@ -264,7 +278,7 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
                     logger?.LogWarning(
                         "Outbox row {RowId} dead-lettered: type '{EventType}' is not IDomainEvent.",
                         msg.Id, msg.EventType);
-                    await NotifyRowFailureAsync(msg, msg.RetryCount, isTerminal: true,
+                    pendingDeadLetterType = await NotifyRowFailureAsync(msg, msg.RetryCount, isTerminal: true,
                         new InvalidOperationException(msg.Error), cancellationToken).ConfigureAwait(false);
                 }
                 else
@@ -277,7 +291,7 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
                         logger?.LogWarning(
                             "Outbox row {RowId} dead-lettered: payload deserialized to null or wrong type.",
                             msg.Id);
-                        await NotifyRowFailureAsync(msg, msg.RetryCount, isTerminal: true,
+                        pendingDeadLetterType = await NotifyRowFailureAsync(msg, msg.RetryCount, isTerminal: true,
                             new InvalidOperationException(msg.Error), cancellationToken).ConfigureAwait(false);
                     }
                     else
@@ -333,7 +347,7 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
                     // while preserving Error/RetryCount for operators to inspect (dead-letter).
                     msg.ProcessedOnUtc = DateTime.UtcNow;
                 }
-                await NotifyRowFailureAsync(msg, msg.RetryCount, isTerminal, ex, cancellationToken).ConfigureAwait(false);
+                pendingDeadLetterType = await NotifyRowFailureAsync(msg, msg.RetryCount, isTerminal, ex, cancellationToken).ConfigureAwait(false);
             }
             finally
             {
@@ -360,6 +374,13 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
                 {
                     OutboxDispatcherDiagnostics.RecordRetriesBeforeSuccess(retries);
                     pendingRetriesBeforeSuccess = null;
+                }
+                if (pendingDeadLetterType is { } deadLetterType)
+                {
+                    // v6.5.28: emit only now that the terminal state is persisted, so a SaveChanges
+                    // failure that re-dispatches the row does not double-count the dead-letter.
+                    OutboxDispatcherDiagnostics.RecordDeadLetter(deadLetterType);
+                    pendingDeadLetterType = null;
                 }
             }
             catch (OperationCanceledException)
