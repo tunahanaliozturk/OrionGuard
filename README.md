@@ -1,5 +1,6 @@
 <p align="center">
-  <img src="src/Moongazing.OrionGuard/docs/logo.png" alt="OrionGuard Logo" width="150" />
+ <img width="831" height="831" alt="Moongazing-04" src="https://github.com/user-attachments/assets/eddd78ec-7398-4a91-81ec-bdba629e81d3" />
+
 </p>
 
 <h1 align="center">OrionGuard</h1>
