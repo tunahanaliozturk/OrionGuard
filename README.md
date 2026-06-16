@@ -1,5 +1,5 @@
 <p align="center">
- <img width="831" height="831" alt="Moongazing-04" src="https://github.com/user-attachments/assets/eddd78ec-7398-4a91-81ec-bdba629e81d3" />
+ <img width="150" height="831" alt="Moongazing-04" src="https://github.com/user-attachments/assets/eddd78ec-7398-4a91-81ec-bdba629e81d3" />
 
 </p>
 
