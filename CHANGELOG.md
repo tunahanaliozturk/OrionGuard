@@ -5,6 +5,11 @@ All notable changes to OrionGuard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.5.30] - 2026-06-18
+
+### Changed
+- Set the NuGet package icon to the navy Moongazing mark across every sub-package, and the README logo to the white Moongazing mark.
+
 ## [6.5.29] - 2026-06-15
 
 ### Added
