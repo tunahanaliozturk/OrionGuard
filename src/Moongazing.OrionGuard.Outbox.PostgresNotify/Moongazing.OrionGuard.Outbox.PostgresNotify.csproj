@@ -8,7 +8,7 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <NoWarn>CS1591;NU1900;NU1901;NU1902;NU1903;NU1904</NoWarn>
     <PackageId>OrionGuard.Outbox.PostgresNotify</PackageId>
-    <Version>6.5.29</Version>
+    <Version>6.5.30</Version>
     <Authors>Tunahan Ali Ozturk</Authors>
     <Description>Postgres LISTEN/NOTIFY backed IOutboxWakeSignal for OrionGuard.EntityFrameworkCore. Replaces the v6.5.1 polling fallback with an event-driven wake on every committed outbox row when the consumer's database is PostgreSQL. Falls back to polling cleanly when the LISTEN connection is unreachable.</Description>
     <PackageTags>guard;outbox;postgres;npgsql;listen;notify;push;dispatch;entity-framework-core;efcore</PackageTags>
