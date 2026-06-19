@@ -367,6 +367,84 @@ public class ObjectValidatorAsyncTests
 
     #endregion
 
+    #region Idempotent Async Terminal
+
+    [Fact]
+    public async Task ToResultAsync_CalledTwice_ShouldYieldSameErrors_AndRunPredicateOnce()
+    {
+        var user = new User { Email = "taken@example.com" };
+        var invocations = 0;
+
+        var validator = Validate.For(user)
+            .MustAsync(u => u.Email, (email, _) =>
+            {
+                invocations++;
+                return Async(false);
+            }, "Email already in use", "EMAIL_TAKEN");
+
+        var first = await validator.ToResultAsync();
+        var second = await validator.ToResultAsync();
+
+        // Same single error set on both calls -- no accumulation across repeated terminal calls.
+        var e1 = Assert.Single(first.Errors);
+        var e2 = Assert.Single(second.Errors);
+        Assert.Equal("EMAIL_TAKEN", e1.ErrorCode);
+        Assert.Equal("EMAIL_TAKEN", e2.ErrorCode);
+
+        // The async predicate (and any I/O side effect inside it) runs exactly once.
+        Assert.Equal(1, invocations);
+    }
+
+    [Fact]
+    public async Task ThrowIfInvalidAsync_AfterToResultAsync_ShouldStaySingleError_AndNotRerunPredicate()
+    {
+        var user = new User { Email = "taken@example.com" };
+        var invocations = 0;
+
+        var validator = Validate.For(user)
+            .MustAsync(u => u.Email, (email, _) =>
+            {
+                invocations++;
+                return Async(false);
+            }, "Email already in use", "EMAIL_TAKEN");
+
+        var result = await validator.ToResultAsync();
+        Assert.Single(result.Errors);
+
+        var ex = await Assert.ThrowsAsync<AggregateValidationException>(
+            () => validator.ThrowIfInvalidAsync());
+
+        // The exception carries the SAME single error, not duplicates, and the predicate is not re-run.
+        Assert.Single(ex.Errors);
+        Assert.Equal(1, invocations);
+    }
+
+    [Fact]
+    public async Task ToResultAsync_CalledTwice_ShouldAggregateSyncAndAsync_WithoutDuplicating()
+    {
+        var user = new User { Email = "taken@example.com", Username = null };
+        var invocations = 0;
+
+        var validator = Validate.For(user)
+            .NotEmpty(u => u.Username)
+            .MustAsync(u => u.Email, (email, _) =>
+            {
+                invocations++;
+                return Async(false);
+            }, "Email already in use", "EMAIL_TAKEN");
+
+        var first = await validator.ToResultAsync();
+        var second = await validator.ToResultAsync();
+
+        Assert.Equal(2, first.Errors.Count);
+        Assert.Equal(2, second.Errors.Count);
+        Assert.Equal("Username", second.Errors[0].ParameterName);
+        Assert.Equal("EMAIL_TAKEN", second.Errors[1].ErrorCode);
+        Assert.Equal(1, invocations);
+    }
+
+    #endregion
+
     #region WhenAsync Conditional
 
     [Fact]

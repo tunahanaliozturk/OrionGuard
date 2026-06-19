@@ -40,10 +40,21 @@ public sealed class ObjectValidator<T> where T : class
     /// Async rules deferred until <see cref="ToResultAsync"/> is awaited. Each entry, given a
     /// <see cref="CancellationToken"/>, produces a <see cref="ValidationError"/> when failing or
     /// <c>null</c> when passing. Sync rules cannot defer (they run eagerly inside the fluent call),
-    /// so the two rule kinds are stored separately but feed the same <see cref="_errors"/> list at
-    /// resolution time, giving one merged <see cref="GuardResult"/>.
+    /// so the two rule kinds are stored separately. At resolution time their failures are merged
+    /// with the eagerly-collected sync <see cref="_errors"/> into one <see cref="GuardResult"/>
+    /// without ever mutating <see cref="_errors"/>, keeping the async terminal idempotent.
     /// </summary>
     private List<Func<CancellationToken, Task<ValidationError?>>>? _asyncRules;
+
+    /// <summary>
+    /// Errors produced by the deferred async rules, captured the first time the async terminal runs
+    /// to completion. On repeated <see cref="ToResultAsync"/> / <see cref="ThrowIfInvalidAsync"/>
+    /// calls the cached outcome is returned verbatim, so the async rules neither re-execute (no
+    /// repeated I/O side effects) nor re-append (no duplicate errors). This mirrors the synchronous
+    /// <see cref="ToResult"/> contract, where rules run once during the fluent chain and the terminal
+    /// is a pure read of <see cref="_errors"/>.
+    /// </summary>
+    private List<ValidationError>? _asyncErrors;
 
     internal ObjectValidator(T instance, bool throwOnFirstError)
     {
@@ -329,28 +340,63 @@ public sealed class ObjectValidator<T> where T : class
             throw new AggregateValidationException(_errors);
         }
 
-        if (_asyncRules is not null)
+        // Idempotency: build the merged result from a FRESH local list every call and never mutate
+        // the shared _errors. The async rules run exactly once -- their outcome is cached in
+        // _asyncErrors -- so a second ToResultAsync()/ThrowIfInvalidAsync() returns the identical
+        // error set without re-running the predicates (no repeated I/O side effects) and without
+        // re-appending (no duplicate errors). This matches the synchronous ToResult() contract.
+        if (_asyncErrors is null)
         {
-            foreach (var rule in _asyncRules)
+            var produced = new List<ValidationError>();
+
+            if (_asyncRules is not null)
             {
-                cancellationToken.ThrowIfCancellationRequested();
-
-                var error = await rule(cancellationToken).ConfigureAwait(false);
-                if (error is null)
+                foreach (var rule in _asyncRules)
                 {
-                    continue;
-                }
+                    cancellationToken.ThrowIfCancellationRequested();
 
-                _errors.Add(error);
+                    var error = await rule(cancellationToken).ConfigureAwait(false);
+                    if (error is null)
+                    {
+                        continue;
+                    }
 
-                if (_throwOnFirstError)
-                {
-                    throw new AggregateValidationException(_errors);
+                    produced.Add(error);
+
+                    if (_throwOnFirstError)
+                    {
+                        // Strict short-circuit: throw on first async failure, exactly as the sync
+                        // strict path does. The outcome is intentionally NOT cached -- a strict
+                        // validator always throws here and is never re-inspected via a result.
+                        throw new AggregateValidationException(Merge(_errors, produced));
+                    }
                 }
             }
+
+            // Cache only after a full, uncancelled run so a cancelled attempt can be retried.
+            _asyncErrors = produced;
         }
 
-        return _errors.Count == 0 ? GuardResult.Success() : GuardResult.Failure(_errors);
+        var merged = Merge(_errors, _asyncErrors);
+        return merged.Count == 0 ? GuardResult.Success() : GuardResult.Failure(merged);
+    }
+
+    /// <summary>
+    /// Merges the eagerly-collected synchronous errors with the async errors into a new list,
+    /// surfacing sync failures first. Returns a fresh list each call so neither source is mutated.
+    /// </summary>
+    private static List<ValidationError> Merge(
+        List<ValidationError> syncErrors, List<ValidationError> asyncErrors)
+    {
+        if (asyncErrors.Count == 0)
+        {
+            return syncErrors;
+        }
+
+        var merged = new List<ValidationError>(syncErrors.Count + asyncErrors.Count);
+        merged.AddRange(syncErrors);
+        merged.AddRange(asyncErrors);
+        return merged;
     }
 
     /// <summary>
