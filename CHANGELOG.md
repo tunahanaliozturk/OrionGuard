@@ -5,6 +5,30 @@ All notable changes to OrionGuard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.6.0] - 2026-06-19
+
+### Added
+
+#### Asynchronous validation pipeline on `ObjectValidator<T>`
+
+`Validate.For(...)` / `Validate.ForStrict(...)` gain a first-class async path so rules that must perform I/O (a database uniqueness check, a remote lookup) participate in the same guard pipeline as the synchronous rules, with full `CancellationToken` flow, short-circuit parity, and one merged `GuardResult`.
+
+- `MustAsync<TProperty>(selector, Func<TProperty, CancellationToken, Task<bool>>, message, errorCode?)` registers a property-scoped async rule. `MustAsync(Func<T, CancellationToken, Task<bool>>, message, parameterName, errorCode?)` registers an instance-scoped async rule. Default error code is `ASYNC_PREDICATE`.
+- `WhenAsync(condition, configure)` conditionally registers async rules, mirroring the synchronous `When` overload.
+- `ToResultAsync(CancellationToken)` runs the synchronous rules already collected during the fluent chain plus the deferred async rules, surfacing sync errors first and appending async errors into the same `GuardResult`. `BuildAsync` / `ThrowIfInvalidAsync` are the async counterparts of `Build` / `ThrowIfInvalid`.
+- Short-circuit parity: a strict validator (`Validate.ForStrict`) throws `AggregateValidationException` on the first failure, including the first async failure, after which no further async rules run, exactly matching the synchronous strict path. A non-strict validator (`Validate.For`) runs every rule and aggregates all failures.
+- Cancellation is honored: the token is observed before and during each async rule and `OperationCanceledException` propagates to the caller rather than being recorded as a validation error.
+- The synchronous terminals (`ToResult` / `Build` / `ThrowIfInvalid`) now throw `InvalidOperationException` when async rules are pending, so async rule results are never silently discarded.
+- The synchronous API is unchanged and remains source- and binary-compatible.
+
+### Fixed
+
+- `ObjectValidator<T>.NotNull<TProperty>` was constrained to `where TProperty : class`, which forced callers validating a nullable reference property (for example `string?`) to suppress CS8634/CS8621 nullability warnings even though checking a nullable reference for null is the method's exact purpose. The constraint is relaxed to `class?`. The change is source- and binary-compatible: the emitted IL constraint is unchanged and only the compile-time nullability annotation is relaxed.
+
+### Tests
+
+- `ObjectValidatorAsyncTests`: async rule pass/fail, default error code, property/instance scope, value passthrough, cancellation honored (before and inside a rule, never converted to an error), mixed sync+async aggregation and ordering, multiple async failures, strict short-circuit on first async failure (and that later rules do not run), non-strict full aggregation, the async terminals, the pending-async-rule guard on the sync terminals, `WhenAsync`, and argument-null validation.
+
 ## [6.5.30] - 2026-06-18
 
 ### Changed
