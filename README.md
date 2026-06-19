@@ -357,6 +357,29 @@ validator.Validate(user, RuleSet.Default, RuleSet.Create);
 validator.Validate(user, RuleSet.Update);
 ```
 
+### Async Validation (NEW in v6.6)
+
+Rules that need I/O, such as a uniqueness check against a database or a remote lookup,
+join the same pipeline as the synchronous rules and are awaited together. The cancellation
+token flows through, and the async terminal is idempotent: awaiting the result more than
+once returns the same errors and runs each async rule only once.
+
+```csharp
+var result = await Validate.For(input)
+    .Property(u => u.Email, g => g.NotNull().Email())
+    .Property(u => u.Password, g => g.NotNull().MinLength(8))
+    .MustAsync(u => u.Email, IsEmailAvailableAsync, "Email is already registered.", "EMAIL_TAKEN")
+    .ToResultAsync(cancellationToken);
+
+// Or throw on the first failure, awaiting the I/O rules:
+var validated = await Validate.For(input)
+    .MustAsync(u => u.Email, IsEmailAvailableAsync, "Email is already registered.")
+    .ThrowIfInvalidAsync(cancellationToken);
+```
+
+Synchronous and asynchronous rules can be mixed freely; the synchronous `Validate(...)`
+and `ToResult()` paths are unchanged.
+
 ---
 
 ## ASP.NET Core Integration
@@ -542,7 +565,7 @@ services.AddOrionGuardExceptionFactory<MyExceptionFactory>();
 
 OrionGuard publishes a public, twelve-month forward roadmap covering the next minor releases
 through **v7.0.0 (Q2 2027)**. See [docs/ROADMAP.md](docs/ROADMAP.md) for the next-12-months
-view (v6.5.0 family integration, v6.6.0 migration tooling, v6.7.0 production excellence,
+view (v6.5.0 family integration, v6.6.0 asynchronous validation, v6.7.0 production excellence,
 v7.0.0 API freeze) plus the deep tier backlog of every item under consideration.
 
 If something on the roadmap matters to you, open an issue with the `roadmap` label. Real
