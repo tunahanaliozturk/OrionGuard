@@ -377,8 +377,11 @@ var validated = await Validate.For(input)
     .ThrowIfInvalidAsync(cancellationToken);
 ```
 
-Synchronous and asynchronous rules can be mixed freely; the synchronous `Validate(...)`
-and `ToResult()` paths are unchanged.
+Synchronous and asynchronous rules can be mixed freely. Once a validator has any `MustAsync`
+rule registered, finish it with an async terminal (`ToResultAsync`, `BuildAsync`, or
+`ThrowIfInvalidAsync`); the synchronous `ToResult()` / `Build()` terminals throw
+`InvalidOperationException` rather than silently skipping the pending async rules. Validators
+with no async rules keep using the synchronous `Validate(...)` and `ToResult()` paths unchanged.
 
 ---
 
