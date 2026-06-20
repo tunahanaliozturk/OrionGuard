@@ -5,6 +5,12 @@ All notable changes to OrionGuard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.6.1] - 2026-06-20
+
+### Changed
+
+- All diagnostics meter versions now derive from the package version automatically. Each assembly that constructs a `Meter` resolves the instrumentation version from its own `AssemblyInformationalVersion` (build metadata stripped) instead of a hardcoded literal, so the meter version always equals the package version and can no longer drift. This aligns several previously-stale meter versions (`6.0.0`, `6.4.0`, `6.5.13`, `6.5.16`) with the current package version.
+
 ## [6.6.0] - 2026-06-19
 
 ### Added

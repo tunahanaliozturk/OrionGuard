@@ -27,7 +27,7 @@ namespace Moongazing.OrionGuard.EntityFrameworkCore.Outbox;
 /// </remarks>
 public sealed class OutboxDispatcherHostedService : BackgroundService
 {
-    private static readonly ActivitySource OutboxActivitySource = new("Moongazing.OrionGuard.DomainEvents", "6.4.0");
+    private static readonly ActivitySource OutboxActivitySource = new("Moongazing.OrionGuard.DomainEvents", MeterVersion.Value);
 
     private readonly OutboxOptions options;
     private readonly IServiceScopeFactory scopeFactory;
