@@ -5,6 +5,12 @@ All notable changes to OrionGuard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.6.2] - 2026-06-20
+
+### Performance
+
+- Removed per-call heap allocations from the digit-validation hot paths used by the financial and identity guards. `AdvancedStringGuards.IsValidTurkishId` previously ran `tcNo.All(char.IsDigit)`, `tcNo.Select(c => c - '0').ToArray()`, and `digits.Take(10).Sum()`, allocating a delegate, multiple enumerators, and an `int[]` on every call; it now validates and materializes the eleven digits in a single pass into a `stackalloc` buffer. Measured on the valid-input path: 292 ns and 176 B/call to 27 ns and 0 B/call (about 11x faster, zero allocation). `IsValidLuhn` (credit card / Visa / MasterCard / IMEI), `IsValidIsbn13`, `AgainstInvalidEan`, and `AgainstInvalidImei` now use an allocation-free manual digit scan in place of `value.All(char.IsDigit)` (about 2x faster on the Luhn path). `char.IsDigit` semantics and all arithmetic are preserved exactly, so validation results are unchanged.
+
 ## [6.6.1] - 2026-06-20
 
 ### Changed

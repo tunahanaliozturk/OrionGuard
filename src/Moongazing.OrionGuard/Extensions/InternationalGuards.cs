@@ -74,7 +74,7 @@ public static class InternationalGuards
 
     private static bool IsValidIsbn13(string isbn)
     {
-        if (isbn.Length != 13 || !isbn.All(char.IsDigit)) return false;
+        if (isbn.Length != 13 || !AllDigits(isbn)) return false;
         if (!isbn.StartsWith("978", StringComparison.Ordinal) && !isbn.StartsWith("979", StringComparison.Ordinal)) return false;
 
         int sum = 0;
@@ -114,7 +114,7 @@ public static class InternationalGuards
     /// </summary>
     public static void AgainstInvalidEan(this string value, string parameterName)
     {
-        if (string.IsNullOrWhiteSpace(value) || value.Length != 13 || !value.All(char.IsDigit))
+        if (string.IsNullOrWhiteSpace(value) || value.Length != 13 || !AllDigits(value))
         {
             throw new ArgumentException($"{parameterName} is not a valid EAN-13 barcode.", parameterName);
         }
@@ -160,7 +160,7 @@ public static class InternationalGuards
     /// </summary>
     public static void AgainstInvalidImei(this string value, string parameterName)
     {
-        if (string.IsNullOrWhiteSpace(value) || value.Length != 15 || !value.All(char.IsDigit))
+        if (string.IsNullOrWhiteSpace(value) || value.Length != 15 || !AllDigits(value))
         {
             throw new ArgumentException($"{parameterName} is not a valid IMEI.", parameterName);
         }
@@ -169,6 +169,20 @@ public static class InternationalGuards
         {
             throw new ArgumentException($"{parameterName} is not a valid IMEI.", parameterName);
         }
+    }
+
+    /// <summary>
+    /// Allocation-free replacement for <c>value.All(char.IsDigit)</c>: no delegate and no
+    /// enumerator are allocated per call. <see cref="char.IsDigit(char)"/> semantics are
+    /// preserved exactly (Unicode decimal digits included).
+    /// </summary>
+    private static bool AllDigits(string value)
+    {
+        foreach (char c in value)
+        {
+            if (!char.IsDigit(c)) return false;
+        }
+        return true;
     }
 
     private static bool IsValidLuhn(string number)
