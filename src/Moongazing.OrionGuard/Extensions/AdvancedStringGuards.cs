@@ -48,7 +48,13 @@ public static class AdvancedStringGuards
 
     private static bool IsValidLuhn(string number)
     {
-        if (!number.All(char.IsDigit)) return false;
+        // Manual digit scan avoids the per-call delegate + enumerator allocation that
+        // number.All(char.IsDigit) incurs on this per-request financial hot path.
+        // char.IsDigit semantics are preserved exactly (Unicode decimal digits included).
+        foreach (char c in number)
+        {
+            if (!char.IsDigit(c)) return false;
+        }
 
         int sum = 0;
         bool alternate = false;
@@ -257,10 +263,20 @@ public static class AdvancedStringGuards
 
     private static bool IsValidTurkishId(string tcNo)
     {
-        if (tcNo.Length != 11 || !tcNo.All(char.IsDigit) || tcNo[0] == '0')
+        if (tcNo.Length != 11 || tcNo[0] == '0')
             return false;
 
-        int[] digits = tcNo.Select(c => c - '0').ToArray();
+        // Single pass over the 11 chars: validate digits and materialize values into a stack
+        // buffer. Replaces tcNo.All(char.IsDigit) + Select(...).ToArray() + Take(10).Sum(),
+        // eliminating the delegate, enumerator, and int[] heap allocations on this ID hot path.
+        // char.IsDigit semantics and the c - '0' value mapping are preserved exactly.
+        Span<int> digits = stackalloc int[11];
+        for (int i = 0; i < 11; i++)
+        {
+            char c = tcNo[i];
+            if (!char.IsDigit(c)) return false;
+            digits[i] = c - '0';
+        }
 
         int oddSum = digits[0] + digits[2] + digits[4] + digits[6] + digits[8];
         int evenSum = digits[1] + digits[3] + digits[5] + digits[7];
@@ -268,7 +284,9 @@ public static class AdvancedStringGuards
         int digit10 = ((oddSum * 7) - evenSum) % 10;
         if (digit10 < 0) digit10 += 10;
 
-        int digit11 = (digits.Take(10).Sum()) % 10;
+        int first10Sum = 0;
+        for (int i = 0; i < 10; i++) first10Sum += digits[i];
+        int digit11 = first10Sum % 10;
 
         return digits[9] == digit10 && digits[10] == digit11;
     }
