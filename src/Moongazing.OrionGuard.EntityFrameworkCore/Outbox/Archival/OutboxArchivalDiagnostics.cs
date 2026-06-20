@@ -13,7 +13,7 @@ public static class OutboxArchivalDiagnostics
     /// <summary>Meter name used by the archival sinks.</summary>
     public const string MeterName = "Moongazing.OrionGuard.Outbox.Archival";
 
-    private static readonly Meter Meter = new(MeterName, "6.5.13");
+    private static readonly Meter Meter = new(MeterName, MeterVersion.Value);
 
     /// <summary>
     /// Bytes written to an archive sink per <see cref="IOutboxArchiveSink.WriteAsync"/>

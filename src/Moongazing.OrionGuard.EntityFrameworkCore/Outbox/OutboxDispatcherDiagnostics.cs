@@ -13,7 +13,7 @@ public static class OutboxDispatcherDiagnostics
     /// <summary>Meter name used by the dispatcher.</summary>
     public const string MeterName = "Moongazing.OrionGuard.Outbox.Dispatcher";
 
-    private static readonly Meter Meter = new(MeterName, "6.5.16");
+    private static readonly Meter Meter = new(MeterName, MeterVersion.Value);
 
     /// <summary>
     /// Per-row dispatch lag: <c>now - OccurredOnUtc</c> at the moment the dispatcher

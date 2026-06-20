@@ -15,8 +15,8 @@ public static class OrionGuardDomainEventTelemetry
     /// <summary>The Meter name registered for domain-event metrics.</summary>
     public const string MeterName = "Moongazing.OrionGuard.DomainEvents";
 
-    internal static readonly ActivitySource ActivitySource = new(ActivitySourceName, "6.4.0");
-    internal static readonly Meter Meter = new(MeterName, "6.4.0");
+    internal static readonly ActivitySource ActivitySource = new(ActivitySourceName, MeterVersion.Value);
+    internal static readonly Meter Meter = new(MeterName, MeterVersion.Value);
 
     internal static readonly Counter<long> EventsDispatched = Meter.CreateCounter<long>(
         "orionguard.domain_events.dispatched", unit: "events", description: "Total domain events dispatched");
