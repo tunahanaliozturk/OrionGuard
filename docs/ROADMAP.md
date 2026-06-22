@@ -42,7 +42,7 @@ Priority tiers roughly map to timing:
 | Tier | Theme | Timing |
 |------|-------|--------|
 | Tier 0 | Shipped (reference) | Done |
-| Tier 1 | Adoption & Growth | v6.6 - v6.7 |
+| Tier 1 | Adoption & Growth | v6.7 |
 | Tier 2 | Production Excellence | v6.7 - v6.8 |
 | Tier 3 | Differentiation & Innovation | v6.8 - v7.0 |
 | Tier 4 | Ecosystem & Integrations | Rolling |
@@ -60,6 +60,10 @@ Priority tiers roughly map to timing:
 - **v6.4.1** — Logo refresh shipped 2026-05-23 (minimalist family-style indigo shield, no code changes).
 - **v6.4.2** — Logo cream-bg variant for dark-mode README/NuGet card contrast (no code changes).
 - **v6.5.0** — Shipped 2026-06-01. Redis-backed `IDistributedLock` bridge (`OrionGuard.Locks.Redis`) over the standalone [OrionLock](https://github.com/tunahanaliozturk/OrionLock) Redis backend. Push-based outbox dispatcher and outbox dead-letter UI were de-scoped from this minor and deferred to v6.5.1 and v6.5.2 respectively.
+- **v6.5.1 – v6.5.30** — Shipped 2026-06-04 through 2026-06-18. Push-dispatch contract (`IOutboxWakeSignal`) plus the Postgres `LISTEN/NOTIFY` (`OrionGuard.Outbox.PostgresNotify`) and SQL Server Service Broker (`OrionGuard.Outbox.SqlServerBroker`) push backends; the outbox operator dashboard (`OrionGuard.Outbox.Dashboard`) with read, replay, discard, cursor pagination, sort, and security headers; off-box archival sinks; and the outbox dispatcher / archival diagnostics meter suite. See CHANGELOG for the per-patch detail.
+- **v6.6.0** — Shipped 2026-06-19. First-class asynchronous validation pipeline on `ObjectValidator<T>` (`Validate.For(...)` / `Validate.ForStrict(...)`): `MustAsync`, `WhenAsync`, and the `ToResultAsync` / `BuildAsync` / `ThrowIfInvalidAsync` terminals. Sync and async rules merge into one `GuardResult` with full `CancellationToken` flow and short-circuit parity; the async terminal is idempotent (each async rule runs once); the sync terminals throw rather than silently skip pending async rules. `NotNull<TProperty>` constraint relaxed to `class?`. Source- and binary-compatible.
+- **v6.6.1** — Shipped 2026-06-20. Diagnostics meter versions self-derive from each assembly's `AssemblyInformationalVersion` instead of hardcoded literals, so a meter version can no longer drift from its package version.
+- **v6.6.2** — Shipped 2026-06-20. Allocation-free digit/identity validators: the Turkish-id, Luhn (card / IMEI), ISBN-13, and EAN hot paths drop their per-call delegate / enumerator / `int[]` allocations for a single-pass `stackalloc` scan (about 11x faster, zero allocation on the Turkish-id path; ~2x on Luhn). `char.IsDigit` semantics and results unchanged.
 
 ---
 
@@ -115,14 +119,47 @@ Ships the push-dispatch contract + in-process implementation. Concrete cross-pro
 - `OutboxDashboardOptions.OnMutation` audit hook (consumer-controlled storage shape; the dashboard never writes audit rows).
 - `OutboxDashboardOptions.EnableMutations` (default `true`) - false leaves the dashboard strictly read-only.
 
-### v6.6.0 — Migration & Contract-First *(planned, Q4 2026)*
+### v6.6.0 — Asynchronous Validation *(shipped 2026-06-19)*
+
+Theme: *let an I/O-bound rule join the same pipeline as the synchronous ones.*
+
+- **Async pipeline on `ObjectValidator<T>`.** `Validate.For(...)` / `Validate.ForStrict(...)`
+  gain `MustAsync` (property- and instance-scoped), `WhenAsync`, and the `ToResultAsync` /
+  `BuildAsync` / `ThrowIfInvalidAsync` terminals. A rule that performs I/O (a database
+  uniqueness check, a remote lookup) runs alongside the synchronous rules and merges into one
+  `GuardResult`.
+- **Short-circuit parity + cancellation.** A strict validator throws
+  `AggregateValidationException` on the first failure including the first async failure, after
+  which no further async rules run; a non-strict validator aggregates every failure. The
+  `CancellationToken` is observed before and during each async rule and `OperationCanceledException`
+  propagates rather than being recorded as a validation error.
+- **Idempotent async terminal; no silent drops.** Awaiting the async terminal more than once
+  returns the same errors and runs each async rule once. The synchronous terminals
+  (`ToResult` / `Build` / `ThrowIfInvalid`) now throw `InvalidOperationException` when async
+  rules are pending instead of discarding them.
+- **`NotNull<TProperty>` constraint relaxed** from `class` to `class?` so validating a nullable
+  reference property no longer requires suppressing nullability warnings. The whole release is
+  source- and binary-compatible.
+
+Two patches followed on the same milestone:
+
+- **v6.6.1 (shipped 2026-06-20).** Diagnostics meter versions self-derive from each assembly's
+  `AssemblyInformationalVersion`, retiring several stale hardcoded meter versions so a meter
+  version can no longer drift from its package version.
+- **v6.6.2 (shipped 2026-06-20).** Allocation-free digit/identity validators: the Turkish-id,
+  Luhn (card / IMEI), ISBN-13, and EAN paths drop their per-call allocations for a single-pass
+  `stackalloc` scan. About 11x faster and zero-allocation on the Turkish-id path, ~2x on Luhn,
+  with `char.IsDigit` semantics and results preserved exactly.
+
+### v6.7.0 — Migration & Contract-First *(planned, Q4 2026)*
 
 Theme: *make adoption a weekend, not a quarter.*
 
 - **R1: FluentValidation migration codemod (`dotnet orionguard migrate`).** Reads a project,
   rewrites validators to OrionGuard equivalents, emits a diff report. Covers the 25 most
   common FluentValidation built-ins, rule sets, `ChildRules`, `When/Unless`, `SetValidator`
-  and async rules.
+  and async rules. The v6.6.0 async pipeline gives the `MustAsync`-shaped target the codemod
+  rewrites FluentValidation's async rules onto.
 - **R2: OpenAPI-First validation.** `[OpenApiValidator("openapi.yaml", "#/...")]` generates
   validators from the schema; complements the existing validator-to-OpenAPI direction shipped
   by `OrionGuard.Swagger`.
@@ -130,7 +167,7 @@ Theme: *make adoption a weekend, not a quarter.*
   worker side; rejected enqueues raise a structured `JobValidationException` instead of
   failing inside the worker.
 
-### v6.7.0 — Production Excellence *(planned, Q1 2027)*
+### v6.8.0 — Production Excellence *(planned, Q1 2027)*
 
 Theme: *stop one validator from melting an instance, and answer "why is this failing in prod"
 in one query.*
@@ -141,9 +178,11 @@ in one query.*
 - **R8: Top-N failure analytics.** Built-in aggregation of failure reasons over a rolling
   window, exposed both as `IMeter` histograms and a `MapValidationAnalytics` endpoint.
 - **Per-rule circuit breaker.** Optional circuit-breaker wrapper around individual async
-  rules so a flaky external dependency cannot stall the request pipeline.
+  rules (the v6.6.0 `MustAsync` path) so a flaky external dependency cannot stall the request
+  pipeline.
 - **OpenTelemetry semantic-convention pass.** Align metric and span names with the upcoming
-  OTel semconv shape, in lockstep with [[orionaudit]] and [[orionlock]].
+  OTel semconv shape, in lockstep with [[orionaudit]] and [[orionlock]]. Builds on the v6.6.1
+  self-deriving meter versions so the rename lands cleanly across every assembly.
 
 ### v7.0.0 — Stable API *(planned, Q2 2027)*
 
@@ -186,12 +225,12 @@ See [FEATURES-v6.md](FEATURES-v6.md) for full details.
 
 ---
 
-## Tier 1 -- Adoption & Growth (v6.1 - v6.2)
+## Tier 1 -- Adoption & Growth (v6.7)
 
 The fastest-impact work: remove migration friction, ship features that make
 prospective users pick OrionGuard when evaluating libraries.
 
-### R1. FluentValidation Migration Codemod `[Planned]` `L` `v6.6`
+### R1. FluentValidation Migration Codemod `[Planned]` `L` `v6.7`
 
 A `dotnet tool` that reads existing FluentValidation validators and rewrites them
 as OrionGuard equivalents.
@@ -211,7 +250,7 @@ ambition is for a typical codebase to migrate in minutes, not weeks.
 
 ---
 
-### R2. OpenAPI-First Validation `[Planned]` `L` `v6.6`
+### R2. OpenAPI-First Validation `[Planned]` `L` `v6.7`
 
 Given an OpenAPI 3 document, emit validators that enforce the schema constraints.
 The inverse of `OrionGuard.Swagger`, which goes validator to OpenAPI.
@@ -231,9 +270,11 @@ offers this bidirectionally.
 
 ---
 
-### R3. Resilience Pipeline for Async Rules `[Planned]` `M` `v6.1`
+### R3. Resilience Pipeline for Async Rules `[Planned]` `M` `v6.8`
 
-Transient infrastructure failures should not surface as validation errors.
+The async rule pipeline itself shipped in v6.6.0 (`MustAsync` + `ToResultAsync`); this entry
+is the resilience layer on top of it, so a transient infrastructure failure does not surface
+as a validation error. It pairs with the per-rule circuit breaker scheduled for v6.8.0.
 
 ```csharp
 RuleForAsync(async u => await repo.IsEmailUniqueAsync(u.Email), "...")
@@ -274,11 +315,11 @@ these. Shipping signed, audited packs collapses that to minutes.
 
 ---
 
-## Tier 2 -- Production Excellence (v6.2 - v6.3)
+## Tier 2 -- Production Excellence (v6.8)
 
 Features that production engineers, SREs, and compliance teams care about.
 
-### R5. Validation Replay & Time-Travel Debugging `[Planned]` `M` `v6.2`
+### R5. Validation Replay & Time-Travel Debugging `[Planned]` `M` `v6.8`
 
 Append-only store of every validation run (input + rule decisions + timestamp)
 with CLI replay.
@@ -299,7 +340,7 @@ Fraud investigation and audit trail in one feature.
 
 ---
 
-### R6. Distributed Validation Cache `[Planned]` `M` `v6.3`
+### R6. Distributed Validation Cache `[Planned]` `M` `v6.8`
 
 `CachedValidator` backed by `IDistributedCache` (Redis / SQL Server / in-memory).
 Cluster-aware, multi-instance deployment ready.
@@ -318,7 +359,7 @@ layer is unavailable.
 
 ---
 
-### R7. Validation Budget Enforcement `[Planned]` `S` `v6.7`
+### R7. Validation Budget Enforcement `[Planned]` `S` `v6.8`
 
 Per-request time ceiling; slow validators are a silent performance regression source.
 
@@ -332,7 +373,7 @@ validator.WithBudget(TimeSpan.FromMilliseconds(50))
 
 ---
 
-### R8. Top-N Failure Analytics `[Planned]` `S` `v6.7`
+### R8. Top-N Failure Analytics `[Planned]` `S` `v6.8`
 
 Rolling window of most-frequent validation failures, per property, per error code.
 
@@ -345,7 +386,7 @@ Ships with a Grafana dashboard JSON.
 
 ---
 
-### R9. Performance Regression Guard `[Research]` `M` `v6.3`
+### R9. Performance Regression Guard `[Research]` `M` `v6.9`
 
 CI mode that benchmarks every validator on a PR branch vs. main, fails the build if
 p99 regresses by more than a configurable threshold.
@@ -360,7 +401,7 @@ p99 regresses by more than a configurable threshold.
 
 ---
 
-### R10. Snapshot Testing for Validators `[Planned]` `S` `v6.1`
+### R10. Snapshot Testing for Validators `[Planned]` `S` `v6.8`
 
 Verify.NET-style snapshot of rule definitions. Catches silent behavioural changes.
 
@@ -420,7 +461,7 @@ directly in human language, bypassing a translation step that today loses fideli
 
 ---
 
-### R13. Streaming Validation `[Planned]` `M` `v6.3`
+### R13. Streaming Validation `[Planned]` `M` `v6.9`
 
 `IAsyncEnumerable<T>` support for validating large datasets without materializing
 them in memory.
@@ -477,7 +518,7 @@ Transitions that are not explicitly allowed are automatically invalid.
 
 ---
 
-### R16. Feature Flag-Driven Rules `[Planned]` `M` `v6.3`
+### R16. Feature Flag-Driven Rules `[Planned]` `M` `v6.9`
 
 Gate individual rules on a feature flag provider.
 
@@ -523,7 +564,7 @@ client today. This kills the drift.
 
 ---
 
-### R19. JSON Schema Bidirectional `[Planned]` `M` `v6.3`
+### R19. JSON Schema Bidirectional `[Planned]` `M` `v6.9`
 
 Import and export against JSON Schema draft 2020-12.
 
@@ -536,7 +577,7 @@ Fills the same role as OpenAPI-first (R2) but for non-HTTP schemas.
 
 ---
 
-### R20. Validator Composition Graph Visualizer `[Planned]` `M` `v6.3`
+### R20. Validator Composition Graph Visualizer `[Planned]` `M` `v6.9`
 
 CLI that renders Graphviz or Mermaid diagrams of a validator.
 
@@ -768,9 +809,12 @@ candidates for the next milestone.
 | Release | Target             | Theme                                                        |
 | ------- | ------------------ | ------------------------------------------------------------ |
 | v6.4.1  | shipped 2026-05-23 | Logo refresh                                                 |
-| v6.5.0  | Q3 2026            | Family integration (OrionKey/OrionLock bridges, push outbox) |
-| v6.6.0  | Q4 2026            | FluentValidation migration codemod + OpenAPI-first           |
-| v6.7.0  | Q1 2027            | Validation budget, top-N analytics, circuit-breaker          |
+| v6.5.0  | shipped 2026-06-01 | Family integration (OrionKey/OrionLock bridges, push outbox) |
+| v6.6.0  | shipped 2026-06-19 | Asynchronous validation pipeline (MustAsync / ToResultAsync) |
+| v6.6.1  | shipped 2026-06-20 | Self-deriving diagnostics meter versions                     |
+| v6.6.2  | shipped 2026-06-20 | Allocation-free digit / identity validators                  |
+| v6.7.0  | Q4 2026            | FluentValidation migration codemod + OpenAPI-first           |
+| v6.8.0  | Q1 2027            | Validation budget, top-N analytics, circuit-breaker          |
 | v7.0.0  | Q2 2027            | API freeze, remove deprecated paths, docs site               |
 
 Dates are targets, not commitments. If a milestone slips by more than four weeks, the delay
@@ -793,7 +837,7 @@ Things OrionGuard will deliberately not do:
 
 ---
 
-**Last updated.** 2026-04-12
+**Last updated.** 2026-06-22
 
 **Curator.** [Tunahan Ali Ozturk](https://github.com/tunahanaliozturk)
 
