@@ -12,8 +12,14 @@ public sealed class OrionGuardClientFilterTests
         var services = new ServiceCollection();
         services.AddOrionGuard();
         services.AddValidator<CreateUserArgs, CreateUserArgsValidator>();
+        services.AddValidator<AsyncOnlyArgs, AsyncOnlyArgsValidator>();
         configure?.Invoke(services);
-        return services.BuildServiceProvider();
+        // Validate scope usage so that resolving a scoped service from the root provider (the captive
+        // dependency bug this PR fixes) throws at build/resolve time instead of silently "working".
+        return services.BuildServiceProvider(new ServiceProviderOptions
+        {
+            ValidateScopes = true,
+        });
     }
 
     // Scenario 1: a job whose arguments are valid is created without throwing.
@@ -150,7 +156,7 @@ public sealed class OrionGuardClientFilterTests
     [Fact]
     public void Constructor_NullServiceProvider_Throws()
     {
-        Assert.Throws<ArgumentNullException>(() => new OrionGuardClientFilter(null!));
+        Assert.Throws<ArgumentNullException>(() => new OrionGuardClientFilter((IServiceProvider)null!));
     }
 
     [Fact]
@@ -160,5 +166,144 @@ public sealed class OrionGuardClientFilterTests
         var filter = new OrionGuardClientFilter(provider);
 
         Assert.Throws<ArgumentNullException>(() => filter.OnCreating(null!));
+    }
+
+    // A scoped validator (with a scoped dependency) is resolved from a per-invocation scope, NOT the root
+    // provider. Two enqueues open two distinct scopes, each producing a distinct scoped-dependency
+    // instance. Because the provider is built with ValidateScopes=true, resolving the scoped validator
+    // from the root would throw -- so a clean run is itself proof the filter scoped correctly.
+    [Fact]
+    public void OnCreating_ScopedValidator_ResolvedFromFreshScopePerEnqueue_NotRoot()
+    {
+        var sink = new ScopeObservationSink();
+        using var provider = BuildProvider(s =>
+        {
+            s.AddSingleton(sink);
+            s.AddScoped<ScopedDependency>();
+            s.AddScoped<IValidator<ScopedArgs>, ScopedArgsValidator>();
+        });
+
+        // Decorate the real scope factory so we can assert a new scope is created per enqueue.
+        var countingFactory = new CountingScopeFactory(provider.GetRequiredService<IServiceScopeFactory>());
+        var filter = new OrionGuardClientFilter(countingFactory);
+
+        filter.OnCreating(JobContextFactory.Creating(j => j.Scoped(new ScopedArgs("ok"))));
+        filter.OnCreating(JobContextFactory.Creating(j => j.Scoped(new ScopedArgs("ok"))));
+
+        // Two enqueues -> two scopes created.
+        Assert.Equal(2, countingFactory.CreatedScopeCount);
+        Assert.Equal(2, countingFactory.ScopeProviders.Distinct().Count());
+
+        // The scoped dependency was activated twice with two different instances: a captured-root
+        // resolution would either throw (ValidateScopes) or reuse one instance.
+        Assert.Equal(2, sink.Observed.Count);
+        Assert.Equal(2, sink.Observed.Distinct().Count());
+    }
+
+    // A scoped validator that rejects: the failure still surfaces as JobArgumentValidationException, and
+    // resolution from the scope (not root) is exercised on the failing path too.
+    [Fact]
+    public void OnCreating_ScopedValidator_InvalidArgument_IsRejected()
+    {
+        var sink = new ScopeObservationSink();
+        using var provider = BuildProvider(s =>
+        {
+            s.AddSingleton(sink);
+            s.AddScoped<ScopedDependency>();
+            s.AddScoped<IValidator<ScopedArgs>, ScopedArgsValidator>();
+        });
+        var filter = new OrionGuardClientFilter(provider);
+
+        var context = JobContextFactory.Creating(j => j.Scoped(new ScopedArgs("")));
+
+        var exception = Assert.Throws<JobArgumentValidationException>(() => filter.OnCreating(context));
+        Assert.Contains(exception.Errors, e => e.ParameterName == "Value");
+    }
+
+    // A validator that declares ONLY an async rule (RuleForAsync) must still be enforced at enqueue.
+    // The synchronous Validate(T) overload would treat it as a no-op, so this proves the filter runs the
+    // async pipeline (ValidateAsync) and blocks on it.
+    [Fact]
+    public void OnCreating_AsyncOnlyValidator_InvalidArgument_IsRejected()
+    {
+        using var provider = BuildProvider();
+        var filter = new OrionGuardClientFilter(provider);
+
+        var context = JobContextFactory.Creating(j => j.AsyncOnly(new AsyncOnlyArgs("not-valid")));
+
+        var exception = Assert.Throws<JobArgumentValidationException>(() => filter.OnCreating(context));
+        Assert.Single(exception.Errors);
+        Assert.Equal("Token", exception.Errors[0].ParameterName);
+    }
+
+    // The async-only validator passes a payload its async rule accepts.
+    [Fact]
+    public void OnCreating_AsyncOnlyValidator_ValidArgument_DoesNotThrow()
+    {
+        using var provider = BuildProvider();
+        var filter = new OrionGuardClientFilter(provider);
+
+        var context = JobContextFactory.Creating(j => j.AsyncOnly(new AsyncOnlyArgs("valid")));
+
+        Assert.Null(Record.Exception(() => filter.OnCreating(context)));
+    }
+
+    // ToString() must not drop the exception type or stack trace: it augments the standard exception
+    // report (type + message + stack) with the per-argument validation breakdown.
+    [Fact]
+    public void JobArgumentValidationException_ToString_ContainsTypeNameAndStackAndDetails()
+    {
+        using var provider = BuildProvider();
+        var filter = new OrionGuardClientFilter(provider);
+        var context = JobContextFactory.Creating(j => j.CreateUser(new CreateUserArgs("not-an-email", "")));
+
+        var exception = Assert.Throws<JobArgumentValidationException>(() => filter.OnCreating(context));
+        var text = exception.ToString();
+
+        // Type name is present (was dropped before the fix).
+        Assert.Contains(typeof(JobArgumentValidationException).FullName!, text);
+        // Stack trace is present: the throwing frame in the filter shows up once the exception is thrown.
+        Assert.Contains(nameof(OrionGuardClientFilter.OnCreating), text);
+        Assert.Contains("OrionGuardClientFilter", text);
+        // The validation breakdown is still included.
+        Assert.Contains("[Email]", text);
+        Assert.Contains("[Name]", text);
+    }
+
+    // A throwing validator surfaces with its ORIGINAL stack trace (the rule's frame), not a stack that
+    // starts at the reflection wrapper. Proven by asserting the sentinel helper frame is present.
+    [Fact]
+    public void OnCreating_ThrowingValidator_PreservesOriginalStackTrace()
+    {
+        using var provider = BuildProvider(s =>
+            s.AddTransient<IValidator<UnvalidatedArgs>, StackPreservingThrowingValidator>());
+        var filter = new OrionGuardClientFilter(provider);
+        var context = JobContextFactory.Creating(j => j.Unvalidated(new UnvalidatedArgs("x")));
+
+        var exception = Assert.Throws<InvalidOperationException>(() => filter.OnCreating(context));
+
+        Assert.Equal("boom from validator", exception.Message);
+        Assert.NotNull(exception.StackTrace);
+        // The original throwing frame is preserved (ExceptionDispatchInfo), not erased by a rethrow.
+        Assert.Contains(ThrowHelper.SentinelMethodName, exception.StackTrace!);
+    }
+
+    // The filter can be constructed directly from an IServiceScopeFactory (the lifetime-correct primary
+    // ctor) and validates normally.
+    [Fact]
+    public void OnCreating_ConstructedFromScopeFactory_Validates()
+    {
+        using var provider = BuildProvider();
+        var filter = new OrionGuardClientFilter(provider.GetRequiredService<IServiceScopeFactory>());
+
+        var context = JobContextFactory.Creating(j => j.CreateUser(new CreateUserArgs("not-an-email", "")));
+
+        Assert.Throws<JobArgumentValidationException>(() => filter.OnCreating(context));
+    }
+
+    [Fact]
+    public void Constructor_NullScopeFactory_Throws()
+    {
+        Assert.Throws<ArgumentNullException>(() => new OrionGuardClientFilter((IServiceScopeFactory)null!));
     }
 }

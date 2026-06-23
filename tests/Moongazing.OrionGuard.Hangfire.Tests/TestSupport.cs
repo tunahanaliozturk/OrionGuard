@@ -6,6 +6,7 @@ using Hangfire.Server;
 using Hangfire.States;
 using Hangfire.Storage;
 using Hangfire.Storage.Monitoring;
+using Microsoft.Extensions.DependencyInjection;
 using Moongazing.OrionGuard.DependencyInjection;
 
 namespace Moongazing.OrionGuard.Hangfire.Tests;
@@ -16,6 +17,12 @@ public sealed record CreateUserArgs(string Email, string Name);
 /// <summary>Argument whose type has no registered validator; must pass through untouched.</summary>
 public sealed record UnvalidatedArgs(string Anything);
 
+/// <summary>Argument validated only by an async rule (no synchronous rules at all).</summary>
+public sealed record AsyncOnlyArgs(string Token);
+
+/// <summary>Argument whose validator is registered as a DI <c>Scoped</c> service.</summary>
+public sealed record ScopedArgs(string Value);
+
 /// <summary>The job "service" whose method expressions stand in for real enqueued work.</summary>
 public interface IJobs
 {
@@ -24,6 +31,10 @@ public interface IJobs
     void Mixed(CreateUserArgs first, UnvalidatedArgs second);
 
     void Unvalidated(UnvalidatedArgs args);
+
+    void AsyncOnly(AsyncOnlyArgs args);
+
+    void Scoped(ScopedArgs args);
 
     void NoArgs();
 }
@@ -46,6 +57,113 @@ public sealed class ThrowingValidator : IValidator<UnvalidatedArgs>
 
     public Task<Core.GuardResult> ValidateAsync(UnvalidatedArgs value, CancellationToken cancellationToken = default)
         => throw new InvalidOperationException("boom from validator");
+}
+
+/// <summary>
+/// Throws from a known helper method so the surfaced stack trace contains a stable, assertable frame.
+/// Used to prove the filter preserves the validator's original stack rather than rethrowing from the
+/// reflection wrapper.
+/// </summary>
+public static class ThrowHelper
+{
+    public const string SentinelMethodName = nameof(BlowUp);
+
+    public static Core.GuardResult BlowUp()
+        => throw new InvalidOperationException("boom from validator");
+}
+
+/// <summary>
+/// Variant of <see cref="ThrowingValidator"/> that throws via <see cref="ThrowHelper"/> so the surfaced
+/// stack contains a stable sentinel frame. Both overloads throw <i>synchronously</i> (before returning a
+/// Task), exercising the filter's TargetInvocationException-unwrap path with stack preservation.
+/// </summary>
+public sealed class StackPreservingThrowingValidator : IValidator<UnvalidatedArgs>
+{
+    public Core.GuardResult Validate(UnvalidatedArgs value) => ThrowHelper.BlowUp();
+
+    public Task<Core.GuardResult> ValidateAsync(UnvalidatedArgs value, CancellationToken cancellationToken = default)
+        => Task.FromResult(ThrowHelper.BlowUp());
+}
+
+/// <summary>
+/// Validator for <see cref="AsyncOnlyArgs"/> that declares <b>only</b> an async rule (via
+/// <c>RuleForAsync</c>). Under the synchronous <c>Validate(T)</c> overload this validator is a no-op, so
+/// it proves the filter runs the async pipeline at enqueue time. The token "valid" passes; anything else
+/// is rejected.
+/// </summary>
+public sealed class AsyncOnlyArgsValidator : AbstractValidator<AsyncOnlyArgs>
+{
+    public AsyncOnlyArgsValidator()
+    {
+        RuleForAsync(
+            async x =>
+            {
+                await Task.Yield();
+                return x.Token == "valid";
+            },
+            "Token failed async validation.",
+            "Token");
+    }
+}
+
+/// <summary>
+/// A scoped dependency. Resolving a <c>Scoped</c> service directly from the root
+/// <see cref="IServiceProvider"/> throws; it only succeeds inside a DI scope. That makes a successful
+/// validation a positive proof the filter resolved from a created scope, not the root provider.
+/// </summary>
+public sealed class ScopedDependency
+{
+    public Guid InstanceId { get; } = Guid.NewGuid();
+}
+
+/// <summary>
+/// Scoped validator for <see cref="ScopedArgs"/>. It takes a <see cref="ScopedDependency"/> via
+/// constructor injection so it can only be constructed within a scope. It records, into a shared sink,
+/// the dependency instance it saw on each invocation so a test can assert that separate enqueues used
+/// separate scopes.
+/// </summary>
+public sealed class ScopedArgsValidator : AbstractValidator<ScopedArgs>
+{
+    public ScopedArgsValidator(ScopedDependency dependency, ScopeObservationSink sink)
+    {
+        sink.Record(dependency.InstanceId);
+        RuleFor(x => x.Value, "Value", p => p.NotEmpty());
+    }
+}
+
+/// <summary>Collects the scoped-dependency instance ids observed across validator activations.</summary>
+public sealed class ScopeObservationSink
+{
+    private readonly List<Guid> _observed = new();
+
+    public void Record(Guid instanceId) => _observed.Add(instanceId);
+
+    public IReadOnlyList<Guid> Observed => _observed;
+}
+
+/// <summary>
+/// <see cref="IServiceScopeFactory"/> decorator that counts how many scopes were created and exposes the
+/// per-scope <see cref="IServiceProvider"/> instances, so a test can assert the filter opens a fresh
+/// scope per <c>OnCreating</c> invocation.
+/// </summary>
+public sealed class CountingScopeFactory : IServiceScopeFactory
+{
+    private readonly IServiceScopeFactory _inner;
+    private readonly List<IServiceProvider> _scopeProviders = new();
+
+    public CountingScopeFactory(IServiceScopeFactory inner) => _inner = inner;
+
+    public int CreatedScopeCount { get; private set; }
+
+    public IReadOnlyList<IServiceProvider> ScopeProviders => _scopeProviders;
+
+    public IServiceScope CreateScope()
+    {
+        var scope = _inner.CreateScope();
+        CreatedScopeCount++;
+        _scopeProviders.Add(scope.ServiceProvider);
+        return scope;
+    }
 }
 
 /// <summary>

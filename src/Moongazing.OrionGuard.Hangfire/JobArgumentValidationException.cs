@@ -61,11 +61,23 @@ public sealed class JobArgumentValidationException : Exception
     }
 
     /// <inheritdoc />
+    /// <remarks>
+    /// Augments the standard <see cref="Exception.ToString"/> output rather than replacing it. The base
+    /// implementation already emits the exception's type name and message header followed by the stack
+    /// trace (and any inner exceptions); dropping that loses the information a developer most needs from a
+    /// log. The per-argument validation details are appended after the base content so diagnostics carry
+    /// both the full exception report and the specific blocking errors.
+    /// </remarks>
     public override string ToString()
     {
         var details = string.Join(
             Environment.NewLine,
             Errors.Select(e => $"  - [{e.ParameterName}]: {e.Message}"));
-        return $"{Message}{Environment.NewLine}{details}";
+
+        // base.ToString() = "<Type>: <Message>\r\n   <stack trace>" (plus inner exceptions, if any).
+        // Keep it, then append the validation breakdown.
+        return string.IsNullOrEmpty(details)
+            ? base.ToString()
+            : $"{base.ToString()}{Environment.NewLine}Validation errors:{Environment.NewLine}{details}";
     }
 }

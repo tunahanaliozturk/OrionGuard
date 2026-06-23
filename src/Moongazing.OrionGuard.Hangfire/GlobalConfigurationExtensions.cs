@@ -19,7 +19,13 @@ public static class GlobalConfigurationExtensions
     /// The application's service provider, used by the filter to resolve <see cref="OrionGuard.DependencyInjection.IValidator{T}"/>
     /// instances for job arguments.
     /// </param>
-    /// <returns>The same <see cref="IGlobalConfiguration"/> instance for chaining.</returns>
+    /// <returns>
+    /// An <see cref="IGlobalConfiguration"/> for continued chaining. Note this is <i>not</i> necessarily the
+    /// same instance passed in: Hangfire's <c>UseFilter</c> wraps the configuration in a typed
+    /// <c>IGlobalConfiguration&lt;OrionGuardClientFilter&gt;</c> (which still implements
+    /// <see cref="IGlobalConfiguration"/>, so the fluent chain continues uninterrupted). Do not rely on
+    /// reference equality with the argument.
+    /// </returns>
     /// <exception cref="ArgumentNullException">
     /// Thrown when <paramref name="configuration"/> or <paramref name="serviceProvider"/> is <see langword="null"/>.
     /// </exception>
