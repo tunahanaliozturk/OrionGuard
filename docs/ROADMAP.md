@@ -64,6 +64,7 @@ Priority tiers roughly map to timing:
 - **v6.6.0** — Shipped 2026-06-19. First-class asynchronous validation pipeline on `ObjectValidator<T>` (`Validate.For(...)` / `Validate.ForStrict(...)`): `MustAsync`, `WhenAsync`, and the `ToResultAsync` / `BuildAsync` / `ThrowIfInvalidAsync` terminals. Sync and async rules merge into one `GuardResult` with full `CancellationToken` flow and short-circuit parity; the async terminal is idempotent (each async rule runs once); the sync terminals throw rather than silently skip pending async rules. `NotNull<TProperty>` constraint relaxed to `class?`. Source- and binary-compatible.
 - **v6.6.1** — Shipped 2026-06-20. Diagnostics meter versions self-derive from each assembly's `AssemblyInformationalVersion` instead of hardcoded literals, so a meter version can no longer drift from its package version.
 - **v6.6.2** — Shipped 2026-06-20. Allocation-free digit/identity validators: the Turkish-id, Luhn (card / IMEI), ISBN-13, and EAN hot paths drop their per-call delegate / enumerator / `int[]` allocations for a single-pass `stackalloc` scan (about 11x faster, zero allocation on the Turkish-id path; ~2x on Luhn). `char.IsDigit` semantics and results unchanged.
+- **v6.7.0** — Shipped 2026-06-23. OpenAPI-first validation (R2): the `OrionGuard.OpenApi` source-generator package turns an OpenAPI 3 schema into an `IValidator<T>` at compile time, enforcing `type`, `required`, `nullable`, string length / `pattern` / `format`, numeric range (incl. exclusive bounds), `enum`, array `minItems` / `maxItems`, and intra-document `$ref`. The analyzer bundles its own JSON reader. YAML input and polymorphism / composition (`discriminator` / `oneOf` / `anyOf` / `allOf`) are deferred follow-ups, surfaced as diagnostics `OG1002` and `OG1006` respectively. Uniform family version bump across all packages.
 
 ---
 
@@ -160,9 +161,14 @@ Theme: *make adoption a weekend, not a quarter.*
   common FluentValidation built-ins, rule sets, `ChildRules`, `When/Unless`, `SetValidator`
   and async rules. The v6.6.0 async pipeline gives the `MustAsync`-shaped target the codemod
   rewrites FluentValidation's async rules onto.
-- **R2: OpenAPI-First validation.** `[OpenApiValidator("openapi.yaml", "#/...")]` generates
-  validators from the schema; complements the existing validator-to-OpenAPI direction shipped
-  by `OrionGuard.Swagger`.
+- **R2: OpenAPI-First validation.** *(Shipped 2026-06-23.)* `[OpenApiValidator("openapi.json", "#/...")]`
+  on a partial class generates an `IValidator<T>` from the named schema at compile time, complementing
+  the validator-to-OpenAPI direction shipped by `OrionGuard.Swagger`. Shipped as the `OrionGuard.OpenApi`
+  source-generator package, which bundles its own JSON reader (no unbundled analyzer dependency) and
+  enforces `type`, `required`, `nullable`, string length / `pattern` / `format`, numeric range (incl.
+  exclusive bounds), `enum`, array `minItems` / `maxItems`, and intra-document `$ref`. YAML input
+  (raises `OG1002`) and polymorphism / composition `discriminator` / `oneOf` / `anyOf` / `allOf`
+  (raise `OG1006`) are deferred follow-ups rather than half-implemented.
 - **`OrionGuard.Hangfire` integration.** Validates job arguments at enqueue time and on the
   worker side; rejected enqueues raise a structured `JobValidationException` instead of
   failing inside the worker.
@@ -250,19 +256,29 @@ ambition is for a typical codebase to migrate in minutes, not weeks.
 
 ---
 
-### R2. OpenAPI-First Validation `[Planned]` `L` `v6.7`
+### R2. OpenAPI-First Validation `[Shipped]` `L` `v6.7`
 
 Given an OpenAPI 3 document, emit validators that enforce the schema constraints.
-The inverse of `OrionGuard.Swagger`, which goes validator to OpenAPI.
+The inverse of `OrionGuard.Swagger`, which goes validator to OpenAPI. Shipped in v6.7.0
+as the `OrionGuard.OpenApi` source-generator package.
 
 ```csharp
-[OpenApiValidator("openapi.yaml", "#/components/schemas/CreateUserRequest")]
-public partial class CreateUserValidator : AbstractValidator<CreateUserRequest> { }
+[OpenApiValidator("openapi.json", "#/components/schemas/CreateUserRequest")]
+public partial class CreateUserValidator : IValidator<CreateUserRequest> { }
 ```
 
-Source-generator powered. Supports `type`, `format`, `minLength`, `maxLength`,
-`minimum`, `maximum`, `pattern`, `enum`, `required`, `nullable`, `$ref` (nested
-schemas), and `discriminator` (maps to `Validate.Polymorphic<T>()`).
+Source-generator powered. Supports `type`, `format` (email, uuid, date-time, date, uri,
+hostname, ipv4), `minLength`, `maxLength`, `minimum`, `maximum` (incl. `exclusiveMinimum` /
+`exclusiveMaximum`), `pattern`, `enum`, `required`, `nullable`, `minItems`, `maxItems`, and
+intra-document `$ref` (nested schemas). The generated validator implements the real
+`IValidator<T>` and returns a `GuardResult`, so it drops into the ASP.NET Core filter, the
+MediatR behaviour, or a manual call exactly like a hand-written validator. The analyzer bundles
+its own JSON reader and takes no unbundled NuGet dependency.
+
+**Deferred (tracked follow-ups).** YAML documents are not read yet (JSON only; a YAML document
+raises diagnostic `OG1002`) to avoid pulling a heavy, unbundleable YAML parser into the analyzer.
+Polymorphism and composition (`discriminator` / `oneOf` / `anyOf` / `allOf`, the intended map to
+`Validate.Polymorphic<T>()`) raise `OG1006` and are skipped rather than half-implemented.
 
 **Why it matters.** API-first teams want one source of truth. OpenAPI spec -> validator
 -> controller -> tests -- all derived automatically. Nobody in the .NET space
@@ -813,7 +829,7 @@ candidates for the next milestone.
 | v6.6.0  | shipped 2026-06-19 | Asynchronous validation pipeline (MustAsync / ToResultAsync) |
 | v6.6.1  | shipped 2026-06-20 | Self-deriving diagnostics meter versions                     |
 | v6.6.2  | shipped 2026-06-20 | Allocation-free digit / identity validators                  |
-| v6.7.0  | Q4 2026            | FluentValidation migration codemod + OpenAPI-first           |
+| v6.7.0  | Q4 2026            | OpenAPI-first validation shipped 2026-06-23; FluentValidation codemod in progress |
 | v6.8.0  | Q1 2027            | Validation budget, top-N analytics, circuit-breaker          |
 | v7.0.0  | Q2 2027            | API freeze, remove deprecated paths, docs site               |
 
@@ -837,7 +853,7 @@ Things OrionGuard will deliberately not do:
 
 ---
 
-**Last updated.** 2026-06-22
+**Last updated.** 2026-06-23
 
 **Curator.** [Tunahan Ali Ozturk](https://github.com/tunahanaliozturk)
 

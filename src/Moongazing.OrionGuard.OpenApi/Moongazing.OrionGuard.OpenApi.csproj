@@ -7,11 +7,11 @@
     <IsRoslynComponent>true</IsRoslynComponent>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>CS1591</NoWarn>
-    <PackageId>OrionGuard.Generators</PackageId>
+    <PackageId>OrionGuard.OpenApi</PackageId>
     <Version>6.7.0</Version>
     <Authors>Tunahan Ali Ozturk</Authors>
-    <Description>Source generator for OrionGuard. Generates [GenerateValidator] validators, [StronglyTypedId&lt;TValue&gt;] strongly-typed id types (EF Core ValueConverter, System.Text.Json JsonConverter, TypeConverter companions), and supports NativeAOT-compatible reflection-free workflows.</Description>
-    <PackageTags>guard;validation;source-generator;roslyn;nativeaot;codegen;ddd;strongly-typed-id</PackageTags>
+    <Description>OpenAPI-first validation for OrionGuard. An incremental source generator that reads an OpenAPI 3 document supplied as an AdditionalFile and emits an OrionGuard validator enforcing the referenced schema's constraints (type, required, nullable, string length/pattern/format, numeric range, enum, array bounds, and intra-document $ref). The inverse of OrionGuard.Swagger.</Description>
+    <PackageTags>guard;validation;openapi;swagger;source-generator;roslyn;contract-first;codegen;schema</PackageTags>
     <PackageReadmeFile>docs/README.md</PackageReadmeFile>
     <PackageIcon>docs/logo.png</PackageIcon>
     <RepositoryUrl>https://github.com/tunahanaliozturk/OrionGuard</RepositoryUrl>

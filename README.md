@@ -150,7 +150,8 @@ if (result.IsInvalid)
 | `OrionGuard.AspNetCore` | `dotnet add package OrionGuard.AspNetCore` | Middleware, filters, ProblemDetails, IOptions |
 | `OrionGuard.MediatR` | `dotnet add package OrionGuard.MediatR` | CQRS pipeline validation |
 | `OrionGuard.Generators` | `dotnet add package OrionGuard.Generators` | Compile-time source generator |
-| `OrionGuard.Swagger` | `dotnet add package OrionGuard.Swagger` | OpenAPI schema generation |
+| `OrionGuard.Swagger` | `dotnet add package OrionGuard.Swagger` | OpenAPI schema generation (validator to OpenAPI) |
+| `OrionGuard.OpenApi` | `dotnet add package OrionGuard.OpenApi` | OpenAPI-first validators (OpenAPI to validator) |
 | `OrionGuard.OpenTelemetry` | `dotnet add package OrionGuard.OpenTelemetry` | Metrics & tracing |
 | `OrionGuard.Blazor` | `dotnet add package OrionGuard.Blazor` | EditForm validation |
 | `OrionGuard.Grpc` | `dotnet add package OrionGuard.Grpc` | Server interceptor |
