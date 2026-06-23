@@ -7,11 +7,11 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <NoWarn>CS1591;NU1900;NU1901;NU1902;NU1903;NU1904</NoWarn>
-    <PackageId>OrionGuard.Grpc</PackageId>
+    <PackageId>OrionGuard.Hangfire</PackageId>
     <Version>6.7.0</Version>
     <Authors>Tunahan Ali Ozturk</Authors>
-    <Description>gRPC integration for OrionGuard validation library. Provides server interceptor for automatic request validation in gRPC services.</Description>
-    <PackageTags>guard;validation;grpc;interceptor;protobuf;microservices</PackageTags>
+    <Description>Hangfire integration for OrionGuard validation library. Provides a client filter that validates background job arguments at enqueue time, so an invalid job is rejected by the enqueue call instead of failing inside a worker.</Description>
+    <PackageTags>guard;validation;hangfire;background-jobs;client-filter;enqueue</PackageTags>
     <PackageReadmeFile>docs/README.md</PackageReadmeFile>
     <PackageIcon>docs/logo.png</PackageIcon>
     <RepositoryUrl>https://github.com/tunahanaliozturk/OrionGuard</RepositoryUrl>
@@ -20,7 +20,7 @@
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Grpc.AspNetCore.Server" Version="2.65.0" />
+    <PackageReference Include="Hangfire.Core" Version="1.8.22" />
     <ProjectReference Include="..\Moongazing.OrionGuard\Moongazing.OrionGuard.csproj" />
   </ItemGroup>
   <ItemGroup>

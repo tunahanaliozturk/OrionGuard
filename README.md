@@ -155,6 +155,7 @@ if (result.IsInvalid)
 | `OrionGuard.Blazor` | `dotnet add package OrionGuard.Blazor` | EditForm validation |
 | `OrionGuard.Grpc` | `dotnet add package OrionGuard.Grpc` | Server interceptor |
 | `OrionGuard.SignalR` | `dotnet add package OrionGuard.SignalR` | Hub method validation |
+| `OrionGuard.Hangfire` | `dotnet add package OrionGuard.Hangfire` | Background job argument validation at enqueue time |
 | `OrionGuard.EntityFrameworkCore` | `dotnet add package OrionGuard.EntityFrameworkCore` | EF Core SaveChanges interceptor + transactional outbox |
 | `OrionGuard.Locks.Redis` | `dotnet add package OrionGuard.Locks.Redis` | Redis backend for the outbox `IDistributedLock` |
 | `OrionGuard.Testing` | `dotnet add package OrionGuard.Testing` | DomainEventCapture + InMemoryDispatcher + assertions |
@@ -486,6 +487,30 @@ services.AddGrpc(o => o.Interceptors.Add<OrionGuardInterceptor>());
 
 // SignalR — automatic hub method parameter validation
 services.AddOrionGuardSignalR();
+```
+
+---
+
+## Hangfire
+
+Validate a background job's arguments at enqueue time. An invalid job is rejected by the
+`Enqueue`/`Schedule` call with a structured `JobArgumentValidationException`, instead of being
+persisted and failing later inside a worker. Arguments with no registered validator pass through.
+
+```csharp
+// Register your validators in DI, then wire the client filter to the same provider.
+builder.Services.AddOrionGuard();
+builder.Services.AddValidator<SendEmailArgs, SendEmailArgsValidator>();
+
+var app = builder.Build();
+
+GlobalConfiguration.Configuration
+    .UseInMemoryStorage()
+    .UseOrionGuardValidation(app.Services);
+// or: GlobalJobFilters.Filters.AddOrionGuardClientFilter(app.Services);
+
+// Throws JobArgumentValidationException at the call site; the job is never persisted.
+BackgroundJob.Enqueue<IEmailSender>(s => s.Send(new SendEmailArgs("not-an-email", "")));
 ```
 
 ---
