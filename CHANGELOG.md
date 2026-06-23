@@ -5,6 +5,42 @@ All notable changes to OrionGuard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.7.0] - 2026-06-23
+
+### Added
+
+#### `OrionGuard.Hangfire` integration
+
+New add-on package `OrionGuard.Hangfire` (PackageId `OrionGuard.Hangfire`) that validates a background job's arguments at enqueue time, so a job that is invalid by construction is rejected by the enqueue call instead of being persisted and later failing inside a worker.
+
+- `OrionGuardClientFilter` is a Hangfire `IClientFilter` whose `OnCreating` walks `context.Job.Args`, resolves the matching `IValidator<TArg>` for each argument's runtime type from the application's `IServiceProvider`, and runs it. This is the same service-provider-based validator resolution the MediatR, ASP.NET Core, gRPC, and SignalR integrations use; because job argument types are only known at runtime, resolution and invocation go through reflection exactly as the SignalR hub filter does.
+- Blocking validation errors are accumulated across all arguments in a single pass. On failure the filter throws `JobArgumentValidationException`, which carries the full `IReadOnlyList<ValidationError>` plus the target job `Type` and method name. Hangfire surfaces an exception thrown from `OnCreating` to the caller that enqueued the job, so the enqueue is rejected at the call site.
+- Arguments that are `null`, or whose type has no registered validator, pass through untouched. A validator that itself throws has its real exception surfaced (unwrapped from the reflection `TargetInvocationException`) rather than masked.
+- `OnCreated` is a no-op: enqueue-time validation is complete once `OnCreating` returns.
+- Registration helpers `GlobalConfigurationExtensions.UseOrionGuardValidation(this IGlobalConfiguration, IServiceProvider)` (fluent `GlobalConfiguration` chain) and `GlobalConfigurationExtensions.AddOrionGuardClientFilter(this JobFilterCollection, IServiceProvider)` (the `GlobalJobFilters.Filters` collection) wire the filter to OrionGuard's validator resolution.
+- Depends on `Hangfire.Core` 1.8.22 (the abstractions package, not the full server) and the core `OrionGuard` package. Targets .NET 8.0, 9.0, and 10.0.
+
+#### `OrionGuard.OpenApi` — OpenAPI-first validation (R2)
+
+New add-on package `OrionGuard.OpenApi` (PackageId `OrionGuard.OpenApi`): a Roslyn incremental source generator that reads an OpenAPI 3 schema at compile time and emits an OrionGuard validator enforcing its constraints. This is the inverse of `OrionGuard.Swagger` (which goes validator to OpenAPI), closing the contract-first loop: schema to validator to controller.
+
+- `[OpenApiValidator("openapi.json", "#/components/schemas/Customer")]` on a `partial class` names an OpenAPI document (supplied to the compiler as an `AdditionalFile`) and a JSON pointer to a schema within it. The generator resolves the schema, binds its properties to the validated type's members, and emits the class body implementing `Moongazing.OrionGuard.DependencyInjection.IValidator<T>` returning a real `GuardResult`. The validated type `T` is inferred from the `IValidator<T>` interface (or an `AbstractValidator<T>` / `FluentStyleValidator<T>` base); if the annotated class has neither, its own properties are validated. A generated validator is interchangeable with a hand-written one anywhere an `IValidator<T>` is consumed (the ASP.NET Core endpoint filter, the MediatR behaviour, a manual call).
+- Constraints enforced: `type` (string / integer / number / boolean / array / object), `required` (`REQUIRED`), `nullable` (a null value skips the value constraints), string `minLength` / `maxLength` (`MIN_LENGTH` / `MAX_LENGTH`), string `pattern` (`PATTERN`), string `format` for `email`, `uuid`, `date-time`, `date`, `uri`, `hostname`, and `ipv4` (`FORMAT`), numeric `minimum` / `maximum` including `exclusiveMinimum` / `exclusiveMaximum` across both the OpenAPI 3.0 boolean form and the JSON Schema 2020-12 numeric form (`MINIMUM` / `MAXIMUM`), `enum` over string or numeric values (`ENUM`), array `minItems` / `maxItems` (`MIN_ITEMS` / `MAX_ITEMS`), and intra-document `$ref` resolution for both the root pointer and individual properties (with reference-cycle detection). Schema property names bind to C# members case-insensitively, so `firstName` maps to `FirstName`.
+- Each constraint is gated on the bound member's C# type category (string checks only for string members, numeric comparisons only for numeric members, count checks only for collections), so the generated code compiles cleanly under the consumer's `TreatWarningsAsErrors` even when the document and the POCO disagree about a property's shape.
+- The generator bundles its own minimal JSON reader; it takes no unbundled NuGet dependency in the analyzer and adds no runtime dependency to the consumer's output. Targets `netstandard2.0` (Roslyn-compatible), consumed by any `net8.0+` project.
+- Diagnostics are clean, OG-prefixed, and non-fatal (the build never crashes): `OG1001` (the named document was not supplied as an `AdditionalFile`), `OG1002` (the document is not parseable JSON), `OG1003` (the pointer did not resolve), `OG1004` (a `$ref` did not resolve), `OG1005` (the target is not a `partial class`), and `OG1006` (an unsupported construct was skipped while the rest of the schema was still enforced).
+- **Deferred, by design:** YAML documents (only JSON is read; a YAML document raises `OG1002` rather than pulling a heavy, unbundleable YAML parser into the analyzer) and polymorphism / composition (`discriminator`, `oneOf`, `anyOf`, `allOf`), which raise `OG1006` and are skipped rather than half-implemented. Both are tracked as follow-ups.
+
+### Changed
+
+- Uniform family version bump to `6.7.0` across all packages, including the new `OrionGuard.Hangfire` and `OrionGuard.OpenApi`.
+
+### Tests
+
+- `OrionGuardClientFilterTests`: valid arguments enqueue without throwing; invalid arguments are rejected at enqueue with the accumulated validation errors and the job identity on the exception; an argument type with no registered validator passes through; the filter resolves validators from DI (the same invalid payload is rejected only when the validator is registered); mixed validated/unvalidated arguments enforce only the registered type; no-argument jobs pass; a `null` argument value is skipped; a throwing validator surfaces its real exception; `OnCreated` is a no-op; and the constructor / `OnCreating` null-argument guards. Tests drive a real Hangfire `CreatingContext` built from `Job.FromExpression` over a fake job storage, so no Hangfire server runs.
+- `OrionGuard.OpenApi.Tests`: a Roslyn harness compiles a sample consumer plus an OpenAPI `AdditionalFile`, runs the generator, then emits and executes the generated validator so each constraint is exercised against real input through the real `GuardResult`. Coverage: a fully valid instance passes; each constraint kind fails individually (required, email/uuid/uri/date-time format, string min/max length, pattern, numeric minimum/maximum, exclusive minimum at and above the bound, string and numeric enum, array min/max items, nullable null-skips-then-present-fails); multiple violations accumulate; a property `$ref` and a root-pointer `$ref` resolve and enforce the referenced schema; the generated code compiles warning-clean (TreatWarningsAsErrors parity), implements the real `IValidator<T>` contract, and is deterministic; and each diagnostic (`OG1001`, `OG1002` on a YAML document, `OG1003`, `OG1005`, `OG1006` while still enforcing the rest) fires without breaking the build.
+- `GlobalConfigurationExtensionsTests`: both registration helpers add the filter, the fluent helper returns a chainable `IGlobalConfiguration`, and their null-argument guards.
+
 ## [6.6.2] - 2026-06-20
 
 ### Performance
