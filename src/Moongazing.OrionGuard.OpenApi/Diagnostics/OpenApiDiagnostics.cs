@@ -115,5 +115,21 @@ namespace Moongazing.OrionGuard.OpenApi.Diagnostics
             category: Category,
             defaultSeverity: DiagnosticSeverity.Warning,
             isEnabledByDefault: true);
+
+        /// <summary>
+        /// OG1011: a nested <c>[OpenApiValidator]</c> target, or one of the types it is declared inside, is
+        /// not <c>partial</c>. The generator reopens the target and every enclosing type as a nested
+        /// <c>partial</c> declaration to land the generated validator in the right place; reopening a
+        /// non-partial type with a <c>partial</c> declaration is a consumer compile error (CS0260), so the
+        /// target and every enclosing type must be declared <c>partial</c>. The offending type is named and
+        /// generation is skipped rather than emitting code that would not compile.
+        /// </summary>
+        public static readonly DiagnosticDescriptor NestedTargetNotPartial = new DiagnosticDescriptor(
+            id: "OG1011",
+            title: "OpenApiValidator nested target and all its enclosing types must be declared partial",
+            messageFormat: "OpenApiValidator nested target and all its enclosing types must be declared partial, but '{0}' is not, so no validator was generated. Add the 'partial' modifier to '{0}'.",
+            category: Category,
+            defaultSeverity: DiagnosticSeverity.Warning,
+            isEnabledByDefault: true);
     }
 }

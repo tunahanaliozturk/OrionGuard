@@ -139,6 +139,127 @@ public class NestedTargetTests
         Assert.NotNull(assembly.GetType("Sample.Outer2+InnerValidator"));
     }
 
+    // -- Nested under a NON-partial enclosing class: OG1011, nothing generated (a partial reopening a
+    //    non-partial outer type would be a consumer compile error). --
+
+    [Fact]
+    public void ValidatorNestedUnderNonPartialOuter_ReportsOG1011_AndGeneratesNothing()
+    {
+        const string consumer = """
+            using Moongazing.OrionGuard.DependencyInjection;
+            namespace Sample
+            {
+                public sealed class Customer { public string Name { get; set; } = ""; }
+
+                public class Outer
+                {
+                    [Moongazing.OrionGuard.OpenApi.OpenApiValidator("customer.json", "#/components/schemas/Customer")]
+                    public partial class CustomerValidator : IValidator<Customer> { }
+                }
+            }
+            """;
+
+        var run = GeneratorTestHarness.Run(consumer, "customer.json", Document);
+
+        Assert.True(HasDiagnostic(run, "OG1011"));
+
+        // The non-partial outer type is the named offender, and no validator partial was emitted: the
+        // emitted validator is the only source carrying the IValidator<...> base list (the marker
+        // attribute's doc comment uses the HTML-escaped form), so its absence proves nothing was generated.
+        Assert.Contains(
+            run.GeneratorDiagnostics,
+            d => d.Id == "OG1011" && d.GetMessage().Contains("Outer"));
+        Assert.DoesNotContain("IValidator<", run.AllGeneratedText);
+    }
+
+    // -- Nested NON-partial target under a partial outer: OG1011 names the target, nothing generated. --
+
+    [Fact]
+    public void NestedNonPartialTarget_ReportsOG1011_AndGeneratesNothing()
+    {
+        const string consumer = """
+            using Moongazing.OrionGuard.DependencyInjection;
+            namespace Sample
+            {
+                public sealed class Customer { public string Name { get; set; } = ""; }
+
+                public partial class Outer
+                {
+                    [Moongazing.OrionGuard.OpenApi.OpenApiValidator("customer.json", "#/components/schemas/Customer")]
+                    public class CustomerValidator : IValidator<Customer> { }
+                }
+            }
+            """;
+
+        var run = GeneratorTestHarness.Run(consumer, "customer.json", Document);
+
+        Assert.True(HasDiagnostic(run, "OG1011"));
+        Assert.Contains(
+            run.GeneratorDiagnostics,
+            d => d.Id == "OG1011" && d.GetMessage().Contains("CustomerValidator"));
+        Assert.DoesNotContain("IValidator<", run.AllGeneratedText);
+    }
+
+    // -- Enclosing 'partial record' keyword is reproduced (a 'partial class' over a record would not
+    //    compile), and the nested validator compiles. --
+
+    [Fact]
+    public void ValidatorNestedUnderPartialRecord_ReproducesRecordKeyword_AndCompiles()
+    {
+        const string consumer = """
+            using Moongazing.OrionGuard.DependencyInjection;
+            namespace Sample
+            {
+                public sealed class Customer { public string Name { get; set; } = ""; }
+
+                public partial record Outer
+                {
+                    [Moongazing.OrionGuard.OpenApi.OpenApiValidator("customer.json", "#/components/schemas/Customer")]
+                    public partial class CustomerValidator : IValidator<Customer> { }
+                }
+            }
+            """;
+
+        var run = GeneratorTestHarness.Run(consumer, "customer.json", Document);
+
+        // The enclosing keyword must be 'record', not 'class': the emitter must reopen the user's record as
+        // a partial record or the two declarations disagree and the consumer build fails.
+        Assert.Contains("partial record Outer", run.AllGeneratedText);
+        Assert.DoesNotContain("partial class Outer", run.AllGeneratedText);
+
+        var assembly = GeneratorTestHarness.Compile(consumer, "customer.json", Document);
+        Assert.NotNull(assembly.GetType("Sample.Outer+CustomerValidator"));
+    }
+
+    // -- Top-level target in the GLOBAL namespace (no namespace): still generates and compiles. --
+
+    [Fact]
+    public void TopLevelTargetInGlobalNamespace_GeneratesAndCompiles()
+    {
+        const string consumer = """
+            using Moongazing.OrionGuard.DependencyInjection;
+
+            public sealed class Customer { public string Name { get; set; } = ""; }
+
+            [Moongazing.OrionGuard.OpenApi.OpenApiValidator("customer.json", "#/components/schemas/Customer")]
+            public partial class CustomerValidator : IValidator<Customer> { }
+            """;
+
+        var run = GeneratorTestHarness.Run(consumer, "customer.json", Document);
+        Assert.Contains("partial class CustomerValidator", run.AllGeneratedText);
+
+        var assembly = GeneratorTestHarness.Compile(consumer, "customer.json", Document);
+        var validatorType = assembly.GetType("CustomerValidator");
+        Assert.NotNull(validatorType);
+
+        var customerType = assembly.GetType("Customer")!;
+        dynamic instance = Activator.CreateInstance(customerType)!;
+        instance.Name = "ab"; // below minLength 3
+
+        var result = GeneratorTestHarness.Validate(assembly, "CustomerValidator", (object)instance);
+        Assert.Contains(result.Errors, e => e.ParameterName == "name" && e.ErrorCode == "MIN_LENGTH");
+    }
+
     // -- Generic target: diagnosed with OG1010, generates nothing (no broken code). --
 
     [Fact]

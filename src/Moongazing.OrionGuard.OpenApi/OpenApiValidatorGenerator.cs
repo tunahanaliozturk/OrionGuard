@@ -88,8 +88,10 @@ namespace Moongazing.OrionGuard.OpenApi
                 return null;
             }
 
-            bool isPartial = context.TargetNode is ClassDeclarationSyntax cds
-                && cds.Modifiers.Any(m => m.ValueText == "partial");
+            // The target must itself be declared partial to be extended. Check every source declaration of
+            // the symbol (not just the node carrying the attribute) so a type that is partial in one file
+            // but non-partial in another is correctly treated as not reopenable.
+            bool isPartial = IsDeclaredPartial(typeSymbol);
 
             string? namespaceName = typeSymbol.ContainingNamespace.IsGlobalNamespace
                 ? null
@@ -151,15 +153,74 @@ namespace Moongazing.OrionGuard.OpenApi
                 return ImmutableArray<EnclosingType>.Empty;
             }
 
-            // Collect inner-to-outer, then reverse so the outermost enclosing type is emitted first.
+            // Collect inner-to-outer, then reverse so the outermost enclosing type is emitted first. Each
+            // link carries whether the user declared it partial: the emitter may only reopen a partial
+            // enclosing type, so a non-partial one is reported (OG1011) and generation is skipped.
             var stack = new List<EnclosingType>();
             for (INamedTypeSymbol? current = containing; current is not null; current = current.ContainingType)
             {
-                stack.Add(new EnclosingType(TypeKeyword(current), current.Name));
+                stack.Add(new EnclosingType(TypeKeyword(current), current.Name, IsDeclaredPartial(current)));
             }
 
             stack.Reverse();
             return stack.ToImmutableArray();
+        }
+
+        /// <summary>
+        /// Scans a nested target's declaring-type chain for the first link that is not declared
+        /// <c>partial</c> and so cannot be reopened. Enclosing types are checked outermost first (the order
+        /// the emitter would open them), then the target itself; the first non-partial type's name is
+        /// returned via <paramref name="offendingType"/>. Returns <c>false</c> when the target and every
+        /// enclosing type are partial (the whole chain is reopenable). Only meaningful for a nested target;
+        /// a top-level target's partiality is handled directly against <see cref="OpenApiValidatorTarget.IsPartial"/>.
+        /// </summary>
+        private static bool TryFindNonPartialLink(OpenApiValidatorTarget target, out string offendingType)
+        {
+            foreach (var enclosing in target.EnclosingTypes)
+            {
+                if (!enclosing.IsPartial)
+                {
+                    offendingType = enclosing.Name;
+                    return true;
+                }
+            }
+
+            if (!target.IsPartial)
+            {
+                offendingType = target.ClassName;
+                return true;
+            }
+
+            offendingType = string.Empty;
+            return false;
+        }
+
+        /// <summary>
+        /// True when every source declaration of <paramref name="type"/> carries the <c>partial</c>
+        /// modifier, i.e. the type can be safely reopened with another <c>partial</c> declaration. A type
+        /// with no source declarations (purely metadata) is treated as not partial: it lives in another
+        /// assembly and cannot be reopened. Checking <em>all</em> declarations is deliberate: a type whose
+        /// declarations disagree about <c>partial</c> is itself a consumer compile error, and adding our own
+        /// partial would only compound it, so we skip and let the user's own error surface.
+        /// </summary>
+        private static bool IsDeclaredPartial(INamedTypeSymbol type)
+        {
+            var references = type.DeclaringSyntaxReferences;
+            if (references.Length == 0)
+            {
+                return false;
+            }
+
+            foreach (var reference in references)
+            {
+                if (reference.GetSyntax() is not TypeDeclarationSyntax declaration
+                    || !declaration.Modifiers.Any(m => m.IsKind(Microsoft.CodeAnalysis.CSharp.SyntaxKind.PartialKeyword)))
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         /// <summary>
@@ -428,11 +489,28 @@ namespace Moongazing.OrionGuard.OpenApi
             OpenApiValidatorTarget target,
             ImmutableArray<OpenApiDocument> documents)
         {
-            // A non-partial target cannot be extended; warn and skip.
-            if (!target.IsPartial)
+            // Partiality contract. The emitter reopens the target and (for a nested target) every enclosing
+            // type as a nested `partial` declaration; reopening a non-partial type with a partial is a
+            // consumer compile error, so every link in the chain must be partial.
+            //
+            // For a top-level target the only link is the target itself: a non-partial target is reported
+            // with OG1005 (the long-standing "add partial" guidance). For a nested target the whole chain is
+            // governed by the nested-partiality contract OG1011, which names the first non-partial type
+            // (outermost enclosing type first, then the target) so the consumer knows exactly which
+            // declaration to fix. Either way no code is emitted for a non-partial chain.
+            if (target.EnclosingTypes.Length == 0)
+            {
+                if (!target.IsPartial)
+                {
+                    spc.ReportDiagnostic(Diagnostic.Create(
+                        OpenApiDiagnostics.TargetNotPartial, target.GetLocation(), target.ClassName));
+                    return;
+                }
+            }
+            else if (TryFindNonPartialLink(target, out string offendingType))
             {
                 spc.ReportDiagnostic(Diagnostic.Create(
-                    OpenApiDiagnostics.TargetNotPartial, target.GetLocation(), target.ClassName));
+                    OpenApiDiagnostics.NestedTargetNotPartial, target.GetLocation(), offendingType));
                 return;
             }
 

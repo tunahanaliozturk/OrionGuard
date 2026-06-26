@@ -60,17 +60,22 @@ namespace Moongazing.OrionGuard.OpenApi
 
     /// <summary>
     /// One enclosing type in a nested <c>[OpenApiValidator]</c> target's declaring-type path: the C#
-    /// keyword (<c>class</c> / <c>struct</c> / <c>record</c> / <c>record struct</c>) and the simple name
-    /// of a type the target is declared inside. The emitter reconstructs each link as a <c>partial</c>
-    /// declaration so the generated partial lands inside the correct nesting and extends the user's type.
+    /// keyword (<c>class</c> / <c>struct</c> / <c>record</c> / <c>record struct</c>), the simple name of a
+    /// type the target is declared inside, and whether that type is declared <c>partial</c>. The emitter
+    /// reconstructs each link as a <c>partial</c> declaration so the generated partial lands inside the
+    /// correct nesting and extends the user's type; that reconstruction is only legal when the user's own
+    /// declaration is already <c>partial</c>, so <see cref="IsPartial"/> is checked before any code is
+    /// emitted (a non-partial enclosing type is reported via OG1011 and generation is skipped, because you
+    /// cannot add a partial declaration to a non-partial type without a consumer compile error).
     /// Equatable by value so it participates in incremental-generator caching.
     /// </summary>
     internal readonly struct EnclosingType : IEquatable<EnclosingType>
     {
-        public EnclosingType(string keyword, string name)
+        public EnclosingType(string keyword, string name, bool isPartial)
         {
             Keyword = keyword;
             Name = name;
+            IsPartial = isPartial;
         }
 
         /// <summary>The C# type keyword the partial must repeat (e.g. <c>class</c>, <c>struct</c>,
@@ -80,7 +85,13 @@ namespace Moongazing.OrionGuard.OpenApi
         /// <summary>The simple (unqualified) name of the enclosing type.</summary>
         public string Name { get; }
 
-        public bool Equals(EnclosingType other) => Keyword == other.Keyword && Name == other.Name;
+        /// <summary>True when the user declared this enclosing type <c>partial</c>. The emitter may only
+        /// reopen it (as a nested <c>partial</c>) when this is true; otherwise the generated partial
+        /// declaration would not compile against the user's non-partial declaration.</summary>
+        public bool IsPartial { get; }
+
+        public bool Equals(EnclosingType other) =>
+            Keyword == other.Keyword && Name == other.Name && IsPartial == other.IsPartial;
 
         public override bool Equals(object? obj) => obj is EnclosingType other && Equals(other);
 
@@ -91,6 +102,7 @@ namespace Moongazing.OrionGuard.OpenApi
                 int hash = 17;
                 hash = (hash * 31) + Keyword.GetHashCode();
                 hash = (hash * 31) + Name.GetHashCode();
+                hash = (hash * 31) + IsPartial.GetHashCode();
                 return hash;
             }
         }
