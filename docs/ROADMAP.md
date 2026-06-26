@@ -64,7 +64,7 @@ Priority tiers roughly map to timing:
 - **v6.6.0** — Shipped 2026-06-19. First-class asynchronous validation pipeline on `ObjectValidator<T>` (`Validate.For(...)` / `Validate.ForStrict(...)`): `MustAsync`, `WhenAsync`, and the `ToResultAsync` / `BuildAsync` / `ThrowIfInvalidAsync` terminals. Sync and async rules merge into one `GuardResult` with full `CancellationToken` flow and short-circuit parity; the async terminal is idempotent (each async rule runs once); the sync terminals throw rather than silently skip pending async rules. `NotNull<TProperty>` constraint relaxed to `class?`. Source- and binary-compatible.
 - **v6.6.1** — Shipped 2026-06-20. Diagnostics meter versions self-derive from each assembly's `AssemblyInformationalVersion` instead of hardcoded literals, so a meter version can no longer drift from its package version.
 - **v6.6.2** — Shipped 2026-06-20. Allocation-free digit/identity validators: the Turkish-id, Luhn (card / IMEI), ISBN-13, and EAN hot paths drop their per-call delegate / enumerator / `int[]` allocations for a single-pass `stackalloc` scan (about 11x faster, zero allocation on the Turkish-id path; ~2x on Luhn). `char.IsDigit` semantics and results unchanged.
-- **v6.7.0** — Shipped 2026-06-23. OpenAPI-first validation (R2): the `OrionGuard.OpenApi` source-generator package turns an OpenAPI 3 schema into an `IValidator<T>` at compile time, enforcing `type`, `required`, `nullable`, string length / `pattern` / `format`, numeric range (incl. exclusive bounds), `enum`, array `minItems` / `maxItems`, and intra-document `$ref`. The analyzer bundles its own JSON reader. YAML input and polymorphism / composition (`discriminator` / `oneOf` / `anyOf` / `allOf`) are deferred follow-ups, surfaced as diagnostics `OG1002` and `OG1006` respectively. Uniform family version bump across all packages.
+- **v6.7.0** — Shipped 2026-06-23. Two add-on integrations landed together. (1) OpenAPI-first validation (R2): the `OrionGuard.OpenApi` source-generator package turns an OpenAPI 3 schema into an `IValidator<T>` at compile time, enforcing `type`, `required`, `nullable`, string length / `pattern` / `format`, numeric range (incl. exclusive bounds), `enum`, array `minItems` / `maxItems`, and intra-document `$ref`. The analyzer bundles its own JSON reader. YAML input and polymorphism / composition (`discriminator` / `oneOf` / `anyOf` / `allOf`) are deferred follow-ups, surfaced as diagnostics `OG1002` and `OG1006` respectively. (2) `OrionGuard.Hangfire`: a Hangfire `IClientFilter` that validates a background job's arguments at enqueue time using the same `IServiceProvider`-based validator resolution as the other integrations, rejecting an invalid enqueue with a structured `JobArgumentValidationException` at the call site instead of failing inside a worker; arguments with no registered validator pass through. The R1 FluentValidation codemod remains in progress for the wider v6.7 theme. Uniform family version bump across all packages.
 
 ---
 
@@ -152,7 +152,7 @@ Two patches followed on the same milestone:
   `stackalloc` scan. About 11x faster and zero-allocation on the Turkish-id path, ~2x on Luhn,
   with `char.IsDigit` semantics and results preserved exactly.
 
-### v6.7.0 — Migration & Contract-First *(planned, Q4 2026)*
+### v6.7.0 — Migration & Contract-First *(shipped 2026-06-23; R1 codemod in progress)*
 
 Theme: *make adoption a weekend, not a quarter.*
 
@@ -169,9 +169,12 @@ Theme: *make adoption a weekend, not a quarter.*
   exclusive bounds), `enum`, array `minItems` / `maxItems`, and intra-document `$ref`. YAML input
   (raises `OG1002`) and polymorphism / composition `discriminator` / `oneOf` / `anyOf` / `allOf`
   (raise `OG1006`) are deferred follow-ups rather than half-implemented.
-- **`OrionGuard.Hangfire` integration.** Validates job arguments at enqueue time and on the
-  worker side; rejected enqueues raise a structured `JobValidationException` instead of
-  failing inside the worker.
+- **`OrionGuard.Hangfire` integration.** *(Shipped 2026-06-23.)* Validates a background job's
+  arguments at enqueue time via a Hangfire `IClientFilter`: each argument is checked against its
+  registered OrionGuard validator using the same `IServiceProvider`-based resolution as the other
+  integrations, and a rejected enqueue raises a structured `JobArgumentValidationException` at the
+  call site instead of being persisted and failing inside a worker. Arguments with no registered
+  validator pass through. Worker-side (dequeue-time) validation is a candidate follow-up.
 
 ### v6.8.0 — Production Excellence *(planned, Q1 2027)*
 
@@ -611,7 +614,8 @@ split. Useful for onboarding and architecture review.
 Small, focused integrations. Low effort each, high cumulative value.
 
 - **R21. MassTransit integration** `[Planned]` `S` -- auto-validate `IConsumer<T>` parameters.
-- **R22. Hangfire integration** `[Planned]` `S` -- validate job arguments on enqueue.
+- **R22. Hangfire integration** `[Shipped]` `S` -- validate job arguments on enqueue. Shipped in
+  v6.7.0 as `OrionGuard.Hangfire` (client-filter, enqueue-time).
 - **R23. Quartz.NET integration** `[Planned]` `S` -- validate job data map.
 - **R24. Akka.NET integration** `[Research]` `M` -- actor message validation.
 - **R25. Orleans integration** `[Research]` `M` -- grain call parameter validation.
@@ -829,7 +833,7 @@ candidates for the next milestone.
 | v6.6.0  | shipped 2026-06-19 | Asynchronous validation pipeline (MustAsync / ToResultAsync) |
 | v6.6.1  | shipped 2026-06-20 | Self-deriving diagnostics meter versions                     |
 | v6.6.2  | shipped 2026-06-20 | Allocation-free digit / identity validators                  |
-| v6.7.0  | Q4 2026            | OpenAPI-first validation shipped 2026-06-23; FluentValidation codemod in progress |
+| v6.7.0  | shipped 2026-06-23 | OpenAPI-first validation + Hangfire integration (FluentValidation codemod in progress) |
 | v6.8.0  | Q1 2027            | Validation budget, top-N analytics, circuit-breaker          |
 | v7.0.0  | Q2 2027            | API freeze, remove deprecated paths, docs site               |
 

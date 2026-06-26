@@ -196,7 +196,9 @@ public class ConstraintEnforcementTests
     public void Format_DateTime_Invalid_Fails()
     {
         dynamic customer = NewValidCustomer();
-        customer.CreatedAt = "23/06/2026";
+        // A token that is not an RFC 3339 date-time in any culture (no slash-vs-dash or day/month-order
+        // ambiguity that could read as valid under some locale's date parsing).
+        customer.CreatedAt = "not-a-valid-datetime";
 
         var result = Validate((object)customer);
 

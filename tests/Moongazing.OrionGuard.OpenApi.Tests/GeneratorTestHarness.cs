@@ -58,7 +58,16 @@ internal static class GeneratorTestHarness
     /// as an AdditionalFile, and returns the output compilation, generator diagnostics, and generated
     /// source texts.
     /// </summary>
-    public static GeneratorRunResult Run(string consumerSource, string documentFileName, string documentJson)
+    public static GeneratorRunResult Run(string consumerSource, string documentFileName, string documentJson) =>
+        Run(consumerSource, new[] { (documentFileName, documentJson) });
+
+    /// <summary>
+    /// Runs the generator with several OpenAPI documents mounted as AdditionalFiles (file path + content),
+    /// so a test can exercise document resolution across more than one candidate file. A path may include
+    /// directory segments (for example <c>schemas/openapi.json</c>) to test sub-path resolution.
+    /// </summary>
+    public static GeneratorRunResult Run(
+        string consumerSource, IReadOnlyList<(string path, string json)> documents)
     {
         var syntaxTree = CSharpSyntaxTree.ParseText(consumerSource, new CSharpParseOptions(LanguageVersion.Latest));
 
@@ -87,7 +96,9 @@ internal static class GeneratorTestHarness
         var generator = new OpenApiValidatorGenerator().AsSourceGenerator();
         GeneratorDriver driver = CSharpGeneratorDriver.Create(
             generators: new[] { generator },
-            additionalTexts: new[] { new AdditionalTextString(documentFileName, documentJson) });
+            additionalTexts: documents
+                .Select(d => (AdditionalText)new AdditionalTextString(d.path, d.json))
+                .ToImmutableArray());
 
         driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out var outputCompilation, out _);
 
@@ -108,6 +119,19 @@ internal static class GeneratorTestHarness
     public static Assembly Compile(string consumerSource, string documentFileName, string documentJson)
     {
         var run = Run(consumerSource, documentFileName, documentJson);
+
+        // A generator that reports an error diagnostic (e.g. an unresolved pointer or an ambiguous
+        // document) produced no usable validator; surface it as a hard failure here instead of letting the
+        // test proceed to a confusing "type not found" further down. Generator diagnostics live on the run
+        // result, separate from the output compilation's own diagnostics.
+        var generatorErrors = run.GeneratorDiagnostics
+            .Where(d => d.Severity == DiagnosticSeverity.Error)
+            .ToList();
+
+        Assert.True(
+            generatorErrors.Count == 0,
+            "Generator reported error diagnostics:\n"
+            + string.Join("\n", generatorErrors.Select(d => d.ToString())));
 
         // Treat warnings as errors to mirror a consumer building with <TreatWarningsAsErrors>true</TreatWarningsAsErrors>.
         // CS1701 (assembly version unification) is benign reference-assembly noise from the in-memory

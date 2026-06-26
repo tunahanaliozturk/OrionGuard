@@ -92,6 +92,12 @@ namespace Moongazing.OrionGuard.OpenApi.Json
             while (true)
             {
                 cursor.SkipWhitespace();
+                if (cursor.AtEnd)
+                {
+                    throw new JsonParseException(
+                        $"Unexpected end of document while expecting a property name at position {cursor.Position}.");
+                }
+
                 if (cursor.Current != '"')
                 {
                     throw new JsonParseException($"Expected a property name at position {cursor.Position}.");
@@ -251,7 +257,10 @@ namespace Moongazing.OrionGuard.OpenApi.Json
                 cursor.Advance();
             }
 
-            ConsumeDigits(ref cursor, required: true);
+            // The integer part follows the JSON grammar `int = "0" / digit1-9 *DIGIT`: a single zero is
+            // allowed (including the `0.x` and `0e0` forms), but a leading zero on a multi-digit integer
+            // (`01`, `-007`) is rejected per RFC 8259 rather than silently accepted.
+            ConsumeIntegerPart(ref cursor);
 
             if (!cursor.AtEnd && cursor.Current == '.')
             {
@@ -277,6 +286,33 @@ namespace Moongazing.OrionGuard.OpenApi.Json
             }
 
             return JsonValue.NewNumber(parsed, raw);
+        }
+
+        /// <summary>
+        /// Consumes the integer part of a number, enforcing the JSON rule that a leading zero may only
+        /// stand alone (a bare <c>0</c> or the <c>0</c> in <c>0.5</c>); <c>01</c> or <c>-007</c> is rejected.
+        /// </summary>
+        private static void ConsumeIntegerPart(ref Cursor cursor)
+        {
+            if (cursor.AtEnd || cursor.Current < '0' || cursor.Current > '9')
+            {
+                throw new JsonParseException($"Expected a digit at position {cursor.Position}.");
+            }
+
+            bool leadingZero = cursor.Current == '0';
+            cursor.Advance();
+
+            if (leadingZero && !cursor.AtEnd && cursor.Current >= '0' && cursor.Current <= '9')
+            {
+                throw new JsonParseException(
+                    $"Invalid number with a leading zero at position {cursor.Position - 1}.");
+            }
+
+            // Consume the remaining integer digits (none when the integer part was a single 0 or digit).
+            while (!cursor.AtEnd && cursor.Current >= '0' && cursor.Current <= '9')
+            {
+                cursor.Advance();
+            }
         }
 
         private static void ConsumeDigits(ref Cursor cursor, bool required)
@@ -336,11 +372,42 @@ namespace Moongazing.OrionGuard.OpenApi.Json
 
             public bool AtEnd => _position >= _text.Length;
 
-            public char Current => _text[_position];
+            /// <summary>
+            /// The character under the cursor. Throws a <see cref="JsonParseException"/> (never an
+            /// <see cref="System.IndexOutOfRangeException"/>) when the cursor is at or past the end, so a
+            /// truncated document surfaces as a clean diagnostic rather than crashing out of the generator.
+            /// </summary>
+            public char Current
+            {
+                get
+                {
+                    if (_position >= _text.Length)
+                    {
+                        throw new JsonParseException(
+                            $"Unexpected end of document at position {_position}.");
+                    }
+
+                    return _text[_position];
+                }
+            }
 
             public void Advance() => _position++;
 
-            public char Next() => _text[_position++];
+            /// <summary>
+            /// Returns the character under the cursor and advances. Throws a
+            /// <see cref="JsonParseException"/> rather than an <see cref="System.IndexOutOfRangeException"/>
+            /// at end of document.
+            /// </summary>
+            public char Next()
+            {
+                if (_position >= _text.Length)
+                {
+                    throw new JsonParseException(
+                        $"Unexpected end of document at position {_position}.");
+                }
+
+                return _text[_position++];
+            }
 
             public string Slice(int start, int end) => _text.Substring(start, end - start);
 

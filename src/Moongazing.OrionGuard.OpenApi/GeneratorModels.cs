@@ -16,10 +16,12 @@ namespace Moongazing.OrionGuard.OpenApi
     /// </summary>
     internal readonly struct MemberShape : IEquatable<MemberShape>
     {
-        public MemberShape(string name, MemberTypeCategory category, bool isReferenceTypeOrNullable)
+        public MemberShape(
+            string name, MemberTypeCategory category, NumericKind numericKind, bool isReferenceTypeOrNullable)
         {
             Name = name;
             Category = category;
+            NumericKind = numericKind;
             IsReferenceTypeOrNullable = isReferenceTypeOrNullable;
         }
 
@@ -27,12 +29,17 @@ namespace Moongazing.OrionGuard.OpenApi
 
         public MemberTypeCategory Category { get; }
 
+        /// <summary>The specific numeric family when <see cref="Category"/> is
+        /// <see cref="MemberTypeCategory.Numeric"/>; <see cref="NumericKind.None"/> otherwise.</summary>
+        public NumericKind NumericKind { get; }
+
         /// <summary>True when the member can hold null (a reference type or <see cref="Nullable{T}"/>).</summary>
         public bool IsReferenceTypeOrNullable { get; }
 
         public bool Equals(MemberShape other) =>
             Name == other.Name
             && Category == other.Category
+            && NumericKind == other.NumericKind
             && IsReferenceTypeOrNullable == other.IsReferenceTypeOrNullable;
 
         public override bool Equals(object? obj) => obj is MemberShape other && Equals(other);
@@ -44,6 +51,7 @@ namespace Moongazing.OrionGuard.OpenApi
                 int hash = 17;
                 hash = (hash * 31) + Name.GetHashCode();
                 hash = (hash * 31) + (int)Category;
+                hash = (hash * 31) + (int)NumericKind;
                 hash = (hash * 31) + IsReferenceTypeOrNullable.GetHashCode();
                 return hash;
             }
@@ -63,6 +71,7 @@ namespace Moongazing.OrionGuard.OpenApi
             string validatedTypeFullName,
             bool isPartial,
             bool hasValidatedType,
+            string accessibility,
             string documentPath,
             string schemaPointer,
             ImmutableArray<MemberShape> members,
@@ -75,6 +84,7 @@ namespace Moongazing.OrionGuard.OpenApi
             ValidatedTypeFullName = validatedTypeFullName;
             IsPartial = isPartial;
             HasValidatedType = hasValidatedType;
+            Accessibility = accessibility;
             DocumentPath = documentPath;
             SchemaPointer = schemaPointer;
             Members = members;
@@ -94,6 +104,10 @@ namespace Moongazing.OrionGuard.OpenApi
 
         /// <summary>False when the validated type could not be inferred (no base class type argument).</summary>
         public bool HasValidatedType { get; }
+
+        /// <summary>The C# accessibility keyword(s) of the user's partial, repeated on the generated partial
+        /// so the two declarations agree (e.g. <c>public</c>, <c>internal</c>).</summary>
+        public string Accessibility { get; }
 
         public string DocumentPath { get; }
 
@@ -134,6 +148,7 @@ namespace Moongazing.OrionGuard.OpenApi
                 && ValidatedTypeFullName == other.ValidatedTypeFullName
                 && IsPartial == other.IsPartial
                 && HasValidatedType == other.HasValidatedType
+                && Accessibility == other.Accessibility
                 && DocumentPath == other.DocumentPath
                 && SchemaPointer == other.SchemaPointer
                 && LocationFilePath == other.LocationFilePath
@@ -153,6 +168,7 @@ namespace Moongazing.OrionGuard.OpenApi
                 hash = (hash * 31) + ClassName.GetHashCode();
                 hash = (hash * 31) + ValidatedTypeFullName.GetHashCode();
                 hash = (hash * 31) + IsPartial.GetHashCode();
+                hash = (hash * 31) + Accessibility.GetHashCode();
                 hash = (hash * 31) + DocumentPath.GetHashCode();
                 hash = (hash * 31) + SchemaPointer.GetHashCode();
                 foreach (var member in Members)

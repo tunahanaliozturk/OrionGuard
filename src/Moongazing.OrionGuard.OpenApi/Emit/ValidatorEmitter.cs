@@ -54,7 +54,8 @@ namespace Moongazing.OrionGuard.OpenApi.Emit
                 .Append(model.ValidatedTypeFullName).AppendLine("\"/>.");
             sb.Append(indent).AppendLine("/// Generated from the referenced OpenAPI schema; do not edit by hand.");
             sb.Append(indent).AppendLine("/// </summary>");
-            sb.Append(indent).Append("public partial class ").Append(model.ClassName)
+            string accessibility = string.IsNullOrEmpty(model.Accessibility) ? "internal" : model.Accessibility;
+            sb.Append(indent).Append(accessibility).Append(" partial class ").Append(model.ClassName)
                 .Append(" : ").Append(IValidator).Append('<').Append(model.ValidatedTypeFullName).AppendLine(">");
             sb.Append(indent).AppendLine("{");
 
@@ -159,8 +160,9 @@ namespace Moongazing.OrionGuard.OpenApi.Emit
 
                 case MemberTypeCategory.Numeric:
                     EmitNumericConstraints(sb, schema, member, errorKey, property.SchemaName, checkIndent,
-                        property.MemberIsReferenceType);
-                    EmitEnumConstraint(sb, schema, member, errorKey, property.SchemaName, checkIndent, quoteAsString: false);
+                        property.MemberIsReferenceType, property.NumericKind);
+                    EmitEnumConstraint(sb, schema, member, errorKey, property.SchemaName, checkIndent,
+                        quoteAsString: false, property.NumericKind);
                     break;
 
                 case MemberTypeCategory.Collection:
@@ -243,34 +245,37 @@ namespace Moongazing.OrionGuard.OpenApi.Emit
 
         private static void EmitNumericConstraints(
             StringBuilder sb, OpenApiSchema schema, string member, string errorKey, string name,
-            string indent, bool memberIsNullable)
+            string indent, bool memberIsNullable, NumericKind numericKind)
         {
             // For a Nullable<T> member that survived the null guard, read .Value so the comparison is
             // against the underlying numeric type.
-            string operand = memberIsNullable ? member + ".Value" : member;
+            string rawOperand = memberIsNullable ? member + ".Value" : member;
 
-            if (schema.Minimum is string minimum)
+            if (schema.Minimum is string minimum && TryRenderBound(minimum, numericKind, out var minRender))
             {
+                string operand = WrapOperand(rawOperand, minRender.OperandCast);
                 string op = schema.ExclusiveMinimum ? "<=" : "<";
-                string literal = NumericLiteral(minimum);
                 sb.Append(indent).Append("if (").Append(operand).Append(' ').Append(op).Append(' ')
-                    .Append(literal).AppendLine(")");
+                    .Append(minRender.Literal).AppendLine(")");
                 string boundWord = schema.ExclusiveMinimum ? "greater than" : "greater than or equal to";
                 AppendError(sb, indent + "    ", errorKey,
                     $"{name} must be {boundWord} {minimum}.", "MINIMUM");
             }
 
-            if (schema.Maximum is string maximum)
+            if (schema.Maximum is string maximum && TryRenderBound(maximum, numericKind, out var maxRender))
             {
+                string operand = WrapOperand(rawOperand, maxRender.OperandCast);
                 string op = schema.ExclusiveMaximum ? ">=" : ">";
-                string literal = NumericLiteral(maximum);
                 sb.Append(indent).Append("if (").Append(operand).Append(' ').Append(op).Append(' ')
-                    .Append(literal).AppendLine(")");
+                    .Append(maxRender.Literal).AppendLine(")");
                 string boundWord = schema.ExclusiveMaximum ? "less than" : "less than or equal to";
                 AppendError(sb, indent + "    ", errorKey,
                     $"{name} must be {boundWord} {maximum}.", "MAXIMUM");
             }
         }
+
+        private static string WrapOperand(string operand, string? cast) =>
+            cast is null ? operand : "(" + cast + ")(" + operand + ")";
 
         private static void EmitArrayConstraints(
             StringBuilder sb, OpenApiSchema schema, string member, string errorKey, string name, string indent)
@@ -305,13 +310,17 @@ namespace Moongazing.OrionGuard.OpenApi.Emit
 
         private static void EmitEnumConstraint(
             StringBuilder sb, OpenApiSchema schema, string member, string errorKey, string name,
-            string indent, bool quoteAsString)
+            string indent, bool quoteAsString, NumericKind numericKind = NumericKind.None)
         {
             if (schema.EnumValues.Count == 0)
             {
                 return;
             }
 
+            // For a numeric enum, render every allowed value through the same kind-aware bound logic the
+            // range checks use, so the comparison operand and literal share a type that compiles. All
+            // values of one schema enum render with the same operand cast.
+            string? operandCast = null;
             var rendered = new List<string>();
             foreach (var value in schema.EnumValues)
             {
@@ -326,9 +335,10 @@ namespace Moongazing.OrionGuard.OpenApi.Emit
                 else
                 {
                     string? raw = value.RawNumber();
-                    if (raw is not null)
+                    if (raw is not null && TryRenderBound(raw, numericKind, out var boundRender))
                     {
-                        rendered.Add(NumericLiteral(raw));
+                        operandCast = boundRender.OperandCast;
+                        rendered.Add(boundRender.Literal);
                     }
                 }
             }
@@ -337,6 +347,8 @@ namespace Moongazing.OrionGuard.OpenApi.Emit
             {
                 return;
             }
+
+            string comparand = quoteAsString ? member : WrapOperand(member, operandCast);
 
             sb.Append(indent).Append("if (");
             for (int i = 0; i < rendered.Count; i++)
@@ -353,7 +365,7 @@ namespace Moongazing.OrionGuard.OpenApi.Emit
                 }
                 else
                 {
-                    sb.Append(member).Append(" != ").Append(rendered[i]);
+                    sb.Append(comparand).Append(" != ").Append(rendered[i]);
                 }
             }
 
@@ -389,18 +401,78 @@ namespace Moongazing.OrionGuard.OpenApi.Emit
         }
 
         /// <summary>
-        /// Renders a numeric bound literal. A fractional or exponential bound becomes a <c>double</c>
-        /// literal (suffixed <c>d</c>); an integral bound is emitted bare so it promotes against int, long,
-        /// or decimal members without an explicit cast.
+        /// One rendered numeric bound: the C# literal plus an optional cast to apply to the member operand
+        /// so the comparison is between two values of the same type and compiles under
+        /// <c>TreatWarningsAsErrors</c>.
         /// </summary>
-        private static string NumericLiteral(string raw)
+        private readonly struct BoundRender
         {
-            if (raw.IndexOf('.') >= 0 || raw.IndexOf('e') >= 0 || raw.IndexOf('E') >= 0)
+            public BoundRender(string literal, string? operandCast)
             {
-                return raw + "d";
+                Literal = literal;
+                OperandCast = operandCast;
             }
 
-            return raw;
+            /// <summary>The C# numeric literal (already suffixed, e.g. <c>1.5m</c> or <c>42d</c>).</summary>
+            public string Literal { get; }
+
+            /// <summary>A cast to apply to the member operand, or <c>null</c> when the member type already
+            /// matches the literal type.</summary>
+            public string? OperandCast { get; }
+        }
+
+        /// <summary>
+        /// Renders a numeric bound so it compiles against the member's actual CLR type. Integral and
+        /// <c>decimal</c> members compare in <c>decimal</c> (which losslessly represents every integral
+        /// value and any decimal bound), so an unsigned or 64-bit member never trips a signed/over-range
+        /// or <c>decimal</c>-vs-<c>double</c> mismatch; <c>float</c>/<c>double</c> members compare in
+        /// <c>double</c>. Returns <c>false</c> for a bound that cannot be represented (it is then skipped
+        /// rather than emitted as uncompilable code).
+        /// </summary>
+        private static bool TryRenderBound(string raw, NumericKind numericKind, out BoundRender render)
+        {
+            render = default;
+
+            switch (numericKind)
+            {
+                case NumericKind.Decimal:
+                case NumericKind.SignedIntegral:
+                case NumericKind.UnsignedIntegral:
+                    // Compare in decimal. A decimal literal cannot carry an exponent, so round-trip the
+                    // lexeme through decimal to get a canonical, suffixable form.
+                    if (decimal.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out decimal dec))
+                    {
+                        string literal = dec.ToString(CultureInfo.InvariantCulture) + "m";
+                        string? cast = numericKind == NumericKind.Decimal ? null : "decimal";
+                        render = new BoundRender(literal, cast);
+                        return true;
+                    }
+
+                    // Bound is outside decimal's range (extreme exponent): fall back to a double comparison.
+                    return TryRenderAsDouble(raw, castOperand: true, out render);
+
+                case NumericKind.Single:
+                case NumericKind.Double:
+                    // float widens to double implicitly, so a double literal compiles for both with no cast.
+                    return TryRenderAsDouble(raw, castOperand: false, out render);
+
+                default:
+                    return false;
+            }
+        }
+
+        private static bool TryRenderAsDouble(string raw, bool castOperand, out BoundRender render)
+        {
+            render = default;
+            if (!double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out double value)
+                || double.IsInfinity(value) || double.IsNaN(value))
+            {
+                return false;
+            }
+
+            string literal = value.ToString("R", CultureInfo.InvariantCulture) + "d";
+            render = new BoundRender(literal, castOperand ? "double" : null);
+            return true;
         }
 
         private static string Escape(string value)

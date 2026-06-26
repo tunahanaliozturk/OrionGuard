@@ -68,5 +68,38 @@ namespace Moongazing.OrionGuard.OpenApi.Diagnostics
             category: Category,
             defaultSeverity: DiagnosticSeverity.Warning,
             isEnabledByDefault: true);
+
+        /// <summary>OG1007: an integer keyword value was out of the supported range (or not an integer).</summary>
+        public static readonly DiagnosticDescriptor InvalidKeywordValue = new DiagnosticDescriptor(
+            id: "OG1007",
+            title: "OpenAPI numeric keyword value is out of range",
+            messageFormat: "The keyword '{0}' on the schema for '{1}' has value '{2}' which {3}. The constraint was skipped; the rest of the schema was still enforced.",
+            category: Category,
+            defaultSeverity: DiagnosticSeverity.Warning,
+            isEnabledByDefault: true);
+
+        /// <summary>
+        /// OG1008: the annotated type does not participate in the OrionGuard <c>IValidator&lt;T&gt;</c>
+        /// contract, so the validated type could not be inferred and no validator was generated.
+        /// </summary>
+        public static readonly DiagnosticDescriptor MissingValidatorContract = new DiagnosticDescriptor(
+            id: "OG1008",
+            title: "[OpenApiValidator] target does not implement IValidator<T>",
+            messageFormat: "'{0}' is annotated with [OpenApiValidator] but does not implement Moongazing.OrionGuard.DependencyInjection.IValidator<T> (directly or through AbstractValidator<T> / FluentStyleValidator<T>), so the validated type could not be inferred and no validator was generated. Make it implement IValidator<T> for the type it validates.",
+            category: Category,
+            defaultSeverity: DiagnosticSeverity.Warning,
+            isEnabledByDefault: true);
+
+        /// <summary>
+        /// OG1009: the document name in <c>[OpenApiValidator]</c> matched more than one AdditionalFile, so
+        /// the match was ambiguous and no validator was generated.
+        /// </summary>
+        public static readonly DiagnosticDescriptor AmbiguousDocument = new DiagnosticDescriptor(
+            id: "OG1009",
+            title: "OpenAPI document name is ambiguous",
+            messageFormat: "The document name '{0}' named by [OpenApiValidator] matched more than one AdditionalFile ({1}). Use a more specific relative path so exactly one file matches.",
+            category: Category,
+            defaultSeverity: DiagnosticSeverity.Error,
+            isEnabledByDefault: true);
     }
 }

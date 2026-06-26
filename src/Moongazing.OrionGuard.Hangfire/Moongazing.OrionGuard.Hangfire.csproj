@@ -1,0 +1,50 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!--
+      The NuGet vulnerability-severity diagnostics (NU1901 low / NU1902 moderate / NU1903 high /
+      NU1904 critical) are deliberately NOT suppressed: this is a published package and security
+      advisories must surface at build time. Hangfire.Core 1.8.22 pulls in a vulnerable
+      Newtonsoft.Json (11.0.1, GHSA-5crp-9r3c-p9vr, High), so a non-vulnerable version is pinned
+      directly below to override the transitive resolution.
+
+      CS1591 (missing XML doc) and NU1900 are still suppressed. NU1900 is not a vulnerability severity:
+      it means "could not read advisory data from a source" and fires whenever a configured feed is
+      unreachable (e.g. an authenticated private feed during offline/CI restore). Suppressing it keeps the
+      build from breaking on feed availability without muting any actual advisory; it matches every other
+      shipped OrionGuard package.
+    -->
+    <NoWarn>CS1591;NU1900</NoWarn>
+    <PackageId>OrionGuard.Hangfire</PackageId>
+    <Version>6.7.0</Version>
+    <Authors>Tunahan Ali Ozturk</Authors>
+    <Description>Hangfire integration for OrionGuard validation library. Provides a client filter that validates background job arguments at enqueue time, so an invalid job is rejected by the enqueue call instead of failing inside a worker.</Description>
+    <PackageTags>guard;validation;hangfire;background-jobs;client-filter;enqueue</PackageTags>
+    <PackageReadmeFile>docs/README.md</PackageReadmeFile>
+    <PackageIcon>docs/logo.png</PackageIcon>
+    <RepositoryUrl>https://github.com/tunahanaliozturk/OrionGuard</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageProjectUrl>https://github.com/tunahanaliozturk/OrionGuard</PackageProjectUrl>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Hangfire.Core" Version="1.8.22" />
+    <!--
+      Pin Newtonsoft.Json above the transitive 11.0.1 that Hangfire.Core drags in. 11.0.1 carries
+      GHSA-5crp-9r3c-p9vr (High: StackOverflow/DoS on deeply nested JSON, fixed in 13.0.1). 13.0.3 is
+      compatible with Hangfire 1.8.x. This direct reference resolves the advisory at the source instead of
+      muting the NU1903 diagnostic.
+    -->
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <ProjectReference Include="..\Moongazing.OrionGuard\Moongazing.OrionGuard.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="docs\README.md" Pack="true" PackagePath="docs/" />
+    <None Include="docs\logo.png" Pack="true" PackagePath="docs/" />
+  </ItemGroup>
+</Project>

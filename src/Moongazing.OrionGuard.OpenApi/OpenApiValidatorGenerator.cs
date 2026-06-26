@@ -105,12 +105,19 @@ namespace Moongazing.OrionGuard.OpenApi
             var span = location.SourceSpan;
             string locationPath = location.SourceTree?.FilePath ?? string.Empty;
 
+            // The generated partial must declare the same accessibility as the user's partial, or the two
+            // declarations conflict (CS0262) and the consumer build fails. A nested type can be private /
+            // protected; only public and internal are meaningful at namespace scope, but capture the full
+            // keyword so a nested target is handled too.
+            string accessibility = AccessibilityKeyword(typeSymbol.DeclaredAccessibility);
+
             return new OpenApiValidatorTarget(
                 namespaceName,
                 typeSymbol.Name,
                 validatedTypeFullName,
                 isPartial,
                 hasValidatedType,
+                accessibility,
                 documentPath,
                 schemaPointer,
                 members,
@@ -121,8 +128,12 @@ namespace Moongazing.OrionGuard.OpenApi
 
         /// <summary>
         /// Determines the type the validator validates and captures that type's accessible instance
-        /// properties as value shapes. The validated type is the type argument of a validator base or
-        /// interface when present, otherwise the annotated type itself.
+        /// properties as value shapes. The validated type is the single type argument of the OrionGuard
+        /// <c>IValidator&lt;T&gt;</c> the annotated type implements (directly, or through an
+        /// <c>AbstractValidator&lt;T&gt;</c> / <c>FluentStyleValidator&lt;T&gt;</c> base, both of which
+        /// surface <c>IValidator&lt;T&gt;</c>). When the annotated type does not implement the contract at
+        /// all, the returned <c>found</c> flag is <c>false</c> and the caller skips it with a diagnostic
+        /// rather than guessing a validated type from an unrelated annotated class.
         /// </summary>
         private static (string fullName, bool found, ImmutableArray<MemberShape> members) ResolveValidatedType(
             INamedTypeSymbol typeSymbol)
@@ -131,8 +142,8 @@ namespace Moongazing.OrionGuard.OpenApi
 
             if (validated is null)
             {
-                // No validator base/interface: treat the annotated class as the DTO under validation.
-                validated = typeSymbol;
+                // The annotated type is not an OrionGuard validator: do not invent a validated type.
+                return (string.Empty, false, ImmutableArray<MemberShape>.Empty);
             }
 
             string fullName = validated.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
@@ -140,24 +151,18 @@ namespace Moongazing.OrionGuard.OpenApi
             return (fullName, true, members);
         }
 
+        /// <summary>
+        /// Finds <c>T</c> from the OrionGuard <c>IValidator&lt;T&gt;</c> the type implements. Matching on the
+        /// interface's full metadata name (not just a name ending in "Validator") keeps an unrelated
+        /// annotated type that merely has a "...Validator" base from being mistaken for a participant in the
+        /// contract.
+        /// </summary>
         private static INamedTypeSymbol? FindValidatedTypeArgument(INamedTypeSymbol typeSymbol)
         {
-            // Walk base types looking for a single-arg generic validator base
-            // (AbstractValidator<T> / FluentStyleValidator<T> / anything ending in "Validator").
-            for (INamedTypeSymbol? current = typeSymbol.BaseType; current is not null; current = current.BaseType)
-            {
-                if (current.IsGenericType && current.TypeArguments.Length == 1
-                    && current.TypeArguments[0] is INamedTypeSymbol baseArg
-                    && current.Name.EndsWith("Validator", StringComparison.Ordinal))
-                {
-                    return baseArg;
-                }
-            }
-
-            // Otherwise look for IValidator<T>.
             foreach (var iface in typeSymbol.AllInterfaces)
             {
-                if (iface.Name == "IValidator" && iface.TypeArguments.Length == 1
+                if (IsOrionGuardValidatorInterface(iface)
+                    && iface.TypeArguments.Length == 1
                     && iface.TypeArguments[0] is INamedTypeSymbol ifaceArg)
                 {
                     return ifaceArg;
@@ -165,6 +170,43 @@ namespace Moongazing.OrionGuard.OpenApi
             }
 
             return null;
+        }
+
+        /// <summary>
+        /// True when <paramref name="iface"/> is the OrionGuard <c>IValidator&lt;T&gt;</c> contract,
+        /// identified by its full namespace and name so a same-named interface from another library does
+        /// not match.
+        /// </summary>
+        private static bool IsOrionGuardValidatorInterface(INamedTypeSymbol iface)
+        {
+            return iface is { Name: "IValidator", IsGenericType: true }
+                && iface.ContainingNamespace.ToDisplayString() == "Moongazing.OrionGuard.DependencyInjection";
+        }
+
+        /// <summary>
+        /// Maps a symbol's <see cref="Accessibility"/> to the C# modifier keyword(s) the generated partial
+        /// must repeat so its accessibility matches the user's partial. Defaults to <c>internal</c> for the
+        /// not-applicable case, the C# default for a namespace-scoped type.
+        /// </summary>
+        private static string AccessibilityKeyword(Accessibility accessibility)
+        {
+            switch (accessibility)
+            {
+                case Accessibility.Public:
+                    return "public";
+                case Accessibility.Internal:
+                    return "internal";
+                case Accessibility.Protected:
+                    return "protected";
+                case Accessibility.ProtectedOrInternal:
+                    return "protected internal";
+                case Accessibility.ProtectedAndInternal:
+                    return "private protected";
+                case Accessibility.Private:
+                    return "private";
+                default:
+                    return "internal";
+            }
         }
 
         private static ImmutableArray<MemberShape> CaptureMembers(INamedTypeSymbol type)
@@ -195,15 +237,15 @@ namespace Moongazing.OrionGuard.OpenApi
                         continue;
                     }
 
-                    var (category, nullable) = Categorize(property.Type);
-                    builder.Add(new MemberShape(property.Name, category, nullable));
+                    var (category, numericKind, nullable) = Categorize(property.Type);
+                    builder.Add(new MemberShape(property.Name, category, numericKind, nullable));
                 }
             }
 
             return builder.ToImmutable();
         }
 
-        private static (MemberTypeCategory category, bool nullable) Categorize(ITypeSymbol type)
+        private static (MemberTypeCategory category, NumericKind numericKind, bool nullable) Categorize(ITypeSymbol type)
         {
             bool nullable = type.IsReferenceType
                 || type.NullableAnnotation == NullableAnnotation.Annotated
@@ -220,51 +262,66 @@ namespace Moongazing.OrionGuard.OpenApi
 
             if (underlying.SpecialType == SpecialType.System_String)
             {
-                return (MemberTypeCategory.String, nullable);
+                return (MemberTypeCategory.String, NumericKind.None, nullable);
             }
 
             if (underlying.SpecialType == SpecialType.System_Boolean)
             {
-                return (MemberTypeCategory.Boolean, nullable);
+                return (MemberTypeCategory.Boolean, NumericKind.None, nullable);
             }
 
-            if (IsNumeric(underlying.SpecialType))
+            var numericKind = ClassifyNumeric(underlying.SpecialType);
+            if (numericKind != NumericKind.None)
             {
-                return (MemberTypeCategory.Numeric, nullable);
+                return (MemberTypeCategory.Numeric, numericKind, nullable);
             }
 
             // A non-string IEnumerable is a collection.
             if (IsEnumerable(underlying))
             {
-                return (MemberTypeCategory.Collection, nullable);
+                return (MemberTypeCategory.Collection, NumericKind.None, nullable);
             }
 
             if (underlying.IsReferenceType)
             {
-                return (MemberTypeCategory.Object, nullable);
+                return (MemberTypeCategory.Object, NumericKind.None, nullable);
             }
 
-            return (MemberTypeCategory.Other, nullable);
+            return (MemberTypeCategory.Other, NumericKind.None, nullable);
         }
 
-        private static bool IsNumeric(SpecialType specialType)
+        /// <summary>
+        /// Maps a CLR numeric <see cref="SpecialType"/> to the <see cref="NumericKind"/> the emitter uses
+        /// to render compiling bound literals and comparisons; returns <see cref="NumericKind.None"/> for
+        /// a non-numeric type.
+        /// </summary>
+        private static NumericKind ClassifyNumeric(SpecialType specialType)
         {
             switch (specialType)
             {
                 case SpecialType.System_SByte:
-                case SpecialType.System_Byte:
                 case SpecialType.System_Int16:
-                case SpecialType.System_UInt16:
                 case SpecialType.System_Int32:
-                case SpecialType.System_UInt32:
                 case SpecialType.System_Int64:
+                    return NumericKind.SignedIntegral;
+
+                case SpecialType.System_Byte:
+                case SpecialType.System_UInt16:
+                case SpecialType.System_UInt32:
                 case SpecialType.System_UInt64:
+                    return NumericKind.UnsignedIntegral;
+
                 case SpecialType.System_Single:
+                    return NumericKind.Single;
+
                 case SpecialType.System_Double:
+                    return NumericKind.Double;
+
                 case SpecialType.System_Decimal:
-                    return true;
+                    return NumericKind.Decimal;
+
                 default:
-                    return false;
+                    return NumericKind.None;
             }
         }
 
@@ -310,8 +367,29 @@ namespace Moongazing.OrionGuard.OpenApi
                 return;
             }
 
-            // Locate the named document among the AdditionalFiles (match on file name or full path).
-            OpenApiDocument? match = FindDocument(documents, target.DocumentPath);
+            // The validated type T must come from the OrionGuard IValidator<T> contract. When the
+            // annotated type does not participate in that contract there is no T to emit against, so
+            // diagnose and skip rather than emit IValidator<> with an empty type argument (uncompilable).
+            if (!target.HasValidatedType)
+            {
+                spc.ReportDiagnostic(Diagnostic.Create(
+                    OpenApiDiagnostics.MissingValidatorContract, target.GetLocation(), target.ClassName));
+                return;
+            }
+
+            // Locate the named document among the AdditionalFiles. A relative/sub-path in the attribute is
+            // matched by path suffix first; a bare file name falls back to a basename match. An ambiguous
+            // match (the name fits more than one file) is diagnosed rather than silently resolved.
+            var documentMatch = FindDocument(documents, target.DocumentPath);
+            if (documentMatch.IsAmbiguous)
+            {
+                spc.ReportDiagnostic(Diagnostic.Create(
+                    OpenApiDiagnostics.AmbiguousDocument,
+                    target.GetLocation(), target.DocumentPath, documentMatch.AmbiguousPaths));
+                return;
+            }
+
+            OpenApiDocument? match = documentMatch.Document;
             if (match is null || match.Value.Content is null)
             {
                 spc.ReportDiagnostic(Diagnostic.Create(
@@ -363,14 +441,16 @@ namespace Moongazing.OrionGuard.OpenApi
                 // Continue: enforce whatever else the schema declares.
             }
 
+            ReportSchemaIssues(spc, target, target.SchemaPointer, resolvedRoot);
+
             // Bind each schema property to a member on the validated type and resolve property-level $refs.
             var bindings = BuildBindings(spc, target, resolvedRoot, resolver);
 
             var model = new ValidatorEmitModel(
-                target.Namespace, target.ClassName, target.ValidatedTypeFullName, bindings);
+                target.Namespace, target.ClassName, target.Accessibility, target.ValidatedTypeFullName, bindings);
 
             string source = ValidatorEmitter.Emit(model);
-            spc.AddSource($"{target.ClassName}.OpenApiValidator.g.cs", SourceText.From(source, Encoding.UTF8));
+            spc.AddSource(BuildHintName(target), SourceText.From(source, Encoding.UTF8));
         }
 
         private static IReadOnlyList<PropertyBinding> BuildBindings(
@@ -401,6 +481,8 @@ namespace Moongazing.OrionGuard.OpenApi
                     // Fall through: emit the supported constraints on this property.
                 }
 
+                ReportSchemaIssues(spc, target, property.Name, resolvedSchema);
+
                 bool required = rootSchema.Required.Contains(property.Name);
 
                 // Match the schema property to a C# member by name (case-insensitive, so firstName binds
@@ -415,6 +497,7 @@ namespace Moongazing.OrionGuard.OpenApi
                     property.Name,
                     member.Name,
                     member.Category,
+                    member.NumericKind,
                     member.IsReferenceTypeOrNullable,
                     resolvedSchema,
                     required));
@@ -446,31 +529,161 @@ namespace Moongazing.OrionGuard.OpenApi
             return false;
         }
 
-        private static OpenApiDocument? FindDocument(ImmutableArray<OpenApiDocument> documents, string documentPath)
+        /// <summary>
+        /// Raises OG1007 for each keyword the parser rejected on <paramref name="schema"/> (for example an
+        /// integer keyword whose value overflowed <see cref="int"/>). The constraint was skipped during
+        /// parse; this makes the skip visible instead of silent.
+        /// </summary>
+        private static void ReportSchemaIssues(
+            SourceProductionContext spc, OpenApiValidatorTarget target, string context, OpenApiSchema schema)
         {
-            string targetName = System.IO.Path.GetFileName(documentPath);
+            foreach (var issue in schema.Issues)
+            {
+                spc.ReportDiagnostic(Diagnostic.Create(
+                    OpenApiDiagnostics.InvalidKeywordValue,
+                    target.GetLocation(), issue.Keyword, context, issue.RawValue, issue.Reason));
+            }
+        }
 
-            // Prefer an exact file-name match; fall back to a full-path suffix match so a relative path
-            // in the attribute (subdir/openapi.json) also resolves.
+        /// <summary>
+        /// Builds the generated-source hint name, qualifying it with the target's namespace so two
+        /// same-named validators in different namespaces produce distinct hint names (Roslyn requires every
+        /// hint name in a generator to be unique; a bare class name would collide). Dots are filename-safe
+        /// in a hint name; any other character is replaced so the name stays well-formed.
+        /// </summary>
+        private static string BuildHintName(OpenApiValidatorTarget target)
+        {
+            string qualified = string.IsNullOrEmpty(target.Namespace)
+                ? target.ClassName
+                : target.Namespace + "." + target.ClassName;
+
+            var sb = new StringBuilder(qualified.Length);
+            foreach (char c in qualified)
+            {
+                sb.Append(c == '.' || char.IsLetterOrDigit(c) ? c : '_');
+            }
+
+            return sb.Append(".OpenApiValidator.g.cs").ToString();
+        }
+
+        /// <summary>
+        /// The outcome of resolving the <c>[OpenApiValidator]</c> document name against the AdditionalFiles:
+        /// either a single matched document, no match, or an ambiguous match (the name fit more than one
+        /// file). Ambiguity is reported rather than silently resolved so a build does not bind to an
+        /// arbitrary file.
+        /// </summary>
+        private readonly struct DocumentMatch
+        {
+            private DocumentMatch(OpenApiDocument? document, bool isAmbiguous, string ambiguousPaths)
+            {
+                Document = document;
+                IsAmbiguous = isAmbiguous;
+                AmbiguousPaths = ambiguousPaths;
+            }
+
+            public OpenApiDocument? Document { get; }
+
+            public bool IsAmbiguous { get; }
+
+            /// <summary>A comma-separated list of the candidate paths when <see cref="IsAmbiguous"/>.</summary>
+            public string AmbiguousPaths { get; }
+
+            public static DocumentMatch Matched(OpenApiDocument document) =>
+                new DocumentMatch(document, isAmbiguous: false, string.Empty);
+
+            public static readonly DocumentMatch None =
+                new DocumentMatch(null, isAmbiguous: false, string.Empty);
+
+            public static DocumentMatch Ambiguous(IEnumerable<OpenApiDocument> candidates) =>
+                new DocumentMatch(
+                    null,
+                    isAmbiguous: true,
+                    string.Join(", ", candidates.Select(c => c.FullPath)));
+        }
+
+        /// <summary>
+        /// Resolves the document named by <c>[OpenApiValidator]</c> among the AdditionalFiles. The
+        /// attribute's value is honored as a relative/sub-path first (matched by full-path suffix on a
+        /// segment boundary), so <c>schemas/openapi.json</c> binds to the file under <c>schemas</c> even
+        /// when another <c>openapi.json</c> exists elsewhere. A bare file name falls back to a basename
+        /// match. Either way, a name that fits more than one file is reported as ambiguous instead of
+        /// silently picking one.
+        /// </summary>
+        private static DocumentMatch FindDocument(ImmutableArray<OpenApiDocument> documents, string documentPath)
+        {
+            string normalizedTarget = documentPath.Replace('\\', '/').TrimStart('/');
+            bool targetHasDirectory = normalizedTarget.IndexOf('/') >= 0;
+
+            // First honor the relative/sub-path the attribute specifies: match on a full-path suffix that
+            // begins at a path-segment boundary, so "schemas/openapi.json" matches ".../schemas/openapi.json"
+            // but not ".../other-schemas/openapi.json".
+            var suffixMatches = new List<OpenApiDocument>();
+            foreach (var doc in documents)
+            {
+                string docPath = doc.FullPath.Replace('\\', '/');
+                if (IsPathSuffix(docPath, normalizedTarget))
+                {
+                    suffixMatches.Add(doc);
+                }
+            }
+
+            if (suffixMatches.Count == 1)
+            {
+                return DocumentMatch.Matched(suffixMatches[0]);
+            }
+
+            if (suffixMatches.Count > 1)
+            {
+                return DocumentMatch.Ambiguous(suffixMatches);
+            }
+
+            // The attribute named a path that no file's suffix satisfied. When it carried a directory the
+            // path was explicit and simply did not resolve; do not fall back to a looser basename match.
+            if (targetHasDirectory)
+            {
+                return DocumentMatch.None;
+            }
+
+            // Bare file name: fall back to a basename match, reporting ambiguity when more than one file
+            // shares the name.
+            string targetName = System.IO.Path.GetFileName(documentPath);
+            var nameMatches = new List<OpenApiDocument>();
             foreach (var doc in documents)
             {
                 if (string.Equals(doc.FileName, targetName, StringComparison.OrdinalIgnoreCase))
                 {
-                    return doc;
+                    nameMatches.Add(doc);
                 }
             }
 
-            string normalized = documentPath.Replace('\\', '/');
-            foreach (var doc in documents)
+            if (nameMatches.Count == 1)
             {
-                string docPath = doc.FullPath.Replace('\\', '/');
-                if (docPath.EndsWith(normalized, StringComparison.OrdinalIgnoreCase))
-                {
-                    return doc;
-                }
+                return DocumentMatch.Matched(nameMatches[0]);
             }
 
-            return null;
+            if (nameMatches.Count > 1)
+            {
+                return DocumentMatch.Ambiguous(nameMatches);
+            }
+
+            return DocumentMatch.None;
+        }
+
+        /// <summary>
+        /// True when <paramref name="candidate"/> matches <paramref name="suffix"/> at a path-segment
+        /// boundary: the candidate equals the suffix, or ends with <c>/</c> + suffix. Both are forward-slash
+        /// normalized by the caller.
+        /// </summary>
+        private static bool IsPathSuffix(string candidate, string suffix)
+        {
+            if (string.Equals(candidate, suffix, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            return candidate.Length > suffix.Length
+                && candidate[candidate.Length - suffix.Length - 1] == '/'
+                && candidate.EndsWith(suffix, StringComparison.OrdinalIgnoreCase);
         }
 
         private sealed class IgnoreCaseComparer : IEqualityComparer<string>

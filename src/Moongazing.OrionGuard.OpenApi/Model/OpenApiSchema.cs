@@ -23,6 +23,27 @@ namespace Moongazing.OrionGuard.OpenApi.Model
     }
 
     /// <summary>
+    /// A keyword value the parser could read syntactically but had to reject semantically (for example an
+    /// integer keyword whose value overflows <see cref="int"/>). Carried on the schema so the generator can
+    /// raise a diagnostic instead of silently wrapping or dropping the value.
+    /// </summary>
+    internal readonly struct SchemaIssue
+    {
+        public SchemaIssue(string keyword, string rawValue, string reason)
+        {
+            Keyword = keyword;
+            RawValue = rawValue;
+            Reason = reason;
+        }
+
+        public string Keyword { get; }
+
+        public string RawValue { get; }
+
+        public string Reason { get; }
+    }
+
+    /// <summary>
     /// The bounded subset of an OpenAPI 3 / JSON Schema object that the generator understands.
     /// Anything outside this subset is preserved as <see cref="HasUnsupportedConstruct"/> so the
     /// generator can raise an informational diagnostic instead of silently dropping a constraint.
@@ -38,7 +59,11 @@ namespace Moongazing.OrionGuard.OpenApi.Model
             Properties = new List<OpenApiProperty>();
             Required = new HashSet<string>(System.StringComparer.Ordinal);
             EnumValues = new List<JsonValue>();
+            Issues = new List<SchemaIssue>();
         }
+
+        /// <summary>Keyword values rejected during parse (e.g. an out-of-range integer keyword).</summary>
+        public List<SchemaIssue> Issues { get; }
 
         /// <summary>A local <c>$ref</c> (for example <c>#/components/schemas/Address</c>), or <c>null</c>.</summary>
         public string? Ref { get; private set; }
@@ -114,8 +139,8 @@ namespace Moongazing.OrionGuard.OpenApi.Model
             schema.Format = node.TryGet("format")?.AsString();
             schema.Nullable = node.TryGet("nullable")?.AsBoolean() ?? false;
 
-            schema.MinLength = ReadInt(node.TryGet("minLength"));
-            schema.MaxLength = ReadInt(node.TryGet("maxLength"));
+            schema.MinLength = ReadInt(node.TryGet("minLength"), "minLength", schema.Issues);
+            schema.MaxLength = ReadInt(node.TryGet("maxLength"), "maxLength", schema.Issues);
             schema.Pattern = node.TryGet("pattern")?.AsString();
 
             schema.Minimum = node.TryGet("minimum")?.RawNumber();
@@ -132,8 +157,8 @@ namespace Moongazing.OrionGuard.OpenApi.Model
                 schema.Maximum = exclMaxBound;
             }
 
-            schema.MinItems = ReadInt(node.TryGet("minItems"));
-            schema.MaxItems = ReadInt(node.TryGet("maxItems"));
+            schema.MinItems = ReadInt(node.TryGet("minItems"), "minItems", schema.Issues);
+            schema.MaxItems = ReadInt(node.TryGet("maxItems"), "maxItems", schema.Issues);
 
             var itemsNode = node.TryGet("items");
             if (itemsNode is not null)
@@ -185,7 +210,7 @@ namespace Moongazing.OrionGuard.OpenApi.Model
             return schema;
         }
 
-        private static int? ReadInt(JsonValue? value)
+        private static int? ReadInt(JsonValue? value, string keyword, List<SchemaIssue> issues)
         {
             if (value is null)
             {
@@ -198,14 +223,32 @@ namespace Moongazing.OrionGuard.OpenApi.Model
                 return null;
             }
 
-            // Numeric keywords like minLength are integers; parse via double then narrow to tolerate
-            // a document that writes "1.0".
-            if (double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out double parsed))
+            // Integer keywords (minLength, maxLength, minItems, maxItems) bound a string Length or a
+            // collection Count, both of which are int-domain. Parse the lexeme into a wide decimal (no
+            // floating round-off for large integers, unlike double), tolerate a "1.0"-style integral
+            // value, then range-check against int. A truncating or wrapping value is rejected with a
+            // recorded issue rather than silently narrowed (e.g. (int)5000000000 wrapping to 705032704).
+            if (!decimal.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out decimal parsed))
             {
-                return (int)parsed;
+                issues.Add(new SchemaIssue(keyword, raw, "is not a valid number"));
+                return null;
             }
 
-            return null;
+            decimal truncated = decimal.Truncate(parsed);
+            if (truncated != parsed)
+            {
+                issues.Add(new SchemaIssue(keyword, raw, "is not an integer"));
+                return null;
+            }
+
+            if (truncated < int.MinValue || truncated > int.MaxValue)
+            {
+                issues.Add(new SchemaIssue(
+                    keyword, raw, $"is outside the supported range [{int.MinValue}, {int.MaxValue}]"));
+                return null;
+            }
+
+            return (int)truncated;
         }
 
         /// <summary>
