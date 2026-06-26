@@ -281,7 +281,10 @@ its own JSON reader and takes no unbundled NuGet dependency.
 **Deferred (tracked follow-ups).** YAML documents are not read yet (JSON only; a YAML document
 raises diagnostic `OG1002`) to avoid pulling a heavy, unbundleable YAML parser into the analyzer.
 Polymorphism and composition (`discriminator` / `oneOf` / `anyOf` / `allOf`, the intended map to
-`Validate.Polymorphic<T>()`) raise `OG1006` and are skipped rather than half-implemented.
+`Validate.Polymorphic<T>()`) raise `OG1006` and are skipped rather than half-implemented. Generic
+target types -- a generic `[OpenApiValidator]` class or a validator nested inside a generic type --
+raise `OG1010` and are skipped, because reconstructing the partial's type parameters and constraints
+correctly is a follow-up; a non-generic nested target is fully supported.
 
 **Why it matters.** API-first teams want one source of truth. OpenAPI spec -> validator
 -> controller -> tests -- all derived automatically. Nobody in the .NET space

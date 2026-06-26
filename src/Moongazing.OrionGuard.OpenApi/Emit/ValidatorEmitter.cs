@@ -49,6 +49,17 @@ namespace Moongazing.OrionGuard.OpenApi.Emit
                 sb.AppendLine("{");
             }
 
+            // Reconstruct each enclosing type as a partial declaration so a nested target's generated
+            // partial lands inside the correct nesting and extends the user's actual (nested) type. An
+            // enclosing partial declares no base list or accessibility: it only reopens the existing type.
+            foreach (var enclosing in model.EnclosingTypes)
+            {
+                sb.Append(indent).Append("partial ").Append(enclosing.Keyword).Append(' ')
+                    .AppendLine(enclosing.Name);
+                sb.Append(indent).AppendLine("{");
+                indent += "    ";
+            }
+
             sb.Append(indent).AppendLine("/// <summary>");
             sb.Append(indent).Append("/// OpenAPI-derived validator for <see cref=\"")
                 .Append(model.ValidatedTypeFullName).AppendLine("\"/>.");
@@ -64,6 +75,13 @@ namespace Moongazing.OrionGuard.OpenApi.Emit
             EmitValidateAsyncMethod(sb, model, indent + "    ");
 
             sb.Append(indent).AppendLine("}");
+
+            // Close each enclosing partial in reverse (innermost first).
+            for (int i = 0; i < model.EnclosingTypes.Length; i++)
+            {
+                indent = indent.Substring(0, indent.Length - 4);
+                sb.Append(indent).AppendLine("}");
+            }
 
             if (hasNamespace)
             {

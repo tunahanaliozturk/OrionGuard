@@ -56,6 +56,7 @@ Schema property names bind to C# members case-insensitively, so `firstName` maps
 
 - **YAML documents.** Only JSON OpenAPI documents are read; a YAML document raises `OG1002`. Convert the document to JSON, or track the YAML follow-up. (Avoiding a heavy, unbundleable YAML dependency in the analyzer is a deliberate choice.)
 - **Polymorphism and composition** (`discriminator`, `oneOf`, `anyOf`, `allOf`). The generator raises `OG1006` and enforces the rest of the schema rather than half-implementing polymorphic dispatch.
+- **Generic target types.** A generic `[OpenApiValidator]` target, or a target nested inside a generic type, raises `OG1010` and is skipped. Reconstructing the partial's type parameters and constraints correctly is a follow-up; move the validator to a non-generic type for now. (Non-generic nested targets are supported: the generated partial is emitted inside the correct enclosing types.)
 
 ## Diagnostics
 
@@ -69,6 +70,7 @@ Every failure is a non-fatal, OG-prefixed diagnostic; the build never crashes an
 | `OG1004` | Error | A `$ref` inside the document could not be resolved. |
 | `OG1005` | Warning | The target is not a `partial class`, so no validator was generated. |
 | `OG1006` | Warning | An unsupported construct was skipped; the rest of the schema was still enforced. |
+| `OG1010` | Warning | The target is generic (or nested inside a generic type), which is not supported yet; no validator was generated. |
 
 ## Install
 

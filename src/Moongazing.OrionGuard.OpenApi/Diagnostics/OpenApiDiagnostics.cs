@@ -101,5 +101,19 @@ namespace Moongazing.OrionGuard.OpenApi.Diagnostics
             category: Category,
             defaultSeverity: DiagnosticSeverity.Error,
             isEnabledByDefault: true);
+
+        /// <summary>
+        /// OG1010: the target type, or a type it is nested inside, is generic. Reconstructing a generic
+        /// partial with its type parameters and constraints correctly is not supported in this version, so
+        /// the generator skips it rather than emitting a partial whose type parameters or constraints do not
+        /// match the user's declaration (which would not compile).
+        /// </summary>
+        public static readonly DiagnosticDescriptor GenericTargetUnsupported = new DiagnosticDescriptor(
+            id: "OG1010",
+            title: "[OpenApiValidator] does not support generic target types",
+            messageFormat: "'{0}' is a generic [OpenApiValidator] target (or is nested inside a generic type), which the OpenAPI validator generator does not support yet, so no validator was generated. Move the validator to a non-generic type.",
+            category: Category,
+            defaultSeverity: DiagnosticSeverity.Warning,
+            isEnabledByDefault: true);
     }
 }

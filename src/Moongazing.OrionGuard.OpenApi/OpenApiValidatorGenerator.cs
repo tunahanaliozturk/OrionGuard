@@ -95,6 +95,15 @@ namespace Moongazing.OrionGuard.OpenApi
                 ? null
                 : typeSymbol.ContainingNamespace.ToDisplayString();
 
+            // Capture the chain of enclosing types (outermost first) so a nested target's partial can be
+            // reconstructed inside the correct nesting. A namespace- or global-scope target has none.
+            ImmutableArray<EnclosingType> enclosingTypes = CaptureEnclosingTypes(typeSymbol);
+
+            // The generator cannot reconstruct a generic partial's type parameters and constraints
+            // correctly yet, so a generic target (or a target nested inside a generic type) is flagged here
+            // and skipped with OG1010 in Execute rather than emitting a non-compiling partial.
+            bool isGeneric = IsGenericTargetOrNesting(typeSymbol);
+
             // Infer the validated type T. Prefer an explicit IValidator<T>/AbstractValidator<T>/
             // FluentStyleValidator<T> base or interface; fall back to the only candidate the document
             // names. If none is found, validate the annotated type's own members (it is a DTO itself).
@@ -118,12 +127,72 @@ namespace Moongazing.OrionGuard.OpenApi
                 isPartial,
                 hasValidatedType,
                 accessibility,
+                isGeneric,
                 documentPath,
                 schemaPointer,
                 members,
+                enclosingTypes,
                 locationPath,
                 span.Start,
                 span.Length);
+        }
+
+        /// <summary>
+        /// Walks the target's containing-type chain and returns each enclosing type as an
+        /// <see cref="EnclosingType"/> (keyword + simple name), ordered outermost first so the emitter can
+        /// open the nesting from the namespace inward. Returns an empty array for a target declared directly
+        /// in a namespace or at global scope.
+        /// </summary>
+        private static ImmutableArray<EnclosingType> CaptureEnclosingTypes(INamedTypeSymbol typeSymbol)
+        {
+            INamedTypeSymbol? containing = typeSymbol.ContainingType;
+            if (containing is null)
+            {
+                return ImmutableArray<EnclosingType>.Empty;
+            }
+
+            // Collect inner-to-outer, then reverse so the outermost enclosing type is emitted first.
+            var stack = new List<EnclosingType>();
+            for (INamedTypeSymbol? current = containing; current is not null; current = current.ContainingType)
+            {
+                stack.Add(new EnclosingType(TypeKeyword(current), current.Name));
+            }
+
+            stack.Reverse();
+            return stack.ToImmutableArray();
+        }
+
+        /// <summary>
+        /// The C# type keyword to repeat for an enclosing type's <c>partial</c> declaration. Records are
+        /// distinguished from plain classes/structs so a <c>partial record</c> over a user <c>record</c>
+        /// declaration agrees (a <c>partial class</c> over a <c>record</c> is a compile error).
+        /// </summary>
+        private static string TypeKeyword(INamedTypeSymbol type)
+        {
+            if (type.IsRecord)
+            {
+                return type.TypeKind == TypeKind.Struct ? "record struct" : "record";
+            }
+
+            return type.TypeKind == TypeKind.Struct ? "struct" : "class";
+        }
+
+        /// <summary>
+        /// True when the target type itself is generic, or any type it is nested inside is generic. A
+        /// generic enclosing type means the target's full nesting cannot be reconstructed without that
+        /// type's parameters, so it is treated the same as a generic target.
+        /// </summary>
+        private static bool IsGenericTargetOrNesting(INamedTypeSymbol typeSymbol)
+        {
+            for (INamedTypeSymbol? current = typeSymbol; current is not null; current = current.ContainingType)
+            {
+                if (current.IsGenericType)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         /// <summary>
@@ -367,6 +436,16 @@ namespace Moongazing.OrionGuard.OpenApi
                 return;
             }
 
+            // A generic target (or one nested inside a generic type) cannot have its partial reconstructed
+            // with the right type parameters and constraints yet; diagnose and skip rather than emit a
+            // partial that would not compile. Documented as a known limitation in the package README/ROADMAP.
+            if (target.IsGeneric)
+            {
+                spc.ReportDiagnostic(Diagnostic.Create(
+                    OpenApiDiagnostics.GenericTargetUnsupported, target.GetLocation(), target.ClassName));
+                return;
+            }
+
             // The validated type T must come from the OrionGuard IValidator<T> contract. When the
             // annotated type does not participate in that contract there is no T to emit against, so
             // diagnose and skip rather than emit IValidator<> with an empty type argument (uncompilable).
@@ -447,7 +526,8 @@ namespace Moongazing.OrionGuard.OpenApi
             var bindings = BuildBindings(spc, target, resolvedRoot, resolver);
 
             var model = new ValidatorEmitModel(
-                target.Namespace, target.ClassName, target.Accessibility, target.ValidatedTypeFullName, bindings);
+                target.Namespace, target.ClassName, target.Accessibility, target.ValidatedTypeFullName,
+                target.EnclosingTypes, bindings);
 
             string source = ValidatorEmitter.Emit(model);
             spc.AddSource(BuildHintName(target), SourceText.From(source, Encoding.UTF8));
@@ -546,16 +626,29 @@ namespace Moongazing.OrionGuard.OpenApi
         }
 
         /// <summary>
-        /// Builds the generated-source hint name, qualifying it with the target's namespace so two
-        /// same-named validators in different namespaces produce distinct hint names (Roslyn requires every
-        /// hint name in a generator to be unique; a bare class name would collide). Dots are filename-safe
-        /// in a hint name; any other character is replaced so the name stays well-formed.
+        /// Builds the generated-source hint name from the target's full declaring-type path: the namespace,
+        /// every enclosing type name, and the leaf class name. Keying on the whole path (not just namespace +
+        /// leaf) keeps two same-leaf validators nested in different outer types in the same namespace
+        /// (for example <c>Outer1.InnerValidator</c> and <c>Outer2.InnerValidator</c>) from colliding, since
+        /// Roslyn requires every hint name in a generator to be unique. Dots are filename-safe in a hint
+        /// name; any other character is replaced so the name stays well-formed.
         /// </summary>
         private static string BuildHintName(OpenApiValidatorTarget target)
         {
-            string qualified = string.IsNullOrEmpty(target.Namespace)
-                ? target.ClassName
-                : target.Namespace + "." + target.ClassName;
+            var parts = new List<string>();
+            if (!string.IsNullOrEmpty(target.Namespace))
+            {
+                parts.Add(target.Namespace!);
+            }
+
+            foreach (var enclosing in target.EnclosingTypes)
+            {
+                parts.Add(enclosing.Name);
+            }
+
+            parts.Add(target.ClassName);
+
+            string qualified = string.Join(".", parts);
 
             var sb = new StringBuilder(qualified.Length);
             foreach (char c in qualified)

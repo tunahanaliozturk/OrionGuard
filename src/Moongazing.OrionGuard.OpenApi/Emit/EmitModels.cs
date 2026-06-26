@@ -1,6 +1,7 @@
 #nullable enable
 
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using Moongazing.OrionGuard.OpenApi.Model;
 
 namespace Moongazing.OrionGuard.OpenApi.Emit
@@ -111,18 +112,25 @@ namespace Moongazing.OrionGuard.OpenApi.Emit
             string className,
             string accessibility,
             string validatedTypeFullName,
+            ImmutableArray<EnclosingType> enclosingTypes,
             IReadOnlyList<PropertyBinding> properties)
         {
             Namespace = namespaceName;
             ClassName = className;
             Accessibility = accessibility;
             ValidatedTypeFullName = validatedTypeFullName;
+            EnclosingTypes = enclosingTypes;
             Properties = properties;
         }
 
         public string? Namespace { get; }
 
         public string ClassName { get; }
+
+        /// <summary>The chain of enclosing types from outermost to innermost the generated partial must be
+        /// nested inside, each reconstructed as a <c>partial</c> declaration. Empty for a non-nested
+        /// target.</summary>
+        public ImmutableArray<EnclosingType> EnclosingTypes { get; }
 
         /// <summary>The accessibility keyword(s) the generated partial repeats so it agrees with the user's
         /// partial declaration (e.g. <c>public</c>, <c>internal</c>).</summary>
