@@ -196,6 +196,30 @@ namespace Moongazing.OrionGuard.OpenApi
         }
 
         /// <summary>
+        /// Scans a nested target's enclosing chain for the first link whose C# kind cannot be reproduced as
+        /// a <c>partial</c> reopening (its captured <see cref="EnclosingType.Keyword"/> is the empty
+        /// sentinel set by <see cref="TypeKeyword"/>). In valid C# only <c>class</c>, <c>struct</c>,
+        /// <c>record</c>, <c>record struct</c>, and <c>interface</c> can enclose a nested type, and all five
+        /// are reproducible; this guards the defensive case (for example a future or malformed kind) so the
+        /// emitter never writes a keyword that would not compile. Returns <c>false</c> when every enclosing
+        /// keyword is reproducible.
+        /// </summary>
+        private static bool TryFindUnreproducibleLink(OpenApiValidatorTarget target, out string offendingType)
+        {
+            foreach (var enclosing in target.EnclosingTypes)
+            {
+                if (string.IsNullOrEmpty(enclosing.Keyword))
+                {
+                    offendingType = enclosing.Name;
+                    return true;
+                }
+            }
+
+            offendingType = string.Empty;
+            return false;
+        }
+
+        /// <summary>
         /// True when every source declaration of <paramref name="type"/> carries the <c>partial</c>
         /// modifier, i.e. the type can be safely reopened with another <c>partial</c> declaration. A type
         /// with no source declarations (purely metadata) is treated as not partial: it lives in another
@@ -224,18 +248,41 @@ namespace Moongazing.OrionGuard.OpenApi
         }
 
         /// <summary>
-        /// The C# type keyword to repeat for an enclosing type's <c>partial</c> declaration. Records are
-        /// distinguished from plain classes/structs so a <c>partial record</c> over a user <c>record</c>
-        /// declaration agrees (a <c>partial class</c> over a <c>record</c> is a compile error).
+        /// The C# type keyword to repeat for an enclosing type's <c>partial</c> declaration, or
+        /// <see cref="string.Empty"/> when the kind cannot be reproduced and the target must be skipped.
+        /// Every kind that can legally enclose a nested type is reproduced exactly: a record class
+        /// (<c>record</c>), a record struct (<c>record struct</c>), a plain struct (<c>struct</c>), an
+        /// interface (<c>interface</c>), and a plain class (<c>class</c>). The distinctions matter because a
+        /// <c>partial</c> reopening must repeat the user's keyword verbatim: a <c>partial class</c> over a
+        /// <c>record</c>, a <c>struct</c>, or an <c>interface</c> is a consumer compile error. Records are
+        /// distinguished via <c>INamedTypeSymbol.IsRecord</c>, struct vs class via
+        /// <see cref="ITypeSymbol.TypeKind"/> (<see cref="TypeKind.Struct"/>), a record struct via
+        /// <c>IsRecord</c> combined with a struct kind, and an interface via
+        /// <see cref="TypeKind.Interface"/>. Any other kind (for example an enum or delegate, which cannot
+        /// legally enclose a nested validator type in C# anyway) yields the empty sentinel so the caller
+        /// diagnoses and skips instead of emitting a wrong, uncompilable keyword.
         /// </summary>
         private static string TypeKeyword(INamedTypeSymbol type)
         {
-            if (type.IsRecord)
+            switch (type.TypeKind)
             {
-                return type.TypeKind == TypeKind.Struct ? "record struct" : "record";
-            }
+                case TypeKind.Class:
+                    // A record class reports TypeKind.Class with IsRecord true.
+                    return type.IsRecord ? "record" : "class";
 
-            return type.TypeKind == TypeKind.Struct ? "struct" : "class";
+                case TypeKind.Struct:
+                    // A record struct reports TypeKind.Struct with IsRecord true.
+                    return type.IsRecord ? "record struct" : "struct";
+
+                case TypeKind.Interface:
+                    return "interface";
+
+                default:
+                    // Enum, delegate, or any future kind: not reproducible as a partial reopening. The
+                    // empty sentinel routes the target to OG1012 (diagnose and skip) rather than emitting a
+                    // keyword that would not compile.
+                    return string.Empty;
+            }
         }
 
         /// <summary>
@@ -511,6 +558,18 @@ namespace Moongazing.OrionGuard.OpenApi
             {
                 spc.ReportDiagnostic(Diagnostic.Create(
                     OpenApiDiagnostics.NestedTargetNotPartial, target.GetLocation(), offendingType));
+                return;
+            }
+
+            // Every enclosing type must be reopenable with its own keyword. class / struct / record /
+            // record struct / interface are all reproduced exactly; any other kind (the empty keyword
+            // sentinel) cannot be, so diagnose and skip rather than emit a wrong keyword that would not
+            // compile. This is reachable only for a malformed or future kind in valid C#, but the gate keeps
+            // the emitter from ever writing an uncompilable enclosing declaration.
+            if (target.EnclosingTypes.Length > 0 && TryFindUnreproducibleLink(target, out string unreproducibleType))
+            {
+                spc.ReportDiagnostic(Diagnostic.Create(
+                    OpenApiDiagnostics.EnclosingTypeKindUnsupported, target.GetLocation(), unreproducibleType));
                 return;
             }
 

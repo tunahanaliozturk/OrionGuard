@@ -32,14 +32,21 @@ internal sealed class AdditionalTextString : AdditionalText
 
 internal sealed class GeneratorRunResult
 {
+    /// <summary>The hint-name suffix every emitted validator source carries (see
+    /// <c>OpenApiValidatorGenerator.BuildHintName</c>). A "nothing was generated" test asserts the absence
+    /// of any source with this suffix directly, instead of probing the source text for a substring.</summary>
+    public const string ValidatorSourceSuffix = ".OpenApiValidator.g.cs";
+
     public GeneratorRunResult(
         Compilation outputCompilation,
         ImmutableArray<Diagnostic> generatorDiagnostics,
-        IReadOnlyList<string> generatedSources)
+        IReadOnlyList<string> generatedSources,
+        IReadOnlyList<string> generatedHintNames)
     {
         OutputCompilation = outputCompilation;
         GeneratorDiagnostics = generatorDiagnostics;
         GeneratedSources = generatedSources;
+        GeneratedHintNames = generatedHintNames;
     }
 
     public Compilation OutputCompilation { get; }
@@ -48,7 +55,21 @@ internal sealed class GeneratorRunResult
 
     public IReadOnlyList<string> GeneratedSources { get; }
 
+    /// <summary>The hint name of every source the generator added, in the same order as
+    /// <see cref="GeneratedSources"/>. Lets a test assert exactly which trees were produced rather than
+    /// inferring it from the concatenated text.</summary>
+    public IReadOnlyList<string> GeneratedHintNames { get; }
+
     public string AllGeneratedText => string.Join("\n\n", GeneratedSources);
+
+    /// <summary>
+    /// The number of generated <em>validator</em> sources (those whose hint name ends with
+    /// <see cref="ValidatorSourceSuffix"/>), excluding the always-injected marker-attribute source. A
+    /// skipped target contributes zero; a generated one contributes exactly one. This is the direct,
+    /// non-fragile signal that a target was or was not emitted.
+    /// </summary>
+    public int ValidatorSourceCount =>
+        GeneratedHintNames.Count(h => h.EndsWith(ValidatorSourceSuffix, StringComparison.Ordinal));
 }
 
 internal static class GeneratorTestHarness
@@ -104,12 +125,14 @@ internal static class GeneratorTestHarness
 
         var runResult = driver.GetRunResult();
         var generatorDiagnostics = runResult.Diagnostics;
-        var generatedSources = runResult.Results
+        var allSources = runResult.Results
             .SelectMany(r => r.GeneratedSources)
-            .Select(s => s.SourceText.ToString())
             .ToList();
+        var generatedSources = allSources.Select(s => s.SourceText.ToString()).ToList();
+        var generatedHintNames = allSources.Select(s => s.HintName).ToList();
 
-        return new GeneratorRunResult(outputCompilation, generatorDiagnostics, generatedSources);
+        return new GeneratorRunResult(
+            outputCompilation, generatorDiagnostics, generatedSources, generatedHintNames);
     }
 
     /// <summary>

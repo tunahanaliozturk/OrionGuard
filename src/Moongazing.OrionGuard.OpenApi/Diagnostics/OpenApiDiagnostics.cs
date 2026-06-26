@@ -131,5 +131,20 @@ namespace Moongazing.OrionGuard.OpenApi.Diagnostics
             category: Category,
             defaultSeverity: DiagnosticSeverity.Warning,
             isEnabledByDefault: true);
+
+        /// <summary>
+        /// OG1012: a type the nested <c>[OpenApiValidator]</c> target is declared inside is a kind the
+        /// generator cannot reopen as a <c>partial</c> declaration. The emitter reproduces each enclosing
+        /// type's keyword verbatim (<c>class</c> / <c>struct</c> / <c>record</c> / <c>record struct</c> /
+        /// <c>interface</c>); any other kind cannot be reproduced, so the target is skipped rather than
+        /// emitting a partial with a wrong or missing keyword that would not compile.
+        /// </summary>
+        public static readonly DiagnosticDescriptor EnclosingTypeKindUnsupported = new DiagnosticDescriptor(
+            id: "OG1012",
+            title: "OpenApiValidator enclosing type kind cannot be reopened",
+            messageFormat: "The [OpenApiValidator] target is nested inside '{0}', whose type kind the generator cannot reopen as a partial declaration. Only class, struct, record, record struct, and interface enclosing types are supported, so no validator was generated.",
+            category: Category,
+            defaultSeverity: DiagnosticSeverity.Warning,
+            isEnabledByDefault: true);
     }
 }

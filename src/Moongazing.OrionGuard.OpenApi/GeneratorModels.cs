@@ -60,14 +60,16 @@ namespace Moongazing.OrionGuard.OpenApi
 
     /// <summary>
     /// One enclosing type in a nested <c>[OpenApiValidator]</c> target's declaring-type path: the C#
-    /// keyword (<c>class</c> / <c>struct</c> / <c>record</c> / <c>record struct</c>), the simple name of a
-    /// type the target is declared inside, and whether that type is declared <c>partial</c>. The emitter
-    /// reconstructs each link as a <c>partial</c> declaration so the generated partial lands inside the
-    /// correct nesting and extends the user's type; that reconstruction is only legal when the user's own
-    /// declaration is already <c>partial</c>, so <see cref="IsPartial"/> is checked before any code is
-    /// emitted (a non-partial enclosing type is reported via OG1011 and generation is skipped, because you
-    /// cannot add a partial declaration to a non-partial type without a consumer compile error).
-    /// Equatable by value so it participates in incremental-generator caching.
+    /// keyword (<c>class</c> / <c>struct</c> / <c>record</c> / <c>record struct</c> / <c>interface</c>, or
+    /// <see cref="string.Empty"/> for a kind that cannot be reopened), the simple name of a type the target
+    /// is declared inside, and whether that type is declared <c>partial</c>. The emitter reconstructs each
+    /// link as a <c>partial</c> declaration so the generated partial lands inside the correct nesting and
+    /// extends the user's type; that reconstruction is only legal when the user's own declaration is already
+    /// <c>partial</c> and its kind is reproducible, so both are checked before any code is emitted: a
+    /// non-partial enclosing type is reported via OG1011 and an unreproducible kind (empty
+    /// <see cref="Keyword"/>) via OG1012, and generation is skipped, because you cannot add a partial
+    /// declaration to a non-partial type, nor reopen a type with the wrong keyword, without a consumer
+    /// compile error. Equatable by value so it participates in incremental-generator caching.
     /// </summary>
     internal readonly struct EnclosingType : IEquatable<EnclosingType>
     {
@@ -79,7 +81,8 @@ namespace Moongazing.OrionGuard.OpenApi
         }
 
         /// <summary>The C# type keyword the partial must repeat (e.g. <c>class</c>, <c>struct</c>,
-        /// <c>record</c>, <c>record struct</c>).</summary>
+        /// <c>record</c>, <c>record struct</c>, <c>interface</c>), or <see cref="string.Empty"/> when the
+        /// enclosing type's kind cannot be reopened as a partial (routed to OG1012, diagnose and skip).</summary>
         public string Keyword { get; }
 
         /// <summary>The simple (unqualified) name of the enclosing type.</summary>
