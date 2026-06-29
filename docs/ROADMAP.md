@@ -64,7 +64,8 @@ Priority tiers roughly map to timing:
 - **v6.6.0** — Shipped 2026-06-19. First-class asynchronous validation pipeline on `ObjectValidator<T>` (`Validate.For(...)` / `Validate.ForStrict(...)`): `MustAsync`, `WhenAsync`, and the `ToResultAsync` / `BuildAsync` / `ThrowIfInvalidAsync` terminals. Sync and async rules merge into one `GuardResult` with full `CancellationToken` flow and short-circuit parity; the async terminal is idempotent (each async rule runs once); the sync terminals throw rather than silently skip pending async rules. `NotNull<TProperty>` constraint relaxed to `class?`. Source- and binary-compatible.
 - **v6.6.1** — Shipped 2026-06-20. Diagnostics meter versions self-derive from each assembly's `AssemblyInformationalVersion` instead of hardcoded literals, so a meter version can no longer drift from its package version.
 - **v6.6.2** — Shipped 2026-06-20. Allocation-free digit/identity validators: the Turkish-id, Luhn (card / IMEI), ISBN-13, and EAN hot paths drop their per-call delegate / enumerator / `int[]` allocations for a single-pass `stackalloc` scan (about 11x faster, zero allocation on the Turkish-id path; ~2x on Luhn). `char.IsDigit` semantics and results unchanged.
-- **v6.7.0** — Shipped 2026-06-23. Two add-on integrations landed together. (1) OpenAPI-first validation (R2): the `OrionGuard.OpenApi` source-generator package turns an OpenAPI 3 schema into an `IValidator<T>` at compile time, enforcing `type`, `required`, `nullable`, string length / `pattern` / `format`, numeric range (incl. exclusive bounds), `enum`, array `minItems` / `maxItems`, and intra-document `$ref`. The analyzer bundles its own JSON reader. YAML input and polymorphism / composition (`discriminator` / `oneOf` / `anyOf` / `allOf`) are deferred follow-ups, surfaced as diagnostics `OG1002` and `OG1006` respectively. (2) `OrionGuard.Hangfire`: a Hangfire `IClientFilter` that validates a background job's arguments at enqueue time using the same `IServiceProvider`-based validator resolution as the other integrations, rejecting an invalid enqueue with a structured `JobArgumentValidationException` at the call site instead of failing inside a worker; arguments with no registered validator pass through. The R1 FluentValidation codemod remains in progress for the wider v6.7 theme. Uniform family version bump across all packages.
+- **v6.7.0** — Shipped 2026-06-23. Two add-on integrations landed together. (1) OpenAPI-first validation (R2): the `OrionGuard.OpenApi` source-generator package turns an OpenAPI 3 schema into an `IValidator<T>` at compile time, enforcing `type`, `required`, `nullable`, string length / `pattern` / `format`, numeric range (incl. exclusive bounds), `enum`, array `minItems` / `maxItems`, and intra-document `$ref`. The analyzer bundles its own JSON reader. YAML input and polymorphism / composition (`discriminator` / `oneOf` / `anyOf` / `allOf`) are deferred follow-ups, surfaced as diagnostics `OG1002` and `OG1006` respectively. (2) `OrionGuard.Hangfire`: a Hangfire `IClientFilter` that validates a background job's arguments at enqueue time using the same `IServiceProvider`-based validator resolution as the other integrations, rejecting an invalid enqueue with a structured `JobArgumentValidationException` at the call site instead of failing inside a worker; arguments with no registered validator pass through. The R1 FluentValidation codemod followed in v6.8.0. Uniform family version bump across all packages.
+- **v6.8.0** — Shipped 2026-06-29. R1 FluentValidation migration codemod (`dotnet orionguard migrate`) shipped as the `OrionGuard.Migration` dotnet-tool package. Roslyn rewrites `AbstractValidator<T>` validators onto OrionGuard's `FluentStyleValidator<T>` compatibility surface, covering 24 common FluentValidation built-ins; anything without a safe equivalent (`SetValidator`, `RuleForEach`, `ScalePrecision`, `MustAsync`, `Null` / `Empty`, `Cascade`, `WithName`, custom rules, unsupported overloads) is reported with a `// TODO` marker rather than guessed at, and a `RuleFor` chain migrates all-or-nothing. Additive release: only the new tool ships at `6.8.0`; existing packages remain at `6.7.0`.
 
 ---
 
@@ -176,7 +177,29 @@ Theme: *make adoption a weekend, not a quarter.*
   call site instead of being persisted and failing inside a worker. Arguments with no registered
   validator pass through. Worker-side (dequeue-time) validation is a candidate follow-up.
 
-### v6.8.0 — Production Excellence *(planned, Q1 2027)*
+### v6.8.0 — FluentValidation Migration Codemod *(shipped 2026-06-29)*
+
+Theme: *make adoption a weekend, not a quarter.*
+
+- **R1: FluentValidation migration codemod (`dotnet orionguard migrate`).** Shipped as the
+  `OrionGuard.Migration` tool package (`PackAsTool`, command `orionguard`). Reads C# sources with
+  Roslyn, finds `AbstractValidator<T>` classes, and rewrites their `RuleFor(...)` chains onto
+  OrionGuard's `FluentStyleValidator<T>` compatibility surface. 24 common FluentValidation
+  built-ins migrate directly (`NotNull`, `NotEmpty`, `Equal`, `NotEqual`, `Length`,
+  `MinimumLength`, `MaximumLength`, `ExactLength` to `Length(n, n)`, `Matches`, `EmailAddress`,
+  `GreaterThan` / `GreaterThanOrEqualTo` / `LessThan` / `LessThanOrEqualTo`, `InclusiveBetween`,
+  `ExclusiveBetween`, `Must(predicate)`, `WithMessage`, `WithErrorCode`, `When`, `Unless`).
+  Anything without a safe equivalent (`SetValidator`, `RuleForEach`, `Null`, `Empty`,
+  `ScalePrecision`, `MustAsync`, `Cascade`, `WithName`, `Include`, `ChildRules`, custom rules,
+  unsupported overloads) is left untouched with a `// TODO` marker and listed in a report rather
+  than guessed at; a `RuleFor` chain migrates all-or-nothing so a rule is never silently dropped.
+  `--report` / `--dry-run` previews without writing, `--apply` writes, and the exit code reflects
+  whether manual follow-up is needed. This release is additive: only the new tool package ships
+  (at `6.8.0`); the existing OrionGuard packages are unchanged at `6.7.0`. Rule sets and the
+  async-rule / `SetValidator` rewrites are reported-not-migrated in this first version and remain
+  candidate follow-ups.
+
+### v6.9.0 — Production Excellence *(planned, Q1 2027)*
 
 Theme: *stop one validator from melting an instance, and answer "why is this failing in prod"
 in one query.*
@@ -239,20 +262,35 @@ See [FEATURES-v6.md](FEATURES-v6.md) for full details.
 The fastest-impact work: remove migration friction, ship features that make
 prospective users pick OrionGuard when evaluating libraries.
 
-### R1. FluentValidation Migration Codemod `[Planned]` `L` `v6.7`
+### R1. FluentValidation Migration Codemod `[Shipped]` `L` `v6.8`
 
 A `dotnet tool` that reads existing FluentValidation validators and rewrites them
-as OrionGuard equivalents.
+as OrionGuard equivalents. Shipped in v6.8.0 as the `OrionGuard.Migration` tool package.
 
 ```bash
-dotnet tool install -g Moongazing.OrionGuard.Migration
-dotnet orionguard migrate ./src/MyProject.csproj --dry-run
-dotnet orionguard migrate ./src/MyProject.csproj --apply
+dotnet tool install -g OrionGuard.Migration
+dotnet orionguard migrate ./src --report
+dotnet orionguard migrate ./src --apply
 ```
 
-Built on Roslyn. Handles the 25 most common FluentValidation built-ins, rule sets,
-`ChildRules`, `When/Unless`, `SetValidator`, and async rules. Emits a diff report
-for anything it could not migrate automatically.
+Built on Roslyn. Finds classes deriving from `AbstractValidator<T>` and rewrites their
+`RuleFor(...)` chains onto OrionGuard's `FluentStyleValidator<T>` compatibility surface.
+
+**Scope shipped.** 24 common FluentValidation built-ins migrate directly: `NotNull`,
+`NotEmpty`, `Equal`, `NotEqual`, `Length`, `MinimumLength`, `MaximumLength`, `ExactLength`
+(to `Length(n, n)`), `Matches`, `EmailAddress`, `GreaterThan`, `GreaterThanOrEqualTo`,
+`LessThan`, `LessThanOrEqualTo`, `InclusiveBetween`, `ExclusiveBetween`, `Must(predicate)`,
+`WithMessage`, `WithErrorCode`, `When`, `Unless`.
+
+**Reported, not migrated.** Constructs with no safe one-to-one equivalent (`Null`, `Empty`,
+`WithName`, `Cascade`, `ScalePrecision` / `PrecisionScale`, `MustAsync`, `SetValidator`,
+`RuleForEach`, `Include`, `ChildRules`, `DependentRules`, `Custom`, unsupported overload
+shapes, and unrecognised custom rules) are left untouched with a `// TODO: OrionGuard
+migration` marker and listed in a summary report. A `RuleFor` chain is migrated
+all-or-nothing, so a rule is never silently dropped. `--report` (or `--dry-run`) previews
+without writing; `--apply` writes; the exit code reflects whether manual follow-up is needed.
+Rule sets and the `SetValidator` / `RuleForEach` / async-rule rewrites named in the original
+plan are reported-not-migrated in this first version and are candidate follow-ups.
 
 **Why it matters.** Migration effort is the single largest adoption blocker. The
 ambition is for a typical codebase to migrate in minutes, not weeks.
@@ -836,8 +874,9 @@ candidates for the next milestone.
 | v6.6.0  | shipped 2026-06-19 | Asynchronous validation pipeline (MustAsync / ToResultAsync) |
 | v6.6.1  | shipped 2026-06-20 | Self-deriving diagnostics meter versions                     |
 | v6.6.2  | shipped 2026-06-20 | Allocation-free digit / identity validators                  |
-| v6.7.0  | shipped 2026-06-23 | OpenAPI-first validation + Hangfire integration (FluentValidation codemod in progress) |
-| v6.8.0  | Q1 2027            | Validation budget, top-N analytics, circuit-breaker          |
+| v6.7.0  | shipped 2026-06-23 | OpenAPI-first validation + Hangfire integration              |
+| v6.8.0  | shipped 2026-06-29 | FluentValidation migration codemod (`dotnet orionguard migrate`) |
+| v6.9.0  | Q1 2027            | Validation budget, top-N analytics, circuit-breaker          |
 | v7.0.0  | Q2 2027            | API freeze, remove deprecated paths, docs site               |
 
 Dates are targets, not commitments. If a milestone slips by more than four weeks, the delay

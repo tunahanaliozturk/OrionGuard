@@ -1,0 +1,48 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>Moongazing.OrionGuard.Migration</RootNamespace>
+    <AssemblyName>Moongazing.OrionGuard.Migration</AssemblyName>
+
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>CS1591;NU1900;NU1901;NU1902;NU1903;NU1904</NoWarn>
+
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>orionguard</ToolCommandName>
+    <PackageId>OrionGuard.Migration</PackageId>
+    <Version>6.8.0</Version>
+    <Authors>Tunahan Ali Ozturk</Authors>
+    <Company>Tunahan Ali Ozturk</Company>
+    <Description>FluentValidation to OrionGuard migration codemod, packaged as a dotnet tool (dotnet orionguard migrate). Reads C# sources with Roslyn, finds AbstractValidator&lt;T&gt; classes, and rewrites their RuleFor chains onto the OrionGuard FluentStyleValidator compatibility surface. Reports anything it cannot safely migrate instead of guessing.</Description>
+    <PackageTags>guard;validation;fluentvalidation;migration;codemod;roslyn;dotnet-tool;cli</PackageTags>
+    <PackageReadmeFile>docs/README.md</PackageReadmeFile>
+    <PackageIcon>docs/logo.png</PackageIcon>
+    <RepositoryUrl>https://github.com/tunahanaliozturk/OrionGuard</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageProjectUrl>https://github.com/tunahanaliozturk/OrionGuard</PackageProjectUrl>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.8.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Moongazing.OrionGuard.Migration.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="docs\README.md" Pack="true" PackagePath="docs/" />
+    <None Include="docs\logo.png" Pack="true" PackagePath="docs/" />
+  </ItemGroup>
+
+</Project>

@@ -5,6 +5,32 @@ All notable changes to OrionGuard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.8.0] - 2026-06-29
+
+### Added
+
+#### `OrionGuard.Migration` — FluentValidation to OrionGuard migration codemod (R1)
+
+New tool package `OrionGuard.Migration` (PackageId `OrionGuard.Migration`), packaged as a dotnet tool (`PackAsTool`, command `orionguard`). It ships the long-planned R1 codemod: `dotnet orionguard migrate <path> [--report|--apply]` reads C# sources with Roslyn, finds classes deriving from `AbstractValidator<T>`, and rewrites their `RuleFor(...)` chains onto OrionGuard's `Moongazing.OrionGuard.Compatibility.FluentStyleValidator<T>` compatibility surface. The migration is additive: no existing OrionGuard package changed.
+
+- The codemod targets the compatibility builder shipped in the core `OrionGuard` package, so it is a class-header rewrite (`using FluentValidation;` to `using Moongazing.OrionGuard.Compatibility;`, base `AbstractValidator<T>` to `FluentStyleValidator<T>`) plus per-rule method rewrites. Because the emitted methods all exist on `FluentRuleBuilder<T, TProperty>`, the migrated output compiles against the real OrionGuard API; the test suite proves this by compiling and running a corpus of migrated validators.
+- **Rules covered (24):** `NotNull`, `NotEmpty`, `Equal`, `NotEqual`, `Length(min,max)`, `MinimumLength`, `MaximumLength`, `ExactLength` (rewritten to `Length(n, n)`), `Matches`, `EmailAddress`, `GreaterThan`, `GreaterThanOrEqualTo`, `LessThan`, `LessThanOrEqualTo`, `InclusiveBetween`, `ExclusiveBetween`, `Must(predicate)`, `WithMessage`, `WithErrorCode`, `When`, `Unless`.
+- **Reported, not migrated.** Anything with no safe one-to-one equivalent is left byte-for-byte untouched, annotated with a `// TODO: OrionGuard migration - <reason>` marker, and listed in the run summary (file, line, rule, reason): `Null`, `Empty`, `WithName` / `OverridePropertyName`, `Cascade`, `ScalePrecision` / `PrecisionScale`, `MustAsync`, `SetValidator`, `RuleForEach`, `Include`, `ChildRules`, `DependentRules`, `Custom`, unsupported overload shapes (for example `EmailAddress(mode)`, the `WithMessage(Func<T,string>)` factory, or a two-argument `Must`), and any unrecognised custom rule extension. A `RuleFor` chain is migrated all-or-nothing: if any rule in the chain is unsupported the whole chain is left untouched, so a rule is never silently dropped or partially translated.
+- **Modes and exit codes.** `--report` (alias `--dry-run`) prints a unified-style diff and the summary without writing; `--apply` writes the migrated files. A bare invocation defaults to `--report` so nothing is written by accident. `--include <glob>` filters the directory scan (default `*.cs`). Exit codes: `0` clean, `1` manual follow-up required, `2` usage error.
+- The only third-party dependency is `Microsoft.CodeAnalysis.CSharp` 4.8.0 (matching `OrionGuard.Generators`); the CLI parser is hand-rolled. Targets `net10.0`.
+
+### Tests
+
+- `RuleMapperTests`: every supported rule maps to its expected target method; `ExactLength` maps to `Length` with argument duplication; each known-unsupported rule is reported with a reason; unsupported overload arities (two-argument `Must`, `EmailAddress(mode)`) are reported rather than mistranslated.
+- `MigrationEngineTests`: the `using` directive and base type are rewritten; supported chains are preserved verbatim; `ExactLength(n)` becomes `Length(n, n)`; conditional `When`, custom `WithMessage`, and multiple `RuleFor` on different properties all migrate; an unsupported rule leaves the chain untouched with a TODO and a finding; a chain mixing supported and unsupported rules is left whole (no partial rewrite); a non-validator file is unchanged; re-running is idempotent and does not stack TODO markers.
+- `MigratedOutputCompilationTests`: a corpus of migrated validators is compiled against the real `OrionGuard` assembly (proving every emitted method exists), and one migrated validator is emitted, instantiated, and run to confirm it actually validates.
+- `MigrationRunnerTests`: `--report` writes nothing and prints a diff; `--apply` writes the migrated file; an unsupported construct yields exit code `1` in both modes (apply still writes the partial migration); a missing path yields exit code `2`; a directory scan migrates only matching files.
+- `CliParserTests` / `CliEntryPointTests`: argument parsing (mode flags, `--include`, help, mutually exclusive modes, unknown command/option, missing/duplicate path) and the console entry point's help and usage-error output.
+
+### Notes
+
+- This release ships only the new `OrionGuard.Migration` tool package at `6.8.0`. The existing OrionGuard packages are unchanged and remain at `6.7.0`.
+
 ## [6.7.0] - 2026-06-23
 
 ### Added
