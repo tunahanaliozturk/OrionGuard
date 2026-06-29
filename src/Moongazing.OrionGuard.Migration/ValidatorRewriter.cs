@@ -1,0 +1,578 @@
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Text;
+
+namespace Moongazing.OrionGuard.Migration;
+
+/// <summary>
+/// A Roslyn syntax rewriter that migrates FluentValidation validators to the OrionGuard
+/// compatibility surface. It rewrites the validator base type, swaps the FluentValidation
+/// <c>using</c> directive for the OrionGuard one, and rewrites each fully-supported
+/// <c>RuleFor(...)</c> chain. A chain that contains any rule with no safe equivalent is left
+/// byte-for-byte untouched, annotated with a TODO marker, and reported -- the codemod never
+/// rewrites a chain partially, because dropping or mistranslating a single rule would silently
+/// weaken validation.
+/// </summary>
+public sealed class ValidatorRewriter : CSharpSyntaxRewriter
+{
+    private const string FluentValidationBaseType = "AbstractValidator";
+    private const string OrionGuardBaseType = "FluentStyleValidator";
+    private const string FluentValidationNamespace = "FluentValidation";
+    private const string OrionGuardCompatibilityNamespace = "Moongazing.OrionGuard.Compatibility";
+
+    private readonly string _filePath;
+    private readonly SourceText _sourceText;
+    private readonly List<MigrationFinding> _findings = new();
+
+    // True when this file carries a file-level `using FluentValidation;` directive. Established
+    // before any class is visited so the bare (unqualified) AbstractValidator<T> base type is only
+    // treated as FluentValidation's when that import is actually in scope -- a bare base coming from
+    // some other library's AbstractValidator<T> with no FluentValidation import is left alone.
+    private bool _hasFluentValidationUsing;
+
+    // Nesting depth inside FluentValidation validator classes. RuleFor / RuleForEach / Include are
+    // only treated as FluentValidation constructs when we are inside such a class; an unrelated
+    // `.Include(...)` (for example an EF Core query) in some other code must not be reported.
+    private int _validatorDepth;
+
+    /// <summary>Initializes a new <see cref="ValidatorRewriter"/> for one source file.</summary>
+    /// <param name="filePath">Absolute path of the file, used in findings.</param>
+    /// <param name="sourceText">The file's source text, used to resolve line numbers.</param>
+    public ValidatorRewriter(string filePath, SourceText sourceText)
+    {
+        _filePath = filePath ?? throw new ArgumentNullException(nameof(filePath));
+        _sourceText = sourceText ?? throw new ArgumentNullException(nameof(sourceText));
+    }
+
+    /// <summary>Constructs that were left untouched and need manual follow-up.</summary>
+    public IReadOnlyList<MigrationFinding> Findings => _findings;
+
+    /// <summary>True when this file declares at least one FluentValidation validator.</summary>
+    public bool TouchedAnyValidator { get; private set; }
+
+    /// <inheritdoc />
+    public override SyntaxNode? VisitCompilationUnit(CompilationUnitSyntax node)
+    {
+        // Determine whether a file-level `using FluentValidation;` is in scope BEFORE descending into
+        // members, because base.VisitCompilationUnit visits (and swaps) the using directives first.
+        // The bare AbstractValidator<T> base type is only FluentValidation's when this import exists.
+        _hasFluentValidationUsing = HasFluentValidationUsing(node);
+
+        var visited = (CompilationUnitSyntax)base.VisitCompilationUnit(node)!;
+
+        // The renamed base type (FluentStyleValidator<T>) is always unqualified, so any file in which
+        // a validator was actually migrated must import the OrionGuard compatibility namespace to
+        // compile. Add that import here whenever a validator was migrated and the namespace is not
+        // already imported -- REGARDLESS of how the FluentValidation reference was detected.
+        //
+        // The decision is gated solely on whether the compatibility namespace is already in scope in
+        // the rewritten tree, never on whether a `using FluentValidation;` directive happened to be
+        // swapped. Swapping that directive already turns it into the compatibility using (so the guard
+        // below sees it and adds no duplicate), but a validator whose base was the fully-qualified
+        // `FluentValidation.AbstractValidator<T>` has no FV using to swap -- it still gets the import.
+        if (TouchedAnyValidator &&
+            !HasOrionGuardCompatibilityUsing(visited))
+        {
+            visited = AddOrionGuardCompatibilityUsing(visited);
+        }
+
+        return visited;
+    }
+
+    /// <inheritdoc />
+    public override SyntaxNode? VisitUsingDirective(UsingDirectiveSyntax node)
+    {
+        if (node.Name is not null &&
+            node.Name.ToString() == FluentValidationNamespace)
+        {
+            // Swap `using FluentValidation;` for the compatibility namespace. This is purely a
+            // convenience: VisitCompilationUnit adds the compatibility using whenever it is missing,
+            // so a migrated validator compiles whether or not this swap happened.
+            var replacement = SyntaxFactory.ParseName(OrionGuardCompatibilityNamespace)
+                .WithLeadingTrivia(node.Name.GetLeadingTrivia())
+                .WithTrailingTrivia(node.Name.GetTrailingTrivia());
+
+            return node.WithName(replacement);
+        }
+
+        return base.VisitUsingDirective(node);
+    }
+
+    private static bool HasFluentValidationUsing(CompilationUnitSyntax node)
+    {
+        foreach (var directive in node.Usings)
+        {
+            // A plain `using FluentValidation;` -- not a using-alias and not a static using -- is what
+            // brings the bare AbstractValidator<T> identifier into scope.
+            if (directive.Alias is null &&
+                directive.StaticKeyword.IsKind(SyntaxKind.None) &&
+                directive.Name is not null &&
+                directive.Name.ToString() == FluentValidationNamespace)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool HasOrionGuardCompatibilityUsing(CompilationUnitSyntax node)
+    {
+        foreach (var directive in node.Usings)
+        {
+            if (directive.Name is not null &&
+                directive.Name.ToString() == OrionGuardCompatibilityNamespace)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static CompilationUnitSyntax AddOrionGuardCompatibilityUsing(CompilationUnitSyntax node)
+    {
+        // Parse a fully-formed directive (keyword spacing, semicolon, trailing newline) rather than
+        // assembling tokens by hand, so the inserted line is always well formed regardless of how
+        // the source was laid out.
+        var directive = SyntaxFactory
+            .ParseCompilationUnit($"using {OrionGuardCompatibilityNamespace};\r\n")
+            .Usings[0];
+
+        return node.WithUsings(node.Usings.Insert(0, directive));
+    }
+
+    /// <inheritdoc />
+    public override SyntaxNode? VisitClassDeclaration(ClassDeclarationSyntax node)
+    {
+        var baseType = FindFluentValidationBase(node);
+        if (baseType is null)
+        {
+            // Not a FluentValidation validator; leave the class entirely alone.
+            return node;
+        }
+
+        TouchedAnyValidator = true;
+
+        // Rewrite the validator body first (RuleFor chains), then the base type. Visiting the
+        // members through base.Visit keeps trivia handling consistent with the rest of the tree.
+        // The depth marker makes RuleFor/RuleForEach/Include handling fire only for statements that
+        // are genuinely inside a FluentValidation validator, not arbitrary code elsewhere.
+        _validatorDepth++;
+        ClassDeclarationSyntax visited;
+        try
+        {
+            visited = (ClassDeclarationSyntax)base.VisitClassDeclaration(node)!;
+        }
+        finally
+        {
+            _validatorDepth--;
+        }
+
+        return RewriteBaseType(visited);
+    }
+
+    /// <inheritdoc />
+    public override SyntaxNode? VisitExpressionStatement(ExpressionStatementSyntax node)
+    {
+        // Only statements inside a FluentValidation validator class are migration candidates. Outside
+        // one, RuleForEach/Include/RuleFor are ordinary method calls (for example an EF Core
+        // `.Include(...)`) and must be left exactly as they are.
+        if (_validatorDepth == 0)
+        {
+            return base.VisitExpressionStatement(node);
+        }
+
+        if (node.Expression is not InvocationExpressionSyntax invocation)
+        {
+            return base.VisitExpressionStatement(node);
+        }
+
+        // RuleForEach(...) and Include(...) are validator-level constructs the codemod cannot
+        // safely translate. They must be REPORTED (TODO marker + summary finding) rather than
+        // silently skipped, so the user knows that part of the validator was not migrated.
+        if (TryGetUnsupportedAnchor(invocation, out var anchorName, out var anchorNode))
+        {
+            var finding = new MigrationFinding(
+                _filePath,
+                GetLine(anchorNode),
+                anchorName,
+                UnsupportedAnchorReason(anchorName));
+
+            _findings.Add(finding);
+            return AnnotateUnmigrated(node, finding);
+        }
+
+        // Only rewrite statements that are a RuleFor(...) chain. Everything else is preserved.
+        if (!TryGetRuleForChain(invocation, out var ruleCalls))
+        {
+            return base.VisitExpressionStatement(node);
+        }
+
+        var mappings = new List<(MemberCall Call, RuleMapping Mapping)>(ruleCalls.Count);
+        MigrationFinding? firstUnsupported = null;
+
+        foreach (var call in ruleCalls)
+        {
+            var mapping = RuleMapper.Map(call.MethodName, call.Arguments);
+            mappings.Add((call, mapping));
+
+            if (!mapping.IsSupported && firstUnsupported is null)
+            {
+                firstUnsupported = new MigrationFinding(
+                    _filePath,
+                    GetLine(call.NameNode),
+                    call.MethodName,
+                    mapping.UnsupportedReason!);
+            }
+        }
+
+        if (firstUnsupported is not null)
+        {
+            // All-or-nothing: record every unsupported rule in this chain and leave the statement
+            // untouched, prefixed with a single TODO marker describing the first blocker.
+            foreach (var (call, mapping) in mappings)
+            {
+                if (!mapping.IsSupported)
+                {
+                    _findings.Add(new MigrationFinding(
+                        _filePath,
+                        GetLine(call.NameNode),
+                        call.MethodName,
+                        mapping.UnsupportedReason!));
+                }
+            }
+
+            return AnnotateUnmigrated(node, firstUnsupported);
+        }
+
+        // Every rule in the chain is supported: rewrite each call onto its OrionGuard equivalent.
+        var rewritten = node;
+        foreach (var (call, mapping) in mappings)
+        {
+            rewritten = ApplyMapping(rewritten, call, mapping);
+        }
+
+        return rewritten;
+    }
+
+    private SimpleBaseTypeSyntax? FindFluentValidationBase(ClassDeclarationSyntax node)
+    {
+        if (node.BaseList is null)
+        {
+            return null;
+        }
+
+        foreach (var baseTypeSyntax in node.BaseList.Types)
+        {
+            if (baseTypeSyntax is SimpleBaseTypeSyntax simple &&
+                TryGetAbstractValidatorGeneric(simple.Type) is not null)
+            {
+                return simple;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Returns the FluentValidation <c>AbstractValidator&lt;T&gt;</c> generic node from a base type,
+    /// and only FluentValidation's. A fully qualified base is accepted only when its qualifier is
+    /// exactly <c>FluentValidation</c> (so <c>SomeOtherLib.AbstractValidator&lt;T&gt;</c> is rejected);
+    /// a bare <c>AbstractValidator&lt;T&gt;</c> is accepted only when this file has a
+    /// <c>using FluentValidation;</c> in scope. Returns null for any other base type.
+    /// </summary>
+    private GenericNameSyntax? TryGetAbstractValidatorGeneric(TypeSyntax type) => type switch
+    {
+        // Bare AbstractValidator<T> -- only FluentValidation's when that namespace is imported.
+        GenericNameSyntax g
+            when g.Identifier.Text == FluentValidationBaseType && _hasFluentValidationUsing => g,
+
+        // Fully qualified -- the qualifier must be exactly `FluentValidation`, not any X.
+        QualifiedNameSyntax { Left: IdentifierNameSyntax { Identifier.Text: FluentValidationNamespace }, Right: GenericNameSyntax g }
+            when g.Identifier.Text == FluentValidationBaseType => g,
+
+        _ => null,
+    };
+
+    private ClassDeclarationSyntax RewriteBaseType(ClassDeclarationSyntax node)
+    {
+        // Re-find the base inside the (possibly body-rewritten) node so we replace the live node.
+        var liveBase = FindFluentValidationBase(node);
+        if (liveBase is null)
+        {
+            return node;
+        }
+
+        var generic = TryGetAbstractValidatorGeneric(liveBase.Type);
+        if (generic is null)
+        {
+            return node;
+        }
+
+        // Emit the unqualified OrionGuard base type and replace the whole base-type node. Replacing
+        // the entire node (not just the identifier) collapses a qualified name such as
+        // FluentValidation.AbstractValidator<T> down to FluentStyleValidator<T>; the compatibility
+        // using added at the compilation-unit level keeps that unqualified name resolvable.
+        var renamed = generic
+            .WithIdentifier(SyntaxFactory.Identifier(OrionGuardBaseType))
+            .WithLeadingTrivia(liveBase.Type.GetLeadingTrivia())
+            .WithTrailingTrivia(liveBase.Type.GetTrailingTrivia());
+
+        return node.ReplaceNode(liveBase.Type, renamed);
+    }
+
+    private static ExpressionStatementSyntax ApplyMapping(
+        ExpressionStatementSyntax statement, MemberCall call, RuleMapping mapping)
+    {
+        // Locate the live invocation node by span so edits compose across the chain.
+        var liveInvocation = statement
+            .DescendantNodes()
+            .OfType<InvocationExpressionSyntax>()
+            .FirstOrDefault(i => i.Span == call.InvocationSpan);
+
+        if (liveInvocation is null ||
+            liveInvocation.Expression is not MemberAccessExpressionSyntax access)
+        {
+            return statement;
+        }
+
+        var newName = SyntaxFactory.IdentifierName(mapping.TargetMethod!)
+            .WithLeadingTrivia(access.Name.GetLeadingTrivia())
+            .WithTrailingTrivia(access.Name.GetTrailingTrivia());
+
+        var renamedAccess = access.WithName(newName);
+        var updatedInvocation = liveInvocation.WithExpression(renamedAccess);
+
+        if (mapping.ArgumentTransform == ArgumentTransform.DuplicateSingleArgument)
+        {
+            updatedInvocation = updatedInvocation.WithArgumentList(
+                DuplicateSingleArgument(updatedInvocation.ArgumentList));
+        }
+
+        return statement.ReplaceNode(liveInvocation, updatedInvocation);
+    }
+
+    private static ArgumentListSyntax DuplicateSingleArgument(ArgumentListSyntax list)
+    {
+        // ExactLength(n) becomes Length(n, n). Build the second argument from a FRESH clone of the
+        // first argument's expression rather than reusing the same node instance: a SeparatedList
+        // must not contain the same node object twice (which would be ill-formed for any non-trivial
+        // expression), so the duplicate is a structurally-equal but distinct expression node.
+        var first = list.Arguments[0].WithoutTrivia();
+        var clonedExpression = CloneExpression(first.Expression);
+
+        var second = SyntaxFactory
+            .Argument(clonedExpression)
+            .WithLeadingTrivia(SyntaxFactory.Space);
+
+        return list.WithArguments(
+            SyntaxFactory.SeparatedList(new[] { first, second }));
+    }
+
+    /// <summary>
+    /// Produces a distinct deep copy of an expression node by re-parsing its text. Used so the two
+    /// arguments of <c>Length(n, n)</c> are separate nodes even when <c>n</c> is a non-trivial
+    /// expression (for example <c>Length(MaxLen)</c> or <c>Length(2 + 2)</c>).
+    /// </summary>
+    private static ExpressionSyntax CloneExpression(ExpressionSyntax expression) =>
+        SyntaxFactory.ParseExpression(expression.WithoutTrivia().ToFullString());
+
+    private static ExpressionStatementSyntax AnnotateUnmigrated(
+        ExpressionStatementSyntax node, MigrationFinding finding)
+    {
+        var leading = node.GetLeadingTrivia();
+
+        // Avoid stacking duplicate markers if the file is migrated more than once.
+        if (leading.ToFullString().Contains("TODO: OrionGuard migration", StringComparison.Ordinal))
+        {
+            return node;
+        }
+
+        var indent = ExtractIndent(leading);
+        var comment = SyntaxFactory.Comment(
+            $"// TODO: OrionGuard migration - {finding.Rule}: {finding.Reason}");
+
+        var newLeading = leading
+            .Add(comment)
+            .Add(SyntaxFactory.CarriageReturnLineFeed)
+            .Add(SyntaxFactory.Whitespace(indent));
+
+        return node.WithLeadingTrivia(newLeading);
+    }
+
+    private static string ExtractIndent(SyntaxTriviaList leading)
+    {
+        for (var i = leading.Count - 1; i >= 0; i--)
+        {
+            if (leading[i].IsKind(SyntaxKind.WhitespaceTrivia))
+            {
+                return leading[i].ToString();
+            }
+
+            if (leading[i].IsKind(SyntaxKind.EndOfLineTrivia))
+            {
+                break;
+            }
+        }
+
+        return string.Empty;
+    }
+
+    /// <summary>
+    /// Walks an invocation chain from the outside in, confirming the innermost call is
+    /// <c>RuleFor(...)</c>. On success, returns the list of rule calls applied after RuleFor, in
+    /// source order (left to right).
+    /// </summary>
+    private static bool TryGetRuleForChain(
+        InvocationExpressionSyntax outer, out IReadOnlyList<MemberCall> ruleCalls)
+    {
+        var calls = new List<MemberCall>();
+        var current = outer;
+
+        while (true)
+        {
+            // The innermost RuleFor(...) call's callee is a bare identifier (RuleFor), or a
+            // member access (this.RuleFor / base.RuleFor). Detect the anchor in both shapes.
+            if (IsRuleForAnchor(current.Expression))
+            {
+                // Reached the anchor. The collected calls were gathered outside-in, so reverse
+                // them to restore source (left-to-right) order.
+                calls.Reverse();
+                ruleCalls = calls;
+                return calls.Count > 0;
+            }
+
+            if (current.Expression is not MemberAccessExpressionSyntax access)
+            {
+                ruleCalls = Array.Empty<MemberCall>();
+                return false;
+            }
+
+            calls.Add(new MemberCall(
+                access.Name.Identifier.Text,
+                access.Name,
+                current.ArgumentList,
+                current.Span));
+
+            if (access.Expression is InvocationExpressionSyntax inner)
+            {
+                current = inner;
+                continue;
+            }
+
+            ruleCalls = Array.Empty<MemberCall>();
+            return false;
+        }
+    }
+
+    private static bool IsRuleForAnchor(ExpressionSyntax callee) => callee switch
+    {
+        IdentifierNameSyntax { Identifier.Text: "RuleFor" } => true,
+        MemberAccessExpressionSyntax { Name.Identifier.Text: "RuleFor" } => true,
+        _ => false,
+    };
+
+    /// <summary>
+    /// Detects a validator-level construct that is recognised but deliberately not auto-migrated
+    /// (currently <c>RuleForEach</c> and <c>Include</c>). Walks to the innermost callee so a chain
+    /// such as <c>RuleForEach(x => x.Items).SetValidator(...)</c> is matched on its anchor.
+    /// </summary>
+    private static bool TryGetUnsupportedAnchor(
+        InvocationExpressionSyntax outer, out string anchorName, out SyntaxNode anchorNode)
+    {
+        var current = outer;
+
+        while (true)
+        {
+            // Only an anchor invoked the FluentValidation way -- as a bare identifier (implicit this)
+            // or on this/base -- counts. An anchor reached on some other receiver (for example an EF
+            // Core `query.Include(...)`) is NOT a FluentValidation construct and is left untouched.
+            if (TryGetValidatorAnchorName(current.Expression, out var name, out var nameNode) &&
+                IsUnsupportedAnchorName(name))
+            {
+                anchorName = name;
+                anchorNode = nameNode;
+                return true;
+            }
+
+            // Descend through a member-access chain (.Method(...).Method(...)) toward the anchor.
+            if (current.Expression is MemberAccessExpressionSyntax
+                {
+                    Expression: InvocationExpressionSyntax inner,
+                })
+            {
+                current = inner;
+                continue;
+            }
+
+            anchorName = string.Empty;
+            anchorNode = outer;
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Extracts the method name of a callee only when it is invoked in the FluentValidation idiom:
+    /// a bare identifier (implicit <c>this</c>), or an explicit <c>this.</c>/<c>base.</c> member
+    /// access. A member access on any other receiver (for example <c>query.Include</c>) returns
+    /// false, so unrelated calls are never mistaken for validator constructs.
+    /// </summary>
+    private static bool TryGetValidatorAnchorName(
+        ExpressionSyntax callee, out string name, out SyntaxNode nameNode)
+    {
+        switch (callee)
+        {
+            case IdentifierNameSyntax identifier:
+                name = identifier.Identifier.Text;
+                nameNode = identifier;
+                return true;
+            case MemberAccessExpressionSyntax { Expression: ThisExpressionSyntax or BaseExpressionSyntax } access:
+                name = access.Name.Identifier.Text;
+                nameNode = access.Name;
+                return true;
+            default:
+                name = string.Empty;
+                nameNode = callee;
+                return false;
+        }
+    }
+
+    private static bool IsUnsupportedAnchorName(string name) =>
+        name is "RuleForEach" or "Include";
+
+    private static string UnsupportedAnchorReason(string anchorName) => anchorName switch
+    {
+        "RuleForEach" => "RuleForEach(...) collection rules are not auto-migrated",
+        "Include" => "Include(...) of another validator is not auto-migrated",
+        _ => $"{anchorName}(...) is not auto-migrated",
+    };
+
+    private int GetLine(SyntaxNode node) =>
+        _sourceText.Lines.GetLinePosition(node.SpanStart).Line + 1;
+
+    /// <summary>One <c>.Method(args)</c> call captured from a RuleFor chain.</summary>
+    private readonly struct MemberCall
+    {
+        public MemberCall(
+            string methodName,
+            SimpleNameSyntax nameNode,
+            ArgumentListSyntax arguments,
+            TextSpan invocationSpan)
+        {
+            MethodName = methodName;
+            NameNode = nameNode;
+            Arguments = arguments;
+            InvocationSpan = invocationSpan;
+        }
+
+        public string MethodName { get; }
+
+        public SimpleNameSyntax NameNode { get; }
+
+        public ArgumentListSyntax Arguments { get; }
+
+        public TextSpan InvocationSpan { get; }
+    }
+}
