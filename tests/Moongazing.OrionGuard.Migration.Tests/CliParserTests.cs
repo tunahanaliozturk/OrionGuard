@@ -77,6 +77,21 @@ public sealed class CliParserTests
         Assert.NotNull(result.Error);
     }
 
+    [Theory]
+    [InlineData("-foo")]
+    [InlineData("--apply")]
+    [InlineData("--report")]
+    public void Parse_IncludeWithOptionLikeValue_IsError(string value)
+    {
+        // A value starting with '-' is almost certainly a forgotten glob, not a file pattern. It must
+        // be rejected with a clear error rather than silently treated as a glob that matches nothing.
+        var result = CliParser.Parse(new[] { "migrate", "./src", "--include", value });
+
+        Assert.Null(result.Options);
+        Assert.NotNull(result.Error);
+        Assert.Contains("--include", result.Error, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void Parse_UnknownOption_IsError()
     {

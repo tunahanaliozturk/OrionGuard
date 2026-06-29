@@ -7,7 +7,8 @@ OrionGuard. It reads your C# sources with Roslyn, finds classes deriving from
 
 The tool is deliberately conservative. Anything it cannot translate safely is left exactly as it
 was, marked with a `// TODO: OrionGuard migration - ...` comment, and listed in a final report. It
-never guesses, so it never produces code that fails to compile or silently weakens validation.
+never guesses: the supported, verified rules are rewritten to compiling OrionGuard code, and
+everything else is reported and left untouched rather than mistranslated.
 
 ## Install
 
@@ -27,8 +28,8 @@ dotnet orionguard migrate ./src --apply
 # Migrate a single file.
 dotnet orionguard migrate ./src/Validators/CreateUserValidator.cs --report
 
-# Restrict the directory scan to a glob.
-dotnet orionguard migrate ./src --apply --include *Validator.cs
+# Restrict the directory scan to a glob (quote it so the shell does not expand it).
+dotnet orionguard migrate ./src --apply --include "*Validator.cs"
 ```
 
 If neither `--report` nor `--apply` is given the tool defaults to `--report`, so a bare invocation
@@ -44,6 +45,14 @@ For every FluentValidation validator it finds, the tool:
 
 A `RuleFor` chain is rewritten all-or-nothing: if any rule in the chain has no safe equivalent the
 whole chain is left untouched and reported, because partially rewriting a chain could drop a rule.
+
+A class is recognised as a FluentValidation validator only when it derives from
+`FluentValidation.AbstractValidator<T>` (fully qualified) or from a bare `AbstractValidator<T>` in a
+file that has a `using FluentValidation;` directive. A bare `AbstractValidator<T>` with no such using
+is left untouched, so a type deriving from a different library's `AbstractValidator<T>` is never
+migrated. For the same reason, `RuleForEach(...)` and `Include(...)` are only reported when they
+appear inside a recognised validator and are invoked the FluentValidation way (as a bare call or on
+`this`/`base`); an unrelated `.Include(...)` such as an EF Core query is left alone.
 
 ## Rules covered
 

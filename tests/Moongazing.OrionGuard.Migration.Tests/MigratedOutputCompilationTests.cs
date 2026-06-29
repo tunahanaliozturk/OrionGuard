@@ -126,13 +126,13 @@ public sealed class MigratedOutputCompilationTests
     }
 
     [Fact]
-    public void MigratedValidator_WithGlobalUsing_AddsCompatibilityUsingAndCompiles()
+    public void BareAbstractValidator_WithNoFluentValidationUsing_IsLeftUntouched()
     {
-        // FluentValidation is imported elsewhere (a global using), so this file carries no
-        // `using FluentValidation;` directive to swap. The base type AbstractValidator<Model> is
-        // therefore unqualified, yet the rewriter must still add the compatibility using so the
-        // renamed base resolves. The migrated file is self-contained once that using is present, so
-        // it compiles on its own without the original FluentValidation reference.
+        // A bare AbstractValidator<Model> with NO file-level `using FluentValidation;` cannot be
+        // proven to be FluentValidation's: the base could come from any library's AbstractValidator<T>
+        // brought in by a different using, and the codemod sees only this file. The conservative,
+        // correct behaviour is to leave the file untouched rather than migrate a type that may not be
+        // a FluentValidation validator at all.
         const string validator =
             """
             namespace Sample
@@ -149,12 +149,9 @@ public sealed class MigratedOutputCompilationTests
 
         var migrated = MigrationEngine.Migrate("/repo/GlobalUsingValidator.cs", validator);
 
-        Assert.Contains(
-            "using Moongazing.OrionGuard.Compatibility;",
-            migrated.MigratedText,
-            StringComparison.Ordinal);
+        Assert.False(migrated.HasChanges);
         Assert.False(migrated.HasUnmigrated);
-        AssertCompiles(migrated.MigratedText);
+        Assert.Equal(validator, migrated.MigratedText);
     }
 
     [Fact]

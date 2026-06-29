@@ -40,7 +40,7 @@ internal static class MigrationCli
         EXAMPLES:
           dotnet orionguard migrate ./src --report
           dotnet orionguard migrate ./src/MyValidator.cs --apply
-          dotnet orionguard migrate ./src --apply --include *Validator.cs
+          dotnet orionguard migrate ./src --apply --include "*Validator.cs"
 
         ARGUMENTS:
           <path>            A directory to scan recursively, or a single .cs file.

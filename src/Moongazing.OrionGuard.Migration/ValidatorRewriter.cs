@@ -26,6 +26,17 @@ public sealed class ValidatorRewriter : CSharpSyntaxRewriter
     private readonly List<MigrationFinding> _findings = new();
     private bool _swappedFluentValidationUsing;
 
+    // True when this file carries a file-level `using FluentValidation;` directive. Established
+    // before any class is visited so the bare (unqualified) AbstractValidator<T> base type is only
+    // treated as FluentValidation's when that import is actually in scope -- a bare base coming from
+    // some other library's AbstractValidator<T> with no FluentValidation import is left alone.
+    private bool _hasFluentValidationUsing;
+
+    // Nesting depth inside FluentValidation validator classes. RuleFor / RuleForEach / Include are
+    // only treated as FluentValidation constructs when we are inside such a class; an unrelated
+    // `.Include(...)` (for example an EF Core query) in some other code must not be reported.
+    private int _validatorDepth;
+
     /// <summary>Initializes a new <see cref="ValidatorRewriter"/> for one source file.</summary>
     /// <param name="filePath">Absolute path of the file, used in findings.</param>
     /// <param name="sourceText">The file's source text, used to resolve line numbers.</param>
@@ -44,6 +55,11 @@ public sealed class ValidatorRewriter : CSharpSyntaxRewriter
     /// <inheritdoc />
     public override SyntaxNode? VisitCompilationUnit(CompilationUnitSyntax node)
     {
+        // Determine whether a file-level `using FluentValidation;` is in scope BEFORE descending into
+        // members, because base.VisitCompilationUnit visits (and swaps) the using directives first.
+        // The bare AbstractValidator<T> base type is only FluentValidation's when this import exists.
+        _hasFluentValidationUsing = HasFluentValidationUsing(node);
+
         var visited = (CompilationUnitSyntax)base.VisitCompilationUnit(node)!;
 
         // The renamed base type (FluentStyleValidator<T>) is unqualified, so the migrated file must
@@ -77,6 +93,24 @@ public sealed class ValidatorRewriter : CSharpSyntaxRewriter
         }
 
         return base.VisitUsingDirective(node);
+    }
+
+    private static bool HasFluentValidationUsing(CompilationUnitSyntax node)
+    {
+        foreach (var directive in node.Usings)
+        {
+            // A plain `using FluentValidation;` -- not a using-alias and not a static using -- is what
+            // brings the bare AbstractValidator<T> identifier into scope.
+            if (directive.Alias is null &&
+                directive.StaticKeyword.IsKind(SyntaxKind.None) &&
+                directive.Name is not null &&
+                directive.Name.ToString() == FluentValidationNamespace)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool HasOrionGuardCompatibilityUsing(CompilationUnitSyntax node)
@@ -119,7 +153,18 @@ public sealed class ValidatorRewriter : CSharpSyntaxRewriter
 
         // Rewrite the validator body first (RuleFor chains), then the base type. Visiting the
         // members through base.Visit keeps trivia handling consistent with the rest of the tree.
-        var visited = (ClassDeclarationSyntax)base.VisitClassDeclaration(node)!;
+        // The depth marker makes RuleFor/RuleForEach/Include handling fire only for statements that
+        // are genuinely inside a FluentValidation validator, not arbitrary code elsewhere.
+        _validatorDepth++;
+        ClassDeclarationSyntax visited;
+        try
+        {
+            visited = (ClassDeclarationSyntax)base.VisitClassDeclaration(node)!;
+        }
+        finally
+        {
+            _validatorDepth--;
+        }
 
         return RewriteBaseType(visited);
     }
@@ -127,6 +172,14 @@ public sealed class ValidatorRewriter : CSharpSyntaxRewriter
     /// <inheritdoc />
     public override SyntaxNode? VisitExpressionStatement(ExpressionStatementSyntax node)
     {
+        // Only statements inside a FluentValidation validator class are migration candidates. Outside
+        // one, RuleForEach/Include/RuleFor are ordinary method calls (for example an EF Core
+        // `.Include(...)`) and must be left exactly as they are.
+        if (_validatorDepth == 0)
+        {
+            return base.VisitExpressionStatement(node);
+        }
+
         if (node.Expression is not InvocationExpressionSyntax invocation)
         {
             return base.VisitExpressionStatement(node);
@@ -200,7 +253,7 @@ public sealed class ValidatorRewriter : CSharpSyntaxRewriter
         return rewritten;
     }
 
-    private static SimpleBaseTypeSyntax? FindFluentValidationBase(ClassDeclarationSyntax node)
+    private SimpleBaseTypeSyntax? FindFluentValidationBase(ClassDeclarationSyntax node)
     {
         if (node.BaseList is null)
         {
@@ -220,19 +273,26 @@ public sealed class ValidatorRewriter : CSharpSyntaxRewriter
     }
 
     /// <summary>
-    /// Returns the <c>AbstractValidator&lt;T&gt;</c> generic node from a base type, whether it is
-    /// written bare (<c>AbstractValidator&lt;T&gt;</c>) or fully qualified
-    /// (<c>FluentValidation.AbstractValidator&lt;T&gt;</c>). Returns null for any other base type.
+    /// Returns the FluentValidation <c>AbstractValidator&lt;T&gt;</c> generic node from a base type,
+    /// and only FluentValidation's. A fully qualified base is accepted only when its qualifier is
+    /// exactly <c>FluentValidation</c> (so <c>SomeOtherLib.AbstractValidator&lt;T&gt;</c> is rejected);
+    /// a bare <c>AbstractValidator&lt;T&gt;</c> is accepted only when this file has a
+    /// <c>using FluentValidation;</c> in scope. Returns null for any other base type.
     /// </summary>
-    private static GenericNameSyntax? TryGetAbstractValidatorGeneric(TypeSyntax type) => type switch
+    private GenericNameSyntax? TryGetAbstractValidatorGeneric(TypeSyntax type) => type switch
     {
-        GenericNameSyntax g when g.Identifier.Text == FluentValidationBaseType => g,
-        QualifiedNameSyntax { Right: GenericNameSyntax g }
+        // Bare AbstractValidator<T> -- only FluentValidation's when that namespace is imported.
+        GenericNameSyntax g
+            when g.Identifier.Text == FluentValidationBaseType && _hasFluentValidationUsing => g,
+
+        // Fully qualified -- the qualifier must be exactly `FluentValidation`, not any X.
+        QualifiedNameSyntax { Left: IdentifierNameSyntax { Identifier.Text: FluentValidationNamespace }, Right: GenericNameSyntax g }
             when g.Identifier.Text == FluentValidationBaseType => g,
+
         _ => null,
     };
 
-    private static ClassDeclarationSyntax RewriteBaseType(ClassDeclarationSyntax node)
+    private ClassDeclarationSyntax RewriteBaseType(ClassDeclarationSyntax node)
     {
         // Re-find the base inside the (possibly body-rewritten) node so we replace the live node.
         var liveBase = FindFluentValidationBase(node);
@@ -292,12 +352,28 @@ public sealed class ValidatorRewriter : CSharpSyntaxRewriter
 
     private static ArgumentListSyntax DuplicateSingleArgument(ArgumentListSyntax list)
     {
-        var single = list.Arguments[0].WithoutTrivia();
-        var secondArgument = single.WithLeadingTrivia(SyntaxFactory.Space);
+        // ExactLength(n) becomes Length(n, n). Build the second argument from a FRESH clone of the
+        // first argument's expression rather than reusing the same node instance: a SeparatedList
+        // must not contain the same node object twice (which would be ill-formed for any non-trivial
+        // expression), so the duplicate is a structurally-equal but distinct expression node.
+        var first = list.Arguments[0].WithoutTrivia();
+        var clonedExpression = CloneExpression(first.Expression);
+
+        var second = SyntaxFactory
+            .Argument(clonedExpression)
+            .WithLeadingTrivia(SyntaxFactory.Space);
 
         return list.WithArguments(
-            SyntaxFactory.SeparatedList(new[] { single, secondArgument }));
+            SyntaxFactory.SeparatedList(new[] { first, second }));
     }
+
+    /// <summary>
+    /// Produces a distinct deep copy of an expression node by re-parsing its text. Used so the two
+    /// arguments of <c>Length(n, n)</c> are separate nodes even when <c>n</c> is a non-trivial
+    /// expression (for example <c>Length(MaxLen)</c> or <c>Length(2 + 2)</c>).
+    /// </summary>
+    private static ExpressionSyntax CloneExpression(ExpressionSyntax expression) =>
+        SyntaxFactory.ParseExpression(expression.WithoutTrivia().ToFullString());
 
     private static ExpressionStatementSyntax AnnotateUnmigrated(
         ExpressionStatementSyntax node, MigrationFinding finding)
@@ -406,7 +482,10 @@ public sealed class ValidatorRewriter : CSharpSyntaxRewriter
 
         while (true)
         {
-            if (TryGetCalleeName(current.Expression, out var name, out var nameNode) &&
+            // Only an anchor invoked the FluentValidation way -- as a bare identifier (implicit this)
+            // or on this/base -- counts. An anchor reached on some other receiver (for example an EF
+            // Core `query.Include(...)`) is NOT a FluentValidation construct and is left untouched.
+            if (TryGetValidatorAnchorName(current.Expression, out var name, out var nameNode) &&
                 IsUnsupportedAnchorName(name))
             {
                 anchorName = name;
@@ -430,7 +509,13 @@ public sealed class ValidatorRewriter : CSharpSyntaxRewriter
         }
     }
 
-    private static bool TryGetCalleeName(
+    /// <summary>
+    /// Extracts the method name of a callee only when it is invoked in the FluentValidation idiom:
+    /// a bare identifier (implicit <c>this</c>), or an explicit <c>this.</c>/<c>base.</c> member
+    /// access. A member access on any other receiver (for example <c>query.Include</c>) returns
+    /// false, so unrelated calls are never mistaken for validator constructs.
+    /// </summary>
+    private static bool TryGetValidatorAnchorName(
         ExpressionSyntax callee, out string name, out SyntaxNode nameNode)
     {
         switch (callee)
@@ -439,7 +524,7 @@ public sealed class ValidatorRewriter : CSharpSyntaxRewriter
                 name = identifier.Identifier.Text;
                 nameNode = identifier;
                 return true;
-            case MemberAccessExpressionSyntax access:
+            case MemberAccessExpressionSyntax { Expression: ThisExpressionSyntax or BaseExpressionSyntax } access:
                 name = access.Name.Identifier.Text;
                 nameNode = access.Name;
                 return true;

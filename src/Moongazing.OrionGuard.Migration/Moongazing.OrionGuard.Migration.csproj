@@ -14,7 +14,14 @@
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <NoWarn>CS1591;NU1900;NU1901;NU1902;NU1903;NU1904</NoWarn>
+    <!--
+      CS1591: documentation comments are required on public APIs but not on the implicit Program
+      entry point. NU1900 is kept only for the private-feed-unreachable case (a transient restore
+      read failure), NOT to silence vulnerability severities: NU1901-NU1904 (low/moderate/high/
+      critical advisories) are deliberately NOT suppressed so a vulnerable transitive package fails
+      the build instead of shipping silently.
+    -->
+    <NoWarn>CS1591;NU1900</NoWarn>
 
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>orionguard</ToolCommandName>

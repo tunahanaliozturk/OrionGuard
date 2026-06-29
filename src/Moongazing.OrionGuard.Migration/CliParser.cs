@@ -88,7 +88,20 @@ public static class CliParser
                         return CliParseResult.Fail("--include requires a glob value, for example --include *.cs.");
                     }
 
-                    includeGlob = args[++i];
+                    var includeValue = args[i + 1];
+
+                    // A value that looks like an option (starts with '-') is almost certainly a
+                    // forgotten glob, not a file pattern. Reject it with a clear message instead of
+                    // silently treating "--apply" or "-foo" as a glob that matches nothing.
+                    if (includeValue.StartsWith('-'))
+                    {
+                        return CliParseResult.Fail(
+                            $"--include requires a glob value, but got '{includeValue}', which looks like an option. " +
+                            "Pass a file-name glob such as --include *Validator.cs.");
+                    }
+
+                    includeGlob = includeValue;
+                    i++;
                     break;
 
                 default:

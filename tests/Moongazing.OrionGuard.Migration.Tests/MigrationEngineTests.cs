@@ -228,6 +228,129 @@ public sealed class MigrationEngineTests
     }
 
     [Fact]
+    public void Migrate_TypeDerivingFromNonFluentValidationAbstractValidator_IsNotMigrated()
+    {
+        // A bare AbstractValidator<T> that is NOT FluentValidation's: the file imports a different
+        // library, and there is no `using FluentValidation;`. The codemod must leave it untouched
+        // rather than rewrite an unrelated base type (the over-broad-matching regression).
+        const string source =
+            """
+            using SomeOtherLib;
+
+            namespace Sample;
+
+            public class SampleValidator : AbstractValidator<Model>
+            {
+                public SampleValidator()
+                {
+                    RuleFor(x => x.Name).NotEmpty();
+                }
+            }
+            """;
+
+        var result = MigrationEngine.Migrate(Path, source);
+
+        Assert.False(result.HasChanges);
+        Assert.False(result.HasUnmigrated);
+        Assert.Equal(source, result.MigratedText);
+    }
+
+    [Fact]
+    public void Migrate_FullyQualifiedNonFluentValidationAbstractValidator_IsNotMigrated()
+    {
+        // A fully qualified base whose qualifier is NOT FluentValidation must not match.
+        const string source =
+            """
+            namespace Sample;
+
+            public class SampleValidator : SomeOtherLib.AbstractValidator<Model>
+            {
+                public SampleValidator()
+                {
+                    RuleFor(x => x.Name).NotEmpty();
+                }
+            }
+            """;
+
+        var result = MigrationEngine.Migrate(Path, source);
+
+        Assert.False(result.HasChanges);
+        Assert.Equal(source, result.MigratedText);
+    }
+
+    [Fact]
+    public void Migrate_UnrelatedIncludeCall_IsNotReportedAsFluentValidationConstruct()
+    {
+        // An EF-Core-style `.Include(...)` inside a genuine validator (for example in a Must body)
+        // is a member access on another receiver, not a FluentValidation Include(...). It must NOT
+        // be reported (the Include over-reporting regression).
+        const string source =
+            """
+            using FluentValidation;
+
+            namespace Sample;
+
+            public class SampleValidator : AbstractValidator<Model>
+            {
+                public SampleValidator()
+                {
+                    var query = GetQuery();
+                    query.Include(x => x.Orders).ToList();
+                    RuleFor(x => x.Name).NotEmpty();
+                }
+
+                private static System.Linq.IQueryable<Model> GetQuery() => null!;
+            }
+            """;
+
+        var result = MigrationEngine.Migrate(Path, source);
+
+        // The supported RuleFor chain still migrates, but the .Include(...) is left alone and unreported.
+        Assert.False(result.HasUnmigrated);
+        Assert.Contains("query.Include(x => x.Orders).ToList();", result.MigratedText, StringComparison.Ordinal);
+        Assert.DoesNotContain("TODO: OrionGuard migration", result.MigratedText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Migrate_IncludeOutsideValidator_IsNotReported()
+    {
+        // A bare Include(...) in an ordinary (non-validator) class must never be reported.
+        const string source =
+            """
+            namespace Sample;
+
+            public class Repository
+            {
+                public void Load()
+                {
+                    Include(new object());
+                }
+
+                private static void Include(object o) { }
+            }
+            """;
+
+        var result = MigrationEngine.Migrate(Path, source);
+
+        Assert.False(result.HasChanges);
+        Assert.False(result.HasUnmigrated);
+        Assert.Equal(source, result.MigratedText);
+    }
+
+    [Fact]
+    public void Migrate_ExactLengthWithNonTrivialArgument_DuplicatesExpressionCorrectly()
+    {
+        // ExactLength(expr) -> Length(expr, expr) must clone the WHOLE argument expression, not just
+        // a trivial literal, into a fresh node for the second argument.
+        var result = MigrationEngine.Migrate(
+            Path, Wrap("        RuleFor(x => x.Code).ExactLength(MaxLength + 1);"));
+
+        Assert.Contains("Length(MaxLength + 1, MaxLength + 1)", result.MigratedText, StringComparison.Ordinal);
+        Assert.DoesNotContain("ExactLength", result.MigratedText, StringComparison.Ordinal);
+        Assert.False(result.HasUnmigrated);
+    }
+
+    [Fact]
     public void Migrate_IsIdempotent_DoesNotStackTodoMarkers()
     {
         var first = MigrationEngine.Migrate(

@@ -48,12 +48,13 @@ public sealed class MigrationRunner
 
         var apply = options.Mode == MigrationMode.Apply;
         var changedFiles = 0;
+        var hadWriteFailure = false;
         var allFindings = new List<MigrationFinding>();
 
         foreach (var file in files)
         {
-            var original = _fileSystem.ReadAllText(file);
-            var result = MigrationEngine.Migrate(file, original);
+            var content = _fileSystem.ReadFile(file);
+            var result = MigrationEngine.Migrate(file, content.Text);
 
             allFindings.AddRange(result.Findings);
 
@@ -68,8 +69,24 @@ public sealed class MigrationRunner
 
                 if (apply)
                 {
-                    _fileSystem.WriteAllText(file, result.MigratedText);
-                    _output.WriteLine($"migrated: {file}");
+                    // Preserve the file's original encoding (BOM presence/absence) on write, and let
+                    // a per-file I/O failure surface for this file without aborting the whole run or
+                    // corrupting the source (writes are atomic in PhysicalFileSystem).
+                    try
+                    {
+                        _fileSystem.WriteFile(file, result.MigratedText, content.Encoding);
+                        _output.WriteLine($"migrated: {file}");
+                    }
+                    catch (IOException ex)
+                    {
+                        hadWriteFailure = true;
+                        _output.WriteLine($"failed to write: {file} ({ex.Message})");
+                    }
+                    catch (UnauthorizedAccessException ex)
+                    {
+                        hadWriteFailure = true;
+                        _output.WriteLine($"failed to write: {file} ({ex.Message})");
+                    }
                 }
                 else
                 {
@@ -86,7 +103,9 @@ public sealed class MigrationRunner
 
         WriteSummary(apply, files.Count, changedFiles, allFindings);
 
-        return allFindings.Count > 0
+        // A write failure needs the user's attention just like an unmigrated construct does, so it
+        // also yields the manual-follow-up exit code rather than a clean success.
+        return allFindings.Count > 0 || hadWriteFailure
             ? MigrationExitCode.ManualFollowUpRequired
             : MigrationExitCode.Success;
     }
