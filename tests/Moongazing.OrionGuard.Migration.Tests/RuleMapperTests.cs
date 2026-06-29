@@ -29,13 +29,11 @@ public sealed class RuleMapperTests
     [InlineData("LessThanOrEqualTo", 1, "LessThanOrEqualTo")]
     [InlineData("InclusiveBetween", 2, "InclusiveBetween")]
     [InlineData("ExclusiveBetween", 2, "ExclusiveBetween")]
-    [InlineData("Must", 1, "Must")]
     [InlineData("WithMessage", 1, "WithMessage")]
     [InlineData("WithErrorCode", 1, "WithErrorCode")]
-    [InlineData("When", 1, "When")]
-    [InlineData("Unless", 1, "Unless")]
     public void Map_SupportedRule_ReturnsTargetMethod(string rule, int argCount, string expectedTarget)
     {
+        // Non-lambda constant arguments exercise the value-shaped overloads these rules support.
         var args = Args(Enumerable.Repeat("0", argCount).ToArray());
 
         var mapping = RuleMapper.Map(rule, args);
@@ -91,6 +89,87 @@ public sealed class RuleMapperTests
     public void Map_EmailAddressWithMode_IsReported()
     {
         var mapping = RuleMapper.Map("EmailAddress", Args("EmailValidationMode.Net4xRegex"));
+
+        Assert.False(mapping.IsSupported);
+    }
+
+    [Theory]
+    [InlineData("GreaterThan")]
+    [InlineData("GreaterThanOrEqualTo")]
+    [InlineData("LessThan")]
+    [InlineData("LessThanOrEqualTo")]
+    [InlineData("Equal")]
+    [InlineData("NotEqual")]
+    public void Map_ComparisonRuleWithMemberLambdaOverload_IsReportedNotMistranslated(string rule)
+    {
+        // Same arity as the supported constant-value overload, but the single argument is a lambda
+        // (member comparison). The compatibility builder has no equivalent, so it must be reported.
+        var mapping = RuleMapper.Map(rule, Args("x => x.Other"));
+
+        Assert.False(mapping.IsSupported);
+        Assert.Null(mapping.TargetMethod);
+        Assert.False(string.IsNullOrWhiteSpace(mapping.UnsupportedReason));
+    }
+
+    [Theory]
+    [InlineData("GreaterThan", "10")]
+    [InlineData("LessThan", "100")]
+    [InlineData("Equal", "\"TR\"")]
+    [InlineData("NotEqual", "\"admin\"")]
+    public void Map_ComparisonRuleWithConstantValue_IsSupported(string rule, string value)
+    {
+        var mapping = RuleMapper.Map(rule, Args(value));
+
+        Assert.True(mapping.IsSupported);
+        Assert.Equal(rule, mapping.TargetMethod);
+    }
+
+    [Fact]
+    public void Map_WithMessageFactoryLambdaOverload_IsReported()
+    {
+        // WithMessage(x => $"...") is the message-factory overload; only the constant-string form
+        // maps onto the compatibility builder.
+        var mapping = RuleMapper.Map("WithMessage", Args("x => \"bad\""));
+
+        Assert.False(mapping.IsSupported);
+        Assert.Contains("WithMessage", mapping.UnsupportedReason, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Map_WithMessageConstantString_IsSupported()
+    {
+        var mapping = RuleMapper.Map("WithMessage", Args("\"required\""));
+
+        Assert.True(mapping.IsSupported);
+        Assert.Equal("WithMessage", mapping.TargetMethod);
+    }
+
+    [Theory]
+    [InlineData("When")]
+    [InlineData("Unless")]
+    public void Map_ConditionWithPredicateLambda_IsSupported(string rule)
+    {
+        var mapping = RuleMapper.Map(rule, Args("x => x.Age > 0"));
+
+        Assert.True(mapping.IsSupported);
+        Assert.Equal(rule, mapping.TargetMethod);
+    }
+
+    [Fact]
+    public void Map_MustWithPredicateLambda_IsSupported()
+    {
+        var mapping = RuleMapper.Map("Must", Args("x => x > 0"));
+
+        Assert.True(mapping.IsSupported);
+        Assert.Equal("Must", mapping.TargetMethod);
+    }
+
+    [Fact]
+    public void Map_MustWithNonLambdaSingleArgument_IsReported()
+    {
+        // A method-group Must(SomePredicate) is single-argument but not a lambda; the builder takes
+        // a Func predicate expressed as a lambda, so a non-lambda single argument is reported.
+        var mapping = RuleMapper.Map("Must", Args("ExistingPredicate"));
 
         Assert.False(mapping.IsSupported);
     }

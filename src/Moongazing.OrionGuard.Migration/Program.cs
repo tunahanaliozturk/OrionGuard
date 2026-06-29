@@ -32,10 +32,15 @@ internal static class MigrationCli
 
     private const string HelpText =
         """
-        orionguard - FluentValidation to OrionGuard migration codemod
+        dotnet orionguard - FluentValidation to OrionGuard migration codemod
 
         USAGE:
           dotnet orionguard migrate <path> [--report | --apply] [--include <glob>]
+
+        EXAMPLES:
+          dotnet orionguard migrate ./src --report
+          dotnet orionguard migrate ./src/MyValidator.cs --apply
+          dotnet orionguard migrate ./src --apply --include *Validator.cs
 
         ARGUMENTS:
           <path>            A directory to scan recursively, or a single .cs file.

@@ -24,6 +24,7 @@ public sealed class ValidatorRewriter : CSharpSyntaxRewriter
     private readonly string _filePath;
     private readonly SourceText _sourceText;
     private readonly List<MigrationFinding> _findings = new();
+    private bool _swappedFluentValidationUsing;
 
     /// <summary>Initializes a new <see cref="ValidatorRewriter"/> for one source file.</summary>
     /// <param name="filePath">Absolute path of the file, used in findings.</param>
@@ -41,11 +42,33 @@ public sealed class ValidatorRewriter : CSharpSyntaxRewriter
     public bool TouchedAnyValidator { get; private set; }
 
     /// <inheritdoc />
+    public override SyntaxNode? VisitCompilationUnit(CompilationUnitSyntax node)
+    {
+        var visited = (CompilationUnitSyntax)base.VisitCompilationUnit(node)!;
+
+        // The renamed base type (FluentStyleValidator<T>) is unqualified, so the migrated file must
+        // import the OrionGuard compatibility namespace to compile. Normally that import is produced
+        // by swapping the file's `using FluentValidation;` directive. When the source had no such
+        // directive (the base type was fully qualified, or the import was global/implicit), nothing
+        // was swapped -- so add the using here to keep the output compilable.
+        if (TouchedAnyValidator &&
+            !_swappedFluentValidationUsing &&
+            !HasOrionGuardCompatibilityUsing(visited))
+        {
+            visited = AddOrionGuardCompatibilityUsing(visited);
+        }
+
+        return visited;
+    }
+
+    /// <inheritdoc />
     public override SyntaxNode? VisitUsingDirective(UsingDirectiveSyntax node)
     {
         if (node.Name is not null &&
             node.Name.ToString() == FluentValidationNamespace)
         {
+            _swappedFluentValidationUsing = true;
+
             var replacement = SyntaxFactory.ParseName(OrionGuardCompatibilityNamespace)
                 .WithLeadingTrivia(node.Name.GetLeadingTrivia())
                 .WithTrailingTrivia(node.Name.GetTrailingTrivia());
@@ -54,6 +77,32 @@ public sealed class ValidatorRewriter : CSharpSyntaxRewriter
         }
 
         return base.VisitUsingDirective(node);
+    }
+
+    private static bool HasOrionGuardCompatibilityUsing(CompilationUnitSyntax node)
+    {
+        foreach (var directive in node.Usings)
+        {
+            if (directive.Name is not null &&
+                directive.Name.ToString() == OrionGuardCompatibilityNamespace)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static CompilationUnitSyntax AddOrionGuardCompatibilityUsing(CompilationUnitSyntax node)
+    {
+        // Parse a fully-formed directive (keyword spacing, semicolon, trailing newline) rather than
+        // assembling tokens by hand, so the inserted line is always well formed regardless of how
+        // the source was laid out.
+        var directive = SyntaxFactory
+            .ParseCompilationUnit($"using {OrionGuardCompatibilityNamespace};\r\n")
+            .Usings[0];
+
+        return node.WithUsings(node.Usings.Insert(0, directive));
     }
 
     /// <inheritdoc />
@@ -78,9 +127,28 @@ public sealed class ValidatorRewriter : CSharpSyntaxRewriter
     /// <inheritdoc />
     public override SyntaxNode? VisitExpressionStatement(ExpressionStatementSyntax node)
     {
-        // Only act on statements that are a RuleFor(...) chain. Everything else is preserved.
-        if (node.Expression is not InvocationExpressionSyntax invocation ||
-            !TryGetRuleForChain(invocation, out var ruleCalls))
+        if (node.Expression is not InvocationExpressionSyntax invocation)
+        {
+            return base.VisitExpressionStatement(node);
+        }
+
+        // RuleForEach(...) and Include(...) are validator-level constructs the codemod cannot
+        // safely translate. They must be REPORTED (TODO marker + summary finding) rather than
+        // silently skipped, so the user knows that part of the validator was not migrated.
+        if (TryGetUnsupportedAnchor(invocation, out var anchorName, out var anchorNode))
+        {
+            var finding = new MigrationFinding(
+                _filePath,
+                GetLine(anchorNode),
+                anchorName,
+                UnsupportedAnchorReason(anchorName));
+
+            _findings.Add(finding);
+            return AnnotateUnmigrated(node, finding);
+        }
+
+        // Only rewrite statements that are a RuleFor(...) chain. Everything else is preserved.
+        if (!TryGetRuleForChain(invocation, out var ruleCalls))
         {
             return base.VisitExpressionStatement(node);
         }
@@ -142,8 +210,7 @@ public sealed class ValidatorRewriter : CSharpSyntaxRewriter
         foreach (var baseTypeSyntax in node.BaseList.Types)
         {
             if (baseTypeSyntax is SimpleBaseTypeSyntax simple &&
-                simple.Type is GenericNameSyntax generic &&
-                generic.Identifier.Text == FluentValidationBaseType)
+                TryGetAbstractValidatorGeneric(simple.Type) is not null)
             {
                 return simple;
             }
@@ -152,19 +219,44 @@ public sealed class ValidatorRewriter : CSharpSyntaxRewriter
         return null;
     }
 
+    /// <summary>
+    /// Returns the <c>AbstractValidator&lt;T&gt;</c> generic node from a base type, whether it is
+    /// written bare (<c>AbstractValidator&lt;T&gt;</c>) or fully qualified
+    /// (<c>FluentValidation.AbstractValidator&lt;T&gt;</c>). Returns null for any other base type.
+    /// </summary>
+    private static GenericNameSyntax? TryGetAbstractValidatorGeneric(TypeSyntax type) => type switch
+    {
+        GenericNameSyntax g when g.Identifier.Text == FluentValidationBaseType => g,
+        QualifiedNameSyntax { Right: GenericNameSyntax g }
+            when g.Identifier.Text == FluentValidationBaseType => g,
+        _ => null,
+    };
+
     private static ClassDeclarationSyntax RewriteBaseType(ClassDeclarationSyntax node)
     {
         // Re-find the base inside the (possibly body-rewritten) node so we replace the live node.
         var liveBase = FindFluentValidationBase(node);
-        if (liveBase is null || liveBase.Type is not GenericNameSyntax generic)
+        if (liveBase is null)
         {
             return node;
         }
 
-        var renamed = generic.WithIdentifier(
-            SyntaxFactory.Identifier(OrionGuardBaseType));
+        var generic = TryGetAbstractValidatorGeneric(liveBase.Type);
+        if (generic is null)
+        {
+            return node;
+        }
 
-        return node.ReplaceNode(generic, renamed);
+        // Emit the unqualified OrionGuard base type and replace the whole base-type node. Replacing
+        // the entire node (not just the identifier) collapses a qualified name such as
+        // FluentValidation.AbstractValidator<T> down to FluentStyleValidator<T>; the compatibility
+        // using added at the compilation-unit level keeps that unqualified name resolvable.
+        var renamed = generic
+            .WithIdentifier(SyntaxFactory.Identifier(OrionGuardBaseType))
+            .WithLeadingTrivia(liveBase.Type.GetLeadingTrivia())
+            .WithTrailingTrivia(liveBase.Type.GetTrailingTrivia());
+
+        return node.ReplaceNode(liveBase.Type, renamed);
     }
 
     private static ExpressionStatementSyntax ApplyMapping(
@@ -300,6 +392,72 @@ public sealed class ValidatorRewriter : CSharpSyntaxRewriter
         IdentifierNameSyntax { Identifier.Text: "RuleFor" } => true,
         MemberAccessExpressionSyntax { Name.Identifier.Text: "RuleFor" } => true,
         _ => false,
+    };
+
+    /// <summary>
+    /// Detects a validator-level construct that is recognised but deliberately not auto-migrated
+    /// (currently <c>RuleForEach</c> and <c>Include</c>). Walks to the innermost callee so a chain
+    /// such as <c>RuleForEach(x => x.Items).SetValidator(...)</c> is matched on its anchor.
+    /// </summary>
+    private static bool TryGetUnsupportedAnchor(
+        InvocationExpressionSyntax outer, out string anchorName, out SyntaxNode anchorNode)
+    {
+        var current = outer;
+
+        while (true)
+        {
+            if (TryGetCalleeName(current.Expression, out var name, out var nameNode) &&
+                IsUnsupportedAnchorName(name))
+            {
+                anchorName = name;
+                anchorNode = nameNode;
+                return true;
+            }
+
+            // Descend through a member-access chain (.Method(...).Method(...)) toward the anchor.
+            if (current.Expression is MemberAccessExpressionSyntax
+                {
+                    Expression: InvocationExpressionSyntax inner,
+                })
+            {
+                current = inner;
+                continue;
+            }
+
+            anchorName = string.Empty;
+            anchorNode = outer;
+            return false;
+        }
+    }
+
+    private static bool TryGetCalleeName(
+        ExpressionSyntax callee, out string name, out SyntaxNode nameNode)
+    {
+        switch (callee)
+        {
+            case IdentifierNameSyntax identifier:
+                name = identifier.Identifier.Text;
+                nameNode = identifier;
+                return true;
+            case MemberAccessExpressionSyntax access:
+                name = access.Name.Identifier.Text;
+                nameNode = access.Name;
+                return true;
+            default:
+                name = string.Empty;
+                nameNode = callee;
+                return false;
+        }
+    }
+
+    private static bool IsUnsupportedAnchorName(string name) =>
+        name is "RuleForEach" or "Include";
+
+    private static string UnsupportedAnchorReason(string anchorName) => anchorName switch
+    {
+        "RuleForEach" => "RuleForEach(...) collection rules are not auto-migrated",
+        "Include" => "Include(...) of another validator is not auto-migrated",
+        _ => $"{anchorName}(...) is not auto-migrated",
     };
 
     private int GetLine(SyntaxNode node) =>

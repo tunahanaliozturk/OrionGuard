@@ -157,6 +157,57 @@ public sealed class MigrationEngineTests
     }
 
     [Fact]
+    public void Migrate_RuleForEach_IsReportedNotSilentlySkipped()
+    {
+        var result = MigrationEngine.Migrate(
+            Path, Wrap("        RuleForEach(x => x.Tags).NotEmpty();"));
+
+        Assert.Contains("// TODO: OrionGuard migration - RuleForEach", result.MigratedText, StringComparison.Ordinal);
+        Assert.Contains("RuleForEach(x => x.Tags).NotEmpty();", result.MigratedText, StringComparison.Ordinal);
+        var finding = Assert.Single(result.Findings);
+        Assert.Equal("RuleForEach", finding.Rule);
+        Assert.Equal(Path, finding.FilePath);
+    }
+
+    [Fact]
+    public void Migrate_Include_IsReportedNotSilentlySkipped()
+    {
+        var result = MigrationEngine.Migrate(
+            Path, Wrap("        Include(new BaseValidator());"));
+
+        Assert.Contains("// TODO: OrionGuard migration - Include", result.MigratedText, StringComparison.Ordinal);
+        Assert.Contains("Include(new BaseValidator());", result.MigratedText, StringComparison.Ordinal);
+        var finding = Assert.Single(result.Findings);
+        Assert.Equal("Include", finding.Rule);
+    }
+
+    [Fact]
+    public void Migrate_UnsupportedOverloadOfSupportedRule_IsReportedAndLeftUntouched()
+    {
+        // GreaterThan has a member-comparison (lambda) overload with the same arity as the
+        // constant-threshold form the compatibility builder supports. It must be reported and the
+        // chain left byte-for-byte untouched, NOT mistranslated onto GreaterThan(IComparable).
+        var result = MigrationEngine.Migrate(
+            Path, Wrap("        RuleFor(x => x.Age).GreaterThan(x => x.MinAge);"));
+
+        Assert.Contains("// TODO: OrionGuard migration - GreaterThan", result.MigratedText, StringComparison.Ordinal);
+        Assert.Contains("RuleFor(x => x.Age).GreaterThan(x => x.MinAge);", result.MigratedText, StringComparison.Ordinal);
+        var finding = Assert.Single(result.Findings);
+        Assert.Equal("GreaterThan", finding.Rule);
+    }
+
+    [Fact]
+    public void Migrate_EqualWithMemberLambdaOverload_IsReportedNotMistranslated()
+    {
+        var result = MigrationEngine.Migrate(
+            Path, Wrap("        RuleFor(x => x.Name).Equal(x => x.Code);"));
+
+        Assert.Contains("// TODO: OrionGuard migration - Equal", result.MigratedText, StringComparison.Ordinal);
+        Assert.Contains("RuleFor(x => x.Name).Equal(x => x.Code);", result.MigratedText, StringComparison.Ordinal);
+        Assert.Single(result.Findings);
+    }
+
+    [Fact]
     public void Migrate_NonValidatorFile_IsUnchanged()
     {
         const string source =
