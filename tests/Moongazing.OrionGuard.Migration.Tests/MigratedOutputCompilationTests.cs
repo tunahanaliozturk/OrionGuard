@@ -126,6 +126,38 @@ public sealed class MigratedOutputCompilationTests
     }
 
     [Fact]
+    public void MigratedValidator_AlreadyImportingCompatibilityNamespace_DoesNotDuplicateUsing()
+    {
+        // The file already imports the OrionGuard compatibility namespace (and uses a fully-qualified
+        // FluentValidation base, so there is no `using FluentValidation;` to swap). The rewriter must
+        // not add a second, duplicate `using Moongazing.OrionGuard.Compatibility;` directive.
+        const string source =
+            """
+            using Moongazing.OrionGuard.Compatibility;
+            namespace Sample
+            {
+                public class PreImportedValidator : FluentValidation.AbstractValidator<Model>
+                {
+                    public PreImportedValidator()
+                    {
+                        RuleFor(x => x.Name).NotEmpty().MaximumLength(50);
+                    }
+                }
+            }
+            """;
+
+        var migrated = MigrationEngine.Migrate("/repo/PreImportedValidator.cs", source);
+
+        var occurrences = CountOccurrences(
+            migrated.MigratedText,
+            "using Moongazing.OrionGuard.Compatibility;");
+
+        Assert.Equal(1, occurrences);
+        Assert.False(migrated.HasUnmigrated);
+        AssertCompiles(migrated.MigratedText);
+    }
+
+    [Fact]
     public void BareAbstractValidator_WithNoFluentValidationUsing_IsLeftUntouched()
     {
         // A bare AbstractValidator<Model> with NO file-level `using FluentValidation;` cannot be
@@ -187,6 +219,19 @@ public sealed class MigratedOutputCompilationTests
 
         var isInvalid = (bool)result.GetType().GetProperty("IsInvalid")!.GetValue(result)!;
         Assert.True(isInvalid);
+    }
+
+    private static int CountOccurrences(string haystack, string needle)
+    {
+        var count = 0;
+        var index = 0;
+        while ((index = haystack.IndexOf(needle, index, StringComparison.Ordinal)) >= 0)
+        {
+            count++;
+            index += needle.Length;
+        }
+
+        return count;
     }
 
     private static void AssertCompiles(string migratedValidatorSource)

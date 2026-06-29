@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.RegularExpressions;
 using Moongazing.OrionGuard.Migration;
 
 namespace Moongazing.OrionGuard.Migration.Tests;
@@ -33,18 +34,70 @@ public sealed class InMemoryFileSystem : IFileSystem
 
     public bool FileExists(string path) => _files.ContainsKey(path);
 
+    /// <summary>
+    /// Recursively enumerates files under <paramref name="directory"/> whose file NAME matches
+    /// <paramref name="searchPattern"/>, modelling the production <see cref="PhysicalFileSystem"/>
+    /// faithfully: directory boundaries are honoured (a sibling directory sharing a name prefix, such
+    /// as <c>/repo2</c> when enumerating <c>/repo</c>, is never matched) and the full glob contract is
+    /// applied to the file name -- <c>*</c>, <c>?</c>, and mid-pattern wildcards all behave as the
+    /// real <c>Directory.GetFiles</c> glob does, rather than as a bare suffix test.
+    /// </summary>
     public IEnumerable<string> EnumerateFiles(string directory, string searchPattern)
     {
-        var suffix = searchPattern.StartsWith('*') ? searchPattern[1..] : searchPattern;
+        var prefix = NormalizeDirectory(directory);
+        var nameMatcher = GlobToRegex(searchPattern);
 
         foreach (var path in _files.Keys)
         {
-            if (path.StartsWith(directory, StringComparison.Ordinal) &&
-                path.EndsWith(suffix, StringComparison.Ordinal))
+            if (!IsUnderDirectory(path, prefix))
+            {
+                continue;
+            }
+
+            var fileName = GetFileName(path);
+            if (nameMatcher.IsMatch(fileName))
             {
                 yield return path;
             }
         }
+    }
+
+    // Normalize separators and guarantee a single trailing separator so prefix comparison treats
+    // `/repo` and `/repo/` alike and never matches a sibling such as `/repo2`.
+    private static string NormalizeDirectory(string directory)
+    {
+        var unified = directory.Replace('\\', '/');
+        return unified.EndsWith('/') ? unified : unified + "/";
+    }
+
+    private static bool IsUnderDirectory(string path, string normalizedPrefix) =>
+        path.Replace('\\', '/').StartsWith(normalizedPrefix, StringComparison.Ordinal);
+
+    private static string GetFileName(string path)
+    {
+        var unified = path.Replace('\\', '/');
+        var lastSeparator = unified.LastIndexOf('/');
+        return lastSeparator < 0 ? unified : unified[(lastSeparator + 1)..];
+    }
+
+    // Translate a `*`/`?` file-name glob into an anchored, case-insensitive regex (matching the
+    // real EnumerateFiles, which delegates to the OS glob). `*` matches any run of characters, `?`
+    // matches exactly one, and every other character is treated literally.
+    private static Regex GlobToRegex(string searchPattern)
+    {
+        var builder = new StringBuilder("^");
+        foreach (var ch in searchPattern)
+        {
+            builder.Append(ch switch
+            {
+                '*' => ".*",
+                '?' => ".",
+                _ => Regex.Escape(ch.ToString()),
+            });
+        }
+
+        builder.Append('$');
+        return new Regex(builder.ToString(), RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
     }
 
     public FileContent ReadFile(string path) => _files[path];

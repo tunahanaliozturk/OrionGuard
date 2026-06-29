@@ -24,7 +24,6 @@ public sealed class ValidatorRewriter : CSharpSyntaxRewriter
     private readonly string _filePath;
     private readonly SourceText _sourceText;
     private readonly List<MigrationFinding> _findings = new();
-    private bool _swappedFluentValidationUsing;
 
     // True when this file carries a file-level `using FluentValidation;` directive. Established
     // before any class is visited so the bare (unqualified) AbstractValidator<T> base type is only
@@ -62,13 +61,17 @@ public sealed class ValidatorRewriter : CSharpSyntaxRewriter
 
         var visited = (CompilationUnitSyntax)base.VisitCompilationUnit(node)!;
 
-        // The renamed base type (FluentStyleValidator<T>) is unqualified, so the migrated file must
-        // import the OrionGuard compatibility namespace to compile. Normally that import is produced
-        // by swapping the file's `using FluentValidation;` directive. When the source had no such
-        // directive (the base type was fully qualified, or the import was global/implicit), nothing
-        // was swapped -- so add the using here to keep the output compilable.
+        // The renamed base type (FluentStyleValidator<T>) is always unqualified, so any file in which
+        // a validator was actually migrated must import the OrionGuard compatibility namespace to
+        // compile. Add that import here whenever a validator was migrated and the namespace is not
+        // already imported -- REGARDLESS of how the FluentValidation reference was detected.
+        //
+        // The decision is gated solely on whether the compatibility namespace is already in scope in
+        // the rewritten tree, never on whether a `using FluentValidation;` directive happened to be
+        // swapped. Swapping that directive already turns it into the compatibility using (so the guard
+        // below sees it and adds no duplicate), but a validator whose base was the fully-qualified
+        // `FluentValidation.AbstractValidator<T>` has no FV using to swap -- it still gets the import.
         if (TouchedAnyValidator &&
-            !_swappedFluentValidationUsing &&
             !HasOrionGuardCompatibilityUsing(visited))
         {
             visited = AddOrionGuardCompatibilityUsing(visited);
@@ -83,8 +86,9 @@ public sealed class ValidatorRewriter : CSharpSyntaxRewriter
         if (node.Name is not null &&
             node.Name.ToString() == FluentValidationNamespace)
         {
-            _swappedFluentValidationUsing = true;
-
+            // Swap `using FluentValidation;` for the compatibility namespace. This is purely a
+            // convenience: VisitCompilationUnit adds the compatibility using whenever it is missing,
+            // so a migrated validator compiles whether or not this swap happened.
             var replacement = SyntaxFactory.ParseName(OrionGuardCompatibilityNamespace)
                 .WithLeadingTrivia(node.Name.GetLeadingTrivia())
                 .WithTrailingTrivia(node.Name.GetTrailingTrivia());
