@@ -1,3 +1,5 @@
+using Moongazing.OrionGuard.Migration;
+
 namespace Moongazing.OrionGuard.Migration.Tests;
 
 /// <summary>
@@ -74,5 +76,42 @@ public sealed class InMemoryFileSystemTests
         var matches = fs.EnumerateFiles("/repo", "*.cs").ToList();
 
         Assert.DoesNotContain("/repo/weird.cs/notes.txt", matches);
+    }
+
+    [Fact]
+    public void EnumerateFiles_CaseSensitivity_MatchesRealFileSystem()
+    {
+        // The in-memory double must agree with the real PhysicalFileSystem on glob case-sensitivity,
+        // which is the host platform default (case-insensitive on Windows, case-sensitive on a typical
+        // Linux file system). A file written in lower case is searched for with an upper-case glob;
+        // whether it is found must be identical between the two implementations on this machine.
+        var root = Path.Combine(Path.GetTempPath(), "orionguard-case-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var lowerName = "casecheck.cs";
+            File.WriteAllText(Path.Combine(root, lowerName), "// probe");
+
+            var realMatched = new PhysicalFileSystem()
+                .EnumerateFiles(root, "CASECHECK.CS")
+                .Any();
+
+            var inMemory = new InMemoryFileSystem();
+            inMemory.AddFile(root.Replace('\\', '/') + "/" + lowerName, "// probe");
+            var inMemoryMatched = inMemory.EnumerateFiles(root, "CASECHECK.CS").Any();
+
+            Assert.Equal(realMatched, inMemoryMatched);
+        }
+        finally
+        {
+            try
+            {
+                Directory.Delete(root, recursive: true);
+            }
+            catch (IOException)
+            {
+                // Best-effort cleanup of the temp tree.
+            }
+        }
     }
 }

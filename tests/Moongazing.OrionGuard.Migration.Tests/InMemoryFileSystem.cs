@@ -80,9 +80,13 @@ public sealed class InMemoryFileSystem : IFileSystem
         return lastSeparator < 0 ? unified : unified[(lastSeparator + 1)..];
     }
 
-    // Translate a `*`/`?` file-name glob into an anchored, case-insensitive regex (matching the
-    // real EnumerateFiles, which delegates to the OS glob). `*` matches any run of characters, `?`
-    // matches exactly one, and every other character is treated literally.
+    // Translate a `*`/`?` file-name glob into an anchored regex matching the real EnumerateFiles,
+    // which delegates to `Directory.GetFiles(dir, pattern)`. That legacy overload matches with
+    // `MatchCasing.PlatformDefault`, whose case-sensitivity the BCL gleans from the host file system
+    // (case-insensitive on Windows/NTFS, case-sensitive on a typical Linux file system). Hardcoding
+    // `IgnoreCase` would diverge from the real file system on case-sensitive platforms, so the casing
+    // is taken from the platform default probed in <see cref="PlatformCaseSensitivity"/>. `*` matches
+    // any run of characters, `?` matches exactly one, and every other character is literal.
     private static Regex GlobToRegex(string searchPattern)
     {
         var builder = new StringBuilder("^");
@@ -97,7 +101,14 @@ public sealed class InMemoryFileSystem : IFileSystem
         }
 
         builder.Append('$');
-        return new Regex(builder.ToString(), RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+        var options = RegexOptions.CultureInvariant;
+        if (!PlatformCaseSensitivity.IsCaseSensitive)
+        {
+            options |= RegexOptions.IgnoreCase;
+        }
+
+        return new Regex(builder.ToString(), options);
     }
 
     public FileContent ReadFile(string path) => _files[path];
@@ -113,5 +124,49 @@ public sealed class InMemoryFileSystem : IFileSystem
 
         _files[path] = new FileContent(contents, encoding);
         WriteCount++;
+    }
+
+    /// <summary>
+    /// The file-name glob case-sensitivity of the host platform, determined the same way the BCL
+    /// resolves <see cref="System.IO.MatchCasing.PlatformDefault"/>: by observing the case
+    /// sensitivity of the temporary folder. This keeps the in-memory glob aligned with what the real
+    /// <see cref="PhysicalFileSystem"/> (which calls <c>Directory.GetFiles</c>) actually does on the
+    /// machine running the tests, instead of assuming one fixed casing.
+    /// </summary>
+    internal static class PlatformCaseSensitivity
+    {
+        public static readonly bool IsCaseSensitive = Probe();
+
+        private static bool Probe()
+        {
+            var directory = Path.Combine(Path.GetTempPath(), "orionguard-case-probe-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(directory);
+            try
+            {
+                var lowerName = "probe-" + Guid.NewGuid().ToString("N") + ".cs";
+                File.WriteAllText(Path.Combine(directory, lowerName), string.Empty);
+
+                // Search with the upper-cased name. If the case-insensitive platform default finds the
+                // lower-cased file, the file system is case-insensitive; if nothing matches, it is
+                // case-sensitive.
+                var matches = Directory.GetFiles(directory, lowerName.ToUpperInvariant());
+                return matches.Length == 0;
+            }
+            finally
+            {
+                try
+                {
+                    Directory.Delete(directory, recursive: true);
+                }
+                catch (IOException)
+                {
+                    // Best-effort cleanup of the probe directory.
+                }
+                catch (UnauthorizedAccessException)
+                {
+                    // Best-effort cleanup of the probe directory.
+                }
+            }
+        }
     }
 }
