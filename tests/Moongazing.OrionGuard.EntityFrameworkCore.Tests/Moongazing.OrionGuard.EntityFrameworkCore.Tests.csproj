@@ -11,6 +11,9 @@
     <PackageReference Include="xunit" Version="2.9.2" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="9.0.0" />
+    <!-- Security pin: GHSA-2m69-gcr7-jv3q (High) in the bundled SQLite native library, pulled
+         transitively by EntityFrameworkCore.Sqlite. Test/probe only - no shipped package refs SQLite. -->
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.12" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="9.0.0" />
     <!-- Override transitive Microsoft.Data.Sqlite.Core because the locally cached 9.0.0 PACKAGE.md is filesystem-corrupt and undeletable (chkdsk needed). 9.0.9 is the lowest patched 9.x build available locally. -->
     <PackageReference Include="Microsoft.Data.Sqlite.Core" Version="9.0.9" />

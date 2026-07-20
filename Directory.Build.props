@@ -1,0 +1,17 @@
+<Project>
+  <!--
+    Repo-wide NuGet audit policy. This repository sets other build properties per-csproj; only
+    the two audit settings live here, so every project inherits them uniformly.
+
+    NuGetAuditMode=all audits the whole transitive dependency graph, not just direct references
+    (the default), so a vulnerable transitive package is flagged at restore time. Advisories
+    (NU1901-1904) are downgraded to warnings via WarningsNotAsErrors so a newly-disclosed
+    upstream CVE surfaces loudly without turning CI red on an external event with no code
+    change - remove that property to make advisories hard build errors instead. The per-csproj
+    NoWarn lines no longer suppress NU1901-1904, so the advisories are visible.
+  -->
+  <PropertyGroup>
+    <NuGetAuditMode>all</NuGetAuditMode>
+    <WarningsNotAsErrors>NU1901;NU1902;NU1903;NU1904</WarningsNotAsErrors>
+  </PropertyGroup>
+</Project>
