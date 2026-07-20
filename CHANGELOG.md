@@ -5,7 +5,15 @@ All notable changes to OrionGuard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [6.8.0] - 2026-06-29
+## [6.8.0] - 2026-07-20
+
+> **Packaging.** This is the first release to publish from a solution-level pack. The publish job
+> previously enumerated projects by hand, which had held two packages back: `OrionGuard.Hangfire`
+> and `OrionGuard.OpenApi` (both new in 6.7.0) were built but never pushed to NuGet, so 6.7.0
+> never fully shipped. This release packs the whole solution and verifies the package count, so
+> those two ship now alongside the 6.8.0 `OrionGuard.Migration` tool, and every future
+> sub-package ships automatically. Each package keeps its own version — the core suite is 6.7.0,
+> the Migration tool is 6.8.0.
 
 ### Added
 
