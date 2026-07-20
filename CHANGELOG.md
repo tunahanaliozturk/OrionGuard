@@ -5,6 +5,29 @@ All notable changes to OrionGuard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.8.1] - 2026-07-21
+
+### Security
+
+- **`OrionGuard.OpenTelemetry` 6.7.0 → 6.7.1** — bumps its direct `OpenTelemetry.Api` dependency
+  from 1.9.0 to **1.15.3** to clear [GHSA-g94r-2vxg-569j](https://github.com/advisories/GHSA-g94r-2vxg-569j)
+  / CVE-2026-40894 (Moderate): a denial-of-service via excessive memory allocation when parsing
+  OpenTelemetry propagation headers (baggage / B3 / Jaeger). This is the only shipped package
+  affected, and it is the only package whose version changes in this release.
+- Pinned `SQLitePCLRaw.bundle_e_sqlite3` to 2.1.12 in the demo, EF Core test, and AOT-probe
+  projects to clear [GHSA-2m69-gcr7-jv3q](https://github.com/advisories/GHSA-2m69-gcr7-jv3q)
+  (High). Test/probe only — no shipped package references SQLite.
+
+### Changed
+
+- **NuGet audit is re-armed.** `NuGetAuditMode=all` now audits the whole transitive dependency
+  graph (the default is direct references only), and the per-project `NoWarn` lists no longer
+  suppress `NU1901`–`NU1904`, so package-vulnerability advisories surface in every restore. A new
+  root `Directory.Build.props` holds these two settings so every project inherits them; advisories
+  are downgraded to warnings via `WarningsNotAsErrors` so a newly-disclosed upstream CVE surfaces
+  loudly without turning CI red on an external event with no code change. It was this change that
+  surfaced the two advisories above — the previous blanket suppression had hidden them.
+
 ## [6.8.0] - 2026-07-20
 
 > **Packaging.** This is the first release to publish from a solution-level pack. The publish job
