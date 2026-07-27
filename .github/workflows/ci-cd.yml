@@ -85,7 +85,30 @@ jobs:
         run: dotnet nuget push "./nupkgs/*.nupkg" --api-key ${{ secrets.NUGET }} --source https://api.nuget.org/v3/index.json --skip-duplicate
 
       - name: Push to GitHub Packages
-        continue-on-error: true
+        # GitHub Packages does not honour --skip-duplicate like nuget.org: it returns a non-zero
+        # exit on an already-published version, which would fail the whole release run on a
+        # re-publish even though the nuget.org push above (the gating one) succeeded. Rather than
+        # blanket `continue-on-error` - which would also hide a real auth/connectivity/upload
+        # failure and let the mirror silently drift - tolerate ONLY the duplicate rejection: any
+        # error line that is not an "already exists" conflict still fails the step.
         run: |
           dotnet nuget add source --username ${{ github.repository_owner }} --password ${{ secrets.GITHUB_TOKEN }} --store-password-in-clear-text --name github "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json"
-          dotnet nuget push "./nupkgs/*.nupkg" --source github --skip-duplicate
+          set +e
+          output=$(dotnet nuget push "./nupkgs/*.nupkg" --source github --skip-duplicate 2>&1)
+          code=$?
+          set -e
+          echo "$output"
+          if [ $code -ne 0 ]; then
+            # Tolerate the failure ONLY when it is affirmatively all duplicates: at least one
+            # duplicate marker must be present AND no other error/fault line. A non-zero exit
+            # with no recognisable duplicate marker (or with any other error) still fails - so a
+            # genuine auth/connectivity/upload failure is never silently swallowed.
+            dup_markers=$(printf '%s\n' "$output" | grep -iE 'already exists|already been pushed' || true)
+            other_errors=$(printf '%s\n' "$output" | grep -iE 'error|fail' | grep -ivE 'already exists|already been pushed|conflict' || true)
+            if [ -n "$dup_markers" ] && [ -z "$other_errors" ]; then
+              echo "GitHub Packages: every failure was a duplicate rejection (--skip-duplicate is not honoured there); treating the mirror push as successful."
+            else
+              echo "::error::GitHub Packages push failed (exit code $code) for a non-duplicate reason."
+              exit 1
+            fi
+          fi
