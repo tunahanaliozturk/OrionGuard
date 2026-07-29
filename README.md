@@ -18,8 +18,8 @@
 
 ---
 
-> **v6.0.0 is here!** 9 ecosystem packages, 14-language localization, Dynamic Rule Engine, source generators, ASP.NET Core / MediatR / Blazor / gRPC / SignalR integration, and much more.
-> [See what's new in this release.](CHANGELOG.md) · [What's coming next (12-month roadmap)](docs/ROADMAP.md)
+> **The 6.x line is current — latest v6.8.1.** 9 ecosystem packages, 14-language localization, Dynamic Rule Engine, source generators, ASP.NET Core / MediatR / Blazor / gRPC / SignalR integration, and much more. Recent: a FluentValidation migration codemod (6.8.0) and an `OrionGuard.OpenTelemetry` security bump (6.8.1).
+> [See what's new in the CHANGELOG.](CHANGELOG.md) · [What's coming next (12-month roadmap)](docs/ROADMAP.md)
 
 ---
 
@@ -604,18 +604,31 @@ workload demand is what moves items up the list.
 
 ## More from the Orion family
 
-OrionGuard is one of a set of standalone .NET libraries:
+OrionGuard is the flagship of a set of focused, standalone .NET libraries that share a quality bar. Several v6 OrionGuard features graduated into their own packages (strongly-typed ids → OrionKey, distributed locking → OrionLock):
 
 - [OrionAudit](https://github.com/tunahanaliozturk/OrionAudit) - automatic EF Core change-audit trail.
 - [OrionKey](https://github.com/tunahanaliozturk/OrionKey) - source-generated strongly-typed IDs.
-- [OrionLock](https://github.com/tunahanaliozturk/OrionLock) - distributed locking.
-- [OrionPatch](https://github.com/tunahanaliozturk/OrionPatch) - transactional outbox for EF Core (enqueue inside SaveChanges, dispatch at-least-once through a pluggable sink).
+- [OrionLock](https://github.com/tunahanaliozturk/OrionLock) - distributed locks with fencing tokens.
+- [OrionPatch](https://github.com/tunahanaliozturk/OrionPatch) - transactional outbox for EF Core.
+- [OrionGrant](https://github.com/tunahanaliozturk/OrionGrant) - permission / policy authorization.
+- [OrionLedger](https://github.com/tunahanaliozturk/OrionLedger) - API-key issuance, verification, rotation.
+- [OrionBeacon](https://github.com/tunahanaliozturk/OrionBeacon) - leader election.
+- [OrionRelay](https://github.com/tunahanaliozturk/OrionRelay) - outbound webhook delivery.
+- [OrionSaga](https://github.com/tunahanaliozturk/OrionSaga) - sagas / process managers.
+- [OrionStream](https://github.com/tunahanaliozturk/OrionStream) - server-sent events / streaming hub.
+- [OrionVault](https://github.com/tunahanaliozturk/OrionVault) - field-level encryption for EF Core.
+- [OrionOnce](https://github.com/tunahanaliozturk/OrionOnce) - HTTP idempotency keys.
+- [OrionShade](https://github.com/tunahanaliozturk/OrionShade) - sensitive-data redaction.
+- [OrionClock](https://github.com/tunahanaliozturk/OrionClock) - testable time, TTLs, deadlines.
+- [OrionResult](https://github.com/tunahanaliozturk/OrionResult) - Result/Option types.
+- [OrionLens](https://github.com/tunahanaliozturk/OrionLens) - ambient correlation context.
+- [Orion.Abstractions](https://github.com/tunahanaliozturk/Orion.Abstractions) - the shared contracts spine.
 
 ---
 
 ### See it in a real app
 
-[Moongazing.OrionShowcase](https://github.com/tunahanaliozturk/OrionShowcase) is a production-shaped banking sample integrating all six Orion packages end-to-end. OrionGuard does the most work in the showcase: every command validator is a `FluentStyleValidator<TCommand>`, Domain guards use `Ensure`/`FastGuard`/`Contract`, and `AddOrionGuardAspNetCore` + `UseOrionGuardValidation` handle ProblemDetails. Concrete usage in the showcase:
+[Moongazing.OrionShowcase](https://github.com/tunahanaliozturk/OrionShowcase) is a production-shaped banking sample integrating the Orion family end-to-end. OrionGuard does the most work in the showcase: every command validator is a `FluentStyleValidator<TCommand>`, Domain guards use `Ensure`/`FastGuard`/`Contract`, and `AddOrionGuardAspNetCore` + `UseOrionGuardValidation` handle ProblemDetails. Concrete usage in the showcase:
 
 - [src/Moongazing.OrionShowcase.Application/Accounts/Commands/TransferMoney/TransferMoneyValidator.cs](https://github.com/tunahanaliozturk/OrionShowcase/blob/main/src/Moongazing.OrionShowcase.Application/Accounts/Commands/TransferMoney/TransferMoneyValidator.cs)
 - [src/Moongazing.OrionShowcase.Domain/Accounts/Account.cs](https://github.com/tunahanaliozturk/OrionShowcase/blob/main/src/Moongazing.OrionShowcase.Domain/Accounts/Account.cs)
