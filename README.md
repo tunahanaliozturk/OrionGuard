@@ -18,7 +18,7 @@
 
 ---
 
-> **The 6.x line is current — latest v6.8.1.** 9 ecosystem packages, 14-language localization, Dynamic Rule Engine, source generators, ASP.NET Core / MediatR / Blazor / gRPC / SignalR integration, and much more. Recent: a FluentValidation migration codemod (6.8.0) and an `OrionGuard.OpenTelemetry` security bump (6.8.1).
+> **The 6.x line is current — latest v6.8.1.** 9 ecosystem packages, 14-language localization, Dynamic Rule Engine, source generators, ASP.NET Core / MediatR / Blazor / gRPC / SignalR integration, and much more. Recent: a FluentValidation migration codemod (v6.8.0 release) and an `OrionGuard.OpenTelemetry` 6.7.1 security bump (v6.8.1 release).
 > [See what's new in the CHANGELOG.](CHANGELOG.md) · [What's coming next (12-month roadmap)](docs/ROADMAP.md)
 
 ---
@@ -604,7 +604,7 @@ workload demand is what moves items up the list.
 
 ## More from the Orion family
 
-OrionGuard is the flagship of a set of focused, standalone .NET libraries that share a quality bar. Several v6 OrionGuard features graduated into their own packages (strongly-typed ids → OrionKey, distributed locking → OrionLock):
+OrionGuard is the flagship of a set of focused, standalone .NET libraries that share a quality bar. The v6 `[StronglyTypedId]` generator graduated into the standalone OrionKey package; OrionGuard keeps its own `IDistributedLock` primitive and bridges to standalone OrionLock backends via `OrionGuard.Locks.Redis`:
 
 - [OrionAudit](https://github.com/tunahanaliozturk/OrionAudit) - automatic EF Core change-audit trail.
 - [OrionKey](https://github.com/tunahanaliozturk/OrionKey) - source-generated strongly-typed IDs.
