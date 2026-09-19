@@ -15,19 +15,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   test when they change without the file being updated. The snapshot is one section per property listing the
   error code and message the validator reports for each of a fixed set of probe values (`null`, `""`, `"   "`,
   `"x"`, a 256-character string, `-1`/`0`/`1`, every enum member, empty and non-empty `Guid`, `DateTime.MinValue`
-  and a fixed past and future date, `[]`/`[default]`), plus the values it accepted. Nothing machine- or
-  run-dependent goes in: ordinal ordering, invariant-culture numbers and dates, and `\n` line endings on every
-  platform. A mismatch writes a `.received.txt` beside the snapshot and names the first three differing lines.
+  and a fixed past and future date, `[]`/`[one]`), plus the values it accepted. `RuleFor` and `RuleForAsync`
+  rules are both covered — the sweep runs the validator through `ValidateAsync`, once per probe value. A
+  collection property is probed with a value of its declared type, including a `HashSet<T>` or
+  `Dictionary<TKey, TValue>` that accepts neither an array nor a `List<T>`, so a rule that allows `null` but
+  rejects an empty collection is seen; when no value of the type can be constructed (`ReadOnlyCollection<T>`)
+  the snapshot says so instead of implying every value was accepted. Nothing machine- or run-dependent goes in:
+  ordinal ordering, invariant-culture numbers and dates, and `\n` line endings on every platform. A mismatch
+  writes a `.received.txt` beside the snapshot and names the first three differing lines.
   `MatchAsync(snapshotPath:)` overrides the location; `MatchAsync(ci: true)` makes a *missing* snapshot a
   failure instead of creating one, so a build server never accepts a snapshot nobody reviewed — pass the switch
-  yourself, no environment variable is read for you. No dependency on Verify, Snapshooter, or any other
-  snapshot library.
+  yourself, no environment variable is read for you. `MatchAsync(cancellationToken:)` is observed while the
+  validator runs. No dependency on Verify, Snapshooter, or any other snapshot library.
 - `OrionGuard.Testing`: **rule coverage.**
   `OrionGuardCoverage.For<CreateUserValidator, CreateUserRequest>().AssertEveryPropertyIsValidated(except: [...])`
   fails when a property of the model carries no rule, so adding a property and forgetting to validate it breaks
   a test. Each `except` entry must be a real property, so a rename cannot leave a stale exemption behind. Rules
   are found from a `ValidationAttribute` on the property, or by running the validator over the probe values and
-  reading the `ParameterName` off what it reports — the only option for `AbstractValidator<T>` and
+  reading the `ParameterName` off what it reports — sync and async rules alike — the only option for `AbstractValidator<T>` and
   `FluentStyleValidator<T>`, which keep their rules as closures and expose neither the rule list nor the property
   a rule targets. A rule no probe value can make fail is therefore invisible, and when *nothing* is visible
   `For<,>()` throws naming the validator rather than reporting every property as unvalidated. Both features

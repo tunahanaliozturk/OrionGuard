@@ -82,6 +82,62 @@ public class OrionGuardSnapshotTests
         Assert.DoesNotContain("\r", text, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void Render_ReportsAsyncOnlyRules()
+    {
+        // AbstractValidator<T>.Validate runs only the sync rules, so probing through it would
+        // report this validator as reporting nothing at all.
+        var text = OrionGuardSnapshot.Of<AsyncOnlyValidator, CreateUserRequest>().Render();
+
+        Assert.Contains("[Email]\n  null -> EMAIL_ASYNC: Email is required.\n", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Render_ReportsSyncAndAsyncRulesOnce_ForAMixedValidator()
+    {
+        var text = OrionGuardSnapshot.Of<MixedRulesValidator, CreateUserRequest>().Render();
+
+        Assert.Contains("[Age]\n  -1 -> AGE_ASYNC: Age must be greater than 0.\n", text, StringComparison.Ordinal);
+        Assert.Contains("[Name]\n  null -> NAME: Name is required.\n", text, StringComparison.Ordinal);
+        // ValidateAsync runs the sync rules too, so the sync rule must not be reported twice.
+        Assert.Equal(1, CountOf(text, "  null -> NAME: Name is required.\n"));
+    }
+
+    [Fact]
+    public void Render_ProbesConcreteCollectionTypesWithAnEmptyAndASingleItemValue()
+    {
+        var text = OrionGuardSnapshot.Of<TagsValidator, TagsRequest>().Render();
+
+        Assert.Contains(
+            "[Metadata]\n  null -> accepted\n  [] -> META: Metadata must not be empty when supplied.\n  [one] -> accepted\n",
+            text, StringComparison.Ordinal);
+        Assert.Contains(
+            "[Tags]\n  null -> accepted\n  [] -> TAGS: Tags must not be empty when supplied.\n  [one] -> accepted\n",
+            text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Render_SaysSo_WhenNoValueOfTheCollectionTypeCanBeConstructed()
+    {
+        var text = OrionGuardSnapshot.Of<TagsValidator, TagsRequest>().Render();
+
+        // ReadOnlyCollection<string> has no parameterless constructor, so only null can be probed.
+        Assert.Contains(
+            "[Items]\n  null -> ITEMS: Items is required.\n  (no value of this type could be constructed to probe with)\n",
+            text, StringComparison.Ordinal);
+    }
+
+    private static int CountOf(string text, string value)
+    {
+        var count = 0;
+        for (var index = text.IndexOf(value, StringComparison.Ordinal); index >= 0;
+             index = text.IndexOf(value, index + value.Length, StringComparison.Ordinal))
+        {
+            count++;
+        }
+        return count;
+    }
+
     private sealed class TempDirectory : IDisposable
     {
         private readonly string path = Path.Combine(

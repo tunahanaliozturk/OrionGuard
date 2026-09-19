@@ -180,14 +180,24 @@ model: CreateUserRequest
   string(256) -> accepted
 ```
 
-Probe values depend on the property's type: `null` for anything nullable, then `""` / `"   "` / `"x"` / a 256-character string, `-1` / `0` / `1` for numbers (`0` / `1` / `2` for unsigned ones), `false` / `true`, every member of an enum, the empty and a non-empty `Guid`, `DateTime.MinValue` and a fixed past and future date, and `[]` / `[default]` for collections. A rule that reports several properties at once (`"StartDate,EndDate"`) is listed under each of them; a rule whose reported name is not a property of the model is listed under a final `[unattributed]` section. A probe that makes the validator throw is recorded as `-> threw NullReferenceException` — only the exception type, never its message.
+Probe values depend on the property's type: `null` for anything nullable, then `""` / `"   "` / `"x"` / a 256-character string, `-1` / `0` / `1` for numbers (`0` / `1` / `2` for unsigned ones), `false` / `true`, every member of an enum, the empty and a non-empty `Guid`, `DateTime.MinValue` and a fixed past and future date, and `[]` / `[one]` for collections. A collection is probed with a value of its declared type — an array, a `List<T>`, or the type itself for a `HashSet<T>` or `Dictionary<TKey, TValue>` — so a rule that accepts `null` but rejects an empty collection is seen. When no value of the declared type can be constructed (`ReadOnlyCollection<T>` has no parameterless constructor, `ImmutableArray<T>` has no usable default), the property is probed with `null` only and the snapshot says so:
+
+```text
+[Items]
+  null -> ITEMS: Items is required.
+  (no value of this type could be constructed to probe with)
+```
+
+A rule that reports several properties at once (`"StartDate,EndDate"`) is listed under each of them; a rule whose reported name is not a property of the model is listed under a final `[unattributed]` section. A probe that makes the validator throw is recorded as `-> threw NullReferenceException` — only the exception type, never its message.
+
+Both synchronous and asynchronous rules are covered: the sweep runs the validator through `ValidateAsync`, which runs `RuleFor` and `RuleForAsync` rules alike, so a property covered only by an async rule appears like any other. Each rule runs once per probe value; the sync rules are not reported twice.
 
 Nothing machine- or run-dependent goes into the file: properties and errors are ordered ordinally, numbers and dates are formatted with the invariant culture, and lines end with `\n` on every platform. The messages come from your validator, so a validator that localizes its messages produces a snapshot that depends on the test's culture.
 
 | Member | Description |
 | --- | --- |
 | `static ValidatorSnapshot<TValidator, TModel> OrionGuardSnapshot.Of<TValidator, TModel>()` | Starts a snapshot. Both types need a public parameterless constructor, and `TValidator` must implement `IValidator<TModel>`. |
-| `Task MatchAsync(string? snapshotPath = null, bool ci = false)` | Compares against the snapshot and throws `ValidatorAssertionException` on a mismatch. |
+| `Task MatchAsync(string? snapshotPath = null, bool ci = false, CancellationToken cancellationToken = default)` | Compares against the snapshot and throws `ValidatorAssertionException` on a mismatch. The token is observed while the validator runs, so an async rule doing I/O is cancelled with the test. |
 | `string Render()` | The snapshot text, without touching the file system. |
 
 `MatchAsync` writes a `.received.txt` beside the snapshot whenever the two differ, and the failure message names the first three differing lines:
@@ -225,13 +235,14 @@ public void Every_property_is_validated()
 | `IReadOnlyList<string> UnvalidatedProperties` | The properties no rule was found for, in ordinal order. |
 | `void AssertEveryPropertyIsValidated(params string[] except)` | Throws unless every property outside `except` carries a rule. Each `except` entry must be a real property, so a rename cannot leave a stale exemption behind. |
 
-**What it can see.** A rule is found in one of two ways. Statically, from a `Moongazing.OrionGuard.Attributes.ValidationAttribute` on the property — the only rule shape this package can read without running anything. Behaviourally, by running the validator over the probe values above and reading the `ParameterName` off every error it reports. Behavioural discovery is the only option for `AbstractValidator<T>` and `FluentStyleValidator<T>`: both hold their rules as closures over an opaque predicate and expose neither the rule list nor the property a rule targets, so there is nothing to reflect over.
+**What it can see.** A rule is found in one of two ways. Statically, from a `Moongazing.OrionGuard.Attributes.ValidationAttribute` on the property — the only rule shape this package can read without running anything. Behaviourally, by running the validator over the probe values above and reading the `ParameterName` off every error it reports. Behavioural discovery is the only option for `AbstractValidator<T>` and `FluentStyleValidator<T>`: both hold their rules as closures over an opaque predicate and expose neither the rule list nor the property a rule targets, so there is nothing to reflect over. `RuleFor` and `RuleForAsync` rules count equally, because the sweep goes through `ValidateAsync`.
 
 **What it cannot see.**
 
 - A rule no probe value can make fail — `Must(x => x.Age != 42)` — is invisible, and its property is reported as unvalidated.
+- A rule on a collection property whose declared type no value can be constructed for is only seen if it fails for `null`; the snapshot marks the property as un-probed.
 - A rule that reports a name which is not a property of the model is attributed to that name, not to a property.
-- A rule that throws instead of reporting does not count as coverage.
+- A rule that throws instead of reporting does not count as coverage. An **async** rule that throws is different: `AbstractValidator<T>` catches it and reports a `RULE_EXECUTION_FAILED` error whose message embeds the exception's own text, which is localized on some runtimes — the one place a snapshot can differ between machines, and a bug in the rule either way.
 - A property carrying a validation attribute counts as validated even when `TValidator` never runs the attribute validator.
 
 **When nothing at all is visible**, `For<TValidator, TModel>()` throws rather than reporting every property as unvalidated, because a validator with no rules and one whose rules never fail for a probe value look identical from the outside:

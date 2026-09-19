@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using Moongazing.OrionGuard.Attributes;
 using Moongazing.OrionGuard.DependencyInjection;
 
@@ -58,4 +59,64 @@ public sealed class TokenValidator : AbstractValidator<TokenRequest>
         => RuleFor(request => request.Scope, nameof(TokenRequest.Scope), property => property
             .NotNull("Scope is required."))
             .WithErrorCode("SCOPE");
+}
+
+/// <summary>
+/// Every rule is async, so <c>Validate</c> reports nothing at all for this validator and only
+/// <c>ValidateAsync</c> sees its rules.
+/// </summary>
+public sealed class AsyncOnlyValidator : AbstractValidator<CreateUserRequest>
+{
+    public AsyncOnlyValidator()
+        => RuleForAsync(
+            (request, _, _) => Task.FromResult(!string.IsNullOrWhiteSpace(request.Email)),
+            "Email is required.",
+            nameof(CreateUserRequest.Email))
+            .WithErrorCode("EMAIL_ASYNC");
+}
+
+/// <summary>One property covered by a sync rule, another only by an async one.</summary>
+public sealed class MixedRulesValidator : AbstractValidator<CreateUserRequest>
+{
+    public MixedRulesValidator()
+    {
+        RuleFor(request => request.Name, nameof(CreateUserRequest.Name), property => property
+            .NotNull("Name is required."))
+            .WithErrorCode("NAME");
+
+        RuleForAsync(
+            request => Task.FromResult(request.Age > 0),
+            "Age must be greater than 0.",
+            nameof(CreateUserRequest.Age))
+            .WithErrorCode("AGE_ASYNC");
+    }
+}
+
+/// <summary>
+/// Collection properties whose declared types accept neither an array nor a <c>List&lt;T&gt;</c>,
+/// plus one nothing can be constructed for.
+/// </summary>
+public sealed class TagsRequest
+{
+    public HashSet<string> Tags { get; set; } = [];
+    public Dictionary<string, string> Metadata { get; set; } = [];
+    public ReadOnlyCollection<string>? Items { get; set; }
+}
+
+/// <summary>Rules that accept null but reject an empty collection -- invisible without a probe value of the declared type.</summary>
+public sealed class TagsValidator : AbstractValidator<TagsRequest>
+{
+    public TagsValidator()
+    {
+        RuleFor(request => request.Tags is null || request.Tags.Count > 0,
+            "Tags must not be empty when supplied.", nameof(TagsRequest.Tags))
+            .WithErrorCode("TAGS");
+
+        RuleFor(request => request.Metadata is null || request.Metadata.Count > 0,
+            "Metadata must not be empty when supplied.", nameof(TagsRequest.Metadata))
+            .WithErrorCode("META");
+
+        RuleFor(request => request.Items is not null, "Items is required.", nameof(TagsRequest.Items))
+            .WithErrorCode("ITEMS");
+    }
 }

@@ -45,4 +45,33 @@ public class OrionGuardCoverageTests
     [Fact]
     public void A_ValidationAttribute_CountsAsARule()
         => OrionGuardCoverage.For<TokenValidator, TokenRequest>().AssertEveryPropertyIsValidated();
+
+    [Fact]
+    public void An_AsyncOnlyRule_CountsAsCoverage()
+    {
+        // Probing through Validate would see nothing here and throw "could not be enumerated".
+        var coverage = OrionGuardCoverage.For<AsyncOnlyValidator, CreateUserRequest>();
+
+        Assert.DoesNotContain(nameof(CreateUserRequest.Email), coverage.UnvalidatedProperties);
+        coverage.AssertEveryPropertyIsValidated(except:
+        [
+            nameof(CreateUserRequest.Age),
+            nameof(CreateUserRequest.Name),
+            nameof(CreateUserRequest.Notes),
+        ]);
+    }
+
+    [Fact]
+    public void A_MixedValidator_CoversItsSyncAndItsAsyncProperty()
+    {
+        var coverage = OrionGuardCoverage.For<MixedRulesValidator, CreateUserRequest>();
+
+        Assert.Equal(
+            [nameof(CreateUserRequest.Email), nameof(CreateUserRequest.Notes)],
+            coverage.UnvalidatedProperties);
+    }
+
+    [Fact]
+    public void A_RuleOnAConcreteCollectionType_CountsAsCoverage()
+        => OrionGuardCoverage.For<TagsValidator, TagsRequest>().AssertEveryPropertyIsValidated();
 }

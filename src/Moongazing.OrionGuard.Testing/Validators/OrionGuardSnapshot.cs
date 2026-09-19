@@ -57,9 +57,10 @@ public sealed class ValidatorSnapshot<TValidator, TModel>
     /// with <c>\n</c> on every platform. The messages themselves come from the validator, so a
     /// validator that localizes its messages produces a culture-dependent snapshot.
     /// </remarks>
-    public string Render()
+    public string Render() => Format(ValidatorProbe.Run<TValidator, TModel>());
+
+    private static string Format(ValidatorProbeReport report)
     {
-        var report = ValidatorProbe.Run<TValidator, TModel>();
         var text = new StringBuilder();
 
         text.Append("validator: ").Append(report.ValidatorName).Append('\n');
@@ -87,6 +88,13 @@ public sealed class ValidatorSnapshot<TValidator, TModel>
                 {
                     text.Append("  ").Append(outcome.Probe).Append(" -> ").Append(Describe(error)).Append('\n');
                 }
+            }
+
+            if (property.ProbesUnavailable)
+            {
+                // Say so rather than let a collection type nothing can be built for look as if
+                // every value had been tried and accepted.
+                text.Append("  (no value of this type could be constructed to probe with)\n");
             }
         }
 
@@ -121,6 +129,10 @@ public sealed class ValidatorSnapshot<TValidator, TModel>
     /// <c>ci: Environment.GetEnvironmentVariable("CI") is not null</c>. No environment variable is
     /// read for you.
     /// </param>
+    /// <param name="cancellationToken">
+    /// Observed while the validator runs, so an async rule that performs I/O is cancelled with the
+    /// test rather than running to completion after the runner has given up.
+    /// </param>
     /// <param name="callerFilePath">Supplied by the compiler; do not pass it.</param>
     /// <exception cref="ValidatorAssertionException">
     /// The snapshot differs from what the validator reports, or it is missing and
@@ -129,36 +141,39 @@ public sealed class ValidatorSnapshot<TValidator, TModel>
     public async Task MatchAsync(
         string? snapshotPath = null,
         bool ci = false,
+        CancellationToken cancellationToken = default,
         [CallerFilePath] string callerFilePath = "")
     {
         var verified = ResolvePath(snapshotPath, callerFilePath);
         var received = ReceivedPathFor(verified);
-        var actual = Render();
+        var actual = Format(await ValidatorProbe
+            .RunAsync<TValidator, TModel>(cancellationToken)
+            .ConfigureAwait(false));
 
         if (!File.Exists(verified))
         {
             if (ci)
             {
-                await WriteAsync(received, actual).ConfigureAwait(false);
+                await WriteAsync(received, actual, cancellationToken).ConfigureAwait(false);
                 throw new ValidatorAssertionException(
                     $"No snapshot for {typeof(TValidator).Name} at '{verified}', and ci: true forbids creating one. " +
                     $"Run the test locally, review the generated snapshot, and commit it. " +
                     $"What the validator reports now was written to '{received}'.");
             }
 
-            await WriteAsync(verified, actual).ConfigureAwait(false);
+            await WriteAsync(verified, actual, cancellationToken).ConfigureAwait(false);
             Delete(received);
             return;
         }
 
-        var expected = Normalize(await File.ReadAllTextAsync(verified).ConfigureAwait(false));
+        var expected = Normalize(await File.ReadAllTextAsync(verified, cancellationToken).ConfigureAwait(false));
         if (string.Equals(expected, actual, StringComparison.Ordinal))
         {
             Delete(received);
             return;
         }
 
-        await WriteAsync(received, actual).ConfigureAwait(false);
+        await WriteAsync(received, actual, cancellationToken).ConfigureAwait(false);
         throw new ValidatorAssertionException(
             $"{typeof(TValidator).Name} no longer matches its snapshot '{verified}'.\n" +
             $"{Diff(expected, actual)}\n" +
@@ -233,7 +248,7 @@ public sealed class ValidatorSnapshot<TValidator, TModel>
     /// Writes UTF-8 without a BOM and with <c>\n</c> line endings, so the file a Windows machine
     /// writes is byte-identical to the one a Linux build server writes.
     /// </summary>
-    private static async Task WriteAsync(string path, string content)
+    private static async Task WriteAsync(string path, string content, CancellationToken cancellationToken)
     {
         var directory = Path.GetDirectoryName(path);
         if (!string.IsNullOrEmpty(directory))
@@ -241,7 +256,7 @@ public sealed class ValidatorSnapshot<TValidator, TModel>
             Directory.CreateDirectory(directory);
         }
 
-        await File.WriteAllTextAsync(path, content, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false))
+        await File.WriteAllTextAsync(path, content, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false), cancellationToken)
             .ConfigureAwait(false);
     }
 

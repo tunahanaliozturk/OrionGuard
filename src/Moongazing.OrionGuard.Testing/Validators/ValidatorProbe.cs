@@ -13,6 +13,7 @@ internal sealed record ProbeOutcome(string Probe, IReadOnlyList<ValidationError>
 internal sealed record PropertyProbeReport(
     string Property,
     bool HasValidationAttribute,
+    bool ProbesUnavailable,
     IReadOnlyList<ProbeOutcome> Outcomes)
 {
     /// <summary>
@@ -61,7 +62,18 @@ internal static class ValidatorProbe
     /// <summary>A single probe value together with the literal that represents it in a report.</summary>
     private readonly record struct ProbeValue(object? Value, string Label);
 
+    /// <summary>
+    /// Runs the sweep from a synchronous caller. The work is started on the thread pool so no test
+    /// runner's <see cref="SynchronizationContext"/> is captured by the continuations inside, which
+    /// is what would otherwise turn this wait into a deadlock.
+    /// </summary>
     public static ValidatorProbeReport Run<TValidator, TModel>()
+        where TValidator : IValidator<TModel>, new()
+        where TModel : class, new()
+        => Task.Run(() => RunAsync<TValidator, TModel>(CancellationToken.None)).GetAwaiter().GetResult();
+
+    public static async Task<ValidatorProbeReport> RunAsync<TValidator, TModel>(
+        CancellationToken cancellationToken)
         where TValidator : IValidator<TModel>, new()
         where TModel : class, new()
     {
@@ -80,12 +92,13 @@ internal static class ValidatorProbe
 
         // A get-only property cannot be assigned a probe value, so the default instance is the
         // only observation available for it.
-        var baseline = Observe(validator, static () => new TModel());
+        var baseline = await ObserveAsync(validator, static () => new TModel(), cancellationToken).ConfigureAwait(false);
         Collect(baseline.Errors, known, unattributed, seenUnattributed);
 
         foreach (var property in properties)
         {
             var outcomes = new List<ProbeOutcome>();
+            var probesUnavailable = false;
 
             if (!property.CanWrite)
             {
@@ -93,14 +106,14 @@ internal static class ValidatorProbe
             }
             else
             {
-                foreach (var probe in ProbesFor(property.PropertyType))
+                foreach (var probe in ProbesFor(property.PropertyType, out probesUnavailable))
                 {
-                    var run = Observe(validator, () =>
+                    var run = await ObserveAsync(validator, () =>
                     {
                         var model = new TModel();
                         property.SetValue(model, probe.Value);
                         return model;
-                    });
+                    }, cancellationToken).ConfigureAwait(false);
 
                     outcomes.Add(new ProbeOutcome(probe.Label, Attributed(run.Errors, property.Name), run.Thrown));
                     Collect(run.Errors, known, unattributed, seenUnattributed);
@@ -108,7 +121,7 @@ internal static class ValidatorProbe
             }
 
             var hasAttribute = property.GetCustomAttributes<ValidationAttribute>(inherit: true).Any();
-            reports.Add(new PropertyProbeReport(property.Name, hasAttribute, outcomes));
+            reports.Add(new PropertyProbeReport(property.Name, hasAttribute, probesUnavailable, outcomes));
         }
 
         unattributed.Sort(static (left, right) =>
@@ -122,12 +135,26 @@ internal static class ValidatorProbe
         return new ValidatorProbeReport(typeof(TValidator).Name, typeof(TModel).Name, reports, unattributed);
     }
 
-    private static (IReadOnlyList<ValidationError> Errors, string? Thrown) Observe<TModel>(
-        IValidator<TModel> validator, Func<TModel> build) where TModel : class
+    /// <summary>
+    /// Runs every rule the validator has. This goes through <c>ValidateAsync</c> and never
+    /// <c>Validate</c>, because <c>AbstractValidator&lt;T&gt;.Validate</c> runs only the synchronous
+    /// rules while <c>ValidateAsync</c> runs the synchronous ones and then the asynchronous ones.
+    /// Calling both would run the sync rules twice and report their errors twice; calling only
+    /// <c>Validate</c> would make a property covered solely by <c>RuleForAsync</c> look unvalidated.
+    /// </summary>
+    private static async Task<(IReadOnlyList<ValidationError> Errors, string? Thrown)> ObserveAsync<TModel>(
+        IValidator<TModel> validator, Func<TModel> build, CancellationToken cancellationToken)
+        where TModel : class
     {
         try
         {
-            return (validator.Validate(build()).AllIssues, null);
+            var result = await validator.ValidateAsync(build(), cancellationToken).ConfigureAwait(false);
+            return (result.AllIssues, null);
+        }
+        catch (OperationCanceledException)
+        {
+            // The caller gave up; that is not an observation about the validator.
+            throw;
         }
         catch (Exception exception)
         {
@@ -167,8 +194,18 @@ internal static class ValidatorProbe
     private static IEnumerable<string> Names(ValidationError error)
         => error.ParameterName.Split(',').Select(name => name.Trim());
 
-    private static List<ProbeValue> ProbesFor(Type type)
+    /// <summary>
+    /// The probe values for a property type.
+    /// </summary>
+    /// <param name="type">The declared property type.</param>
+    /// <param name="unprobed">
+    /// True when the type is a collection no value could be constructed for, so the caller can say
+    /// so rather than let the property quietly look as if every value was tried.
+    /// </param>
+    private static List<ProbeValue> ProbesFor(Type type, out bool unprobed)
     {
+        unprobed = false;
+
         var underlying = Nullable.GetUnderlyingType(type);
         var core = underlying ?? type;
         var probes = new List<ProbeValue>();
@@ -230,7 +267,14 @@ internal static class ValidatorProbe
         }
 
         if (TryNumericProbes(core, probes)) return probes;
-        if (TryCollectionProbes(core, probes)) return probes;
+
+        var collection = CollectionProbes(core);
+        if (collection is not null)
+        {
+            probes.AddRange(collection);
+            unprobed = collection.Count == 0;
+            return probes;
+        }
 
         if (core.IsValueType)
         {
@@ -265,35 +309,143 @@ internal static class ValidatorProbe
         return true;
     }
 
-    private static bool TryCollectionProbes(Type core, List<ProbeValue> probes)
+    /// <summary>
+    /// The empty and single-item probes for a collection type, or <c>null</c> when the type is not
+    /// a collection. An empty list means it is a collection nothing could be built for.
+    /// </summary>
+    /// <remarks>
+    /// An array satisfies most collection-shaped properties, but a property declared as
+    /// <c>HashSet&lt;T&gt;</c>, <c>Dictionary&lt;K, V&gt;</c> or one of their interfaces accepts
+    /// neither an array nor a <c>List&lt;T&gt;</c>, so the declared type (or the obvious concrete
+    /// stand-in for its interface) has to be constructed instead. Without that, such a property
+    /// keeps only its null probe and a rule that accepts null but rejects an empty collection is
+    /// never seen.
+    /// </remarks>
+    private static List<ProbeValue>? CollectionProbes(Type core)
     {
-        if (!typeof(System.Collections.IEnumerable).IsAssignableFrom(core)) return false;
+        if (!typeof(System.Collections.IEnumerable).IsAssignableFrom(core)) return null;
 
-        var elementType = core.IsArray
+        var elementType = ElementTypeOf(core);
+        var probes = new List<ProbeValue>();
+
+        var emptyArray = Array.CreateInstance(elementType, 0);
+        if (core.IsInstanceOfType(emptyArray))
+        {
+            var single = Array.CreateInstance(elementType, 1);
+            single.SetValue(SampleElement(elementType), 0);
+            probes.Add(new ProbeValue(emptyArray, "[]"));
+            probes.Add(new ProbeValue(single, "[one]"));
+            return probes;
+        }
+
+        var target = CandidateTypes(core, elementType)
+            .FirstOrDefault(candidate => core.IsAssignableFrom(candidate) && IsConstructible(candidate));
+
+        if (target is null) return probes;
+
+        try
+        {
+            var empty = Activator.CreateInstance(target)!;
+            var one = Activator.CreateInstance(target)!;
+            if (!TryAddElement(one, elementType)) return probes;
+
+            probes.Add(new ProbeValue(empty, "[]"));
+            probes.Add(new ProbeValue(one, "[one]"));
+        }
+        catch (Exception)
+        {
+            // A collection that refuses construction or mutation (an immutable or fixed-size one)
+            // is reported as un-probed rather than quietly given no probes at all.
+            probes.Clear();
+        }
+
+        return probes;
+    }
+
+    private static IEnumerable<Type> CandidateTypes(Type core, Type elementType)
+    {
+        yield return core;
+        yield return typeof(List<>).MakeGenericType(elementType);
+
+        if (elementType.IsGenericType && elementType.GetGenericTypeDefinition() == typeof(KeyValuePair<,>))
+        {
+            yield return typeof(Dictionary<,>).MakeGenericType(elementType.GetGenericArguments());
+        }
+
+        yield return typeof(HashSet<>).MakeGenericType(elementType);
+    }
+
+    /// <summary>
+    /// A value type is excluded on purpose: <c>default</c> of an immutable struct collection (for
+    /// example <c>ImmutableArray&lt;T&gt;</c>) is not an empty collection but an unusable one.
+    /// </summary>
+    private static bool IsConstructible(Type type)
+        => !type.IsAbstract && !type.IsInterface && !type.IsValueType
+           && type.GetConstructor(Type.EmptyTypes) is not null;
+
+    private static Type ElementTypeOf(Type core)
+        => core.IsArray
             ? core.GetElementType()!
             : core.GetInterfaces()
                   .FirstOrDefault(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IEnumerable<>))
                   ?.GetGenericArguments()[0] ?? typeof(object);
 
-        var emptyArray = Array.CreateInstance(elementType, 0);
-        var singleArray = Array.CreateInstance(elementType, 1);
+    private static bool TryAddElement(object collection, Type elementType)
+    {
+        var element = SampleElement(elementType);
 
-        if (core.IsInstanceOfType(emptyArray))
+        // Dictionary<K, V> enumerates as KeyValuePair<K, V> but is filled with a key and a value,
+        // and it rejects a null key -- which is why SampleElement never returns one.
+        if (collection is System.Collections.IDictionary dictionary
+            && elementType.IsGenericType
+            && elementType.GetGenericTypeDefinition() == typeof(KeyValuePair<,>))
         {
-            probes.Add(new ProbeValue(emptyArray, "[]"));
-            probes.Add(new ProbeValue(singleArray, "[default]"));
+            var key = elementType.GetProperty("Key")!.GetValue(element);
+            if (key is null) return false;
+            dictionary.Add(key, elementType.GetProperty("Value")!.GetValue(element));
             return true;
         }
 
-        // Not array-assignable (List<T>, ICollection<T>, ...): build the list instead. Anything
-        // neither an array nor a list can hold gets only the null probe.
-        var listType = typeof(List<>).MakeGenericType(elementType);
-        if (!core.IsAssignableFrom(listType)) return true;
+        var collectionType = typeof(ICollection<>).MakeGenericType(elementType);
+        if (collectionType.IsInstanceOfType(collection))
+        {
+            collectionType.GetMethod("Add")!.Invoke(collection, [element]);
+            return true;
+        }
 
-        var single = (System.Collections.IList)Activator.CreateInstance(listType)!;
-        single.Add(singleArray.GetValue(0));
-        probes.Add(new ProbeValue(Activator.CreateInstance(listType), "[]"));
-        probes.Add(new ProbeValue(single, "[default]"));
-        return true;
+        if (collection is System.Collections.IList list)
+        {
+            list.Add(element);
+            return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// A representative, preferably non-null value of <paramref name="type"/>, used to fill the
+    /// single-item collection probe. It never recurses into a collection element type, so a
+    /// self-referential collection cannot send it into an endless descent.
+    /// </summary>
+    private static object? SampleElement(Type type)
+    {
+        var core = Nullable.GetUnderlyingType(type) ?? type;
+
+        if (core == typeof(string)) return "x";
+        if (core == typeof(Guid)) return NonEmptyGuid;
+        if (core == typeof(DateTime)) return PastUtc;
+        if (core == typeof(DateTimeOffset)) return new DateTimeOffset(PastUtc);
+        if (core.IsEnum) return Enum.GetValues(core) is { Length: > 0 } values
+            ? values.GetValue(0)
+            : Activator.CreateInstance(core);
+        if (core.IsPrimitive || core == typeof(decimal)) return Convert.ChangeType(1, core, CultureInfo.InvariantCulture);
+
+        if (core.IsGenericType && core.GetGenericTypeDefinition() == typeof(KeyValuePair<,>))
+        {
+            var arguments = core.GetGenericArguments();
+            return Activator.CreateInstance(core, SampleElement(arguments[0]), SampleElement(arguments[1]));
+        }
+
+        return core.IsValueType ? Activator.CreateInstance(core) : null;
     }
 }
