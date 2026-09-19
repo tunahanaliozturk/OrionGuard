@@ -64,6 +64,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `FluentRuleBuilder<T, TProperty>`. They compare exactly as the `IComparable` overloads do, including across
   numeric types, but keep the threshold's own type so nothing is boxed per call. A threshold written as a
   literal (`GreaterThan(0)`) now picks the generic overload automatically.
+- **New package `OrionGuard.Aspire` (roadmap R30).** `builder.AddOrionGuardDefaults()` on `IHostApplicationBuilder`
+  subscribes the app's OpenTelemetry meter and tracer providers to every OrionGuard meter and activity source
+  (`Moongazing.OrionGuard` and `Moongazing.OrionGuard.*`: validation, domain events, and the EF Core outbox
+  dispatcher and archival), so they appear in the Aspire dashboard without `AddMeter`/`AddSource` calls. It also
+  registers the `OrionGuard.AspNetCore` validation health check when that package is referenced (opt out with
+  `DisableValidationHealthCheck`) and, with `EnableOutboxArchivalHealthCheck`, the outbox archival health check in
+  services that call `UseOutboxArchival()`. A second call registers nothing new. The package depends on no Aspire,
+  ASP.NET Core, or EF Core package.
 
 ### Changed
 

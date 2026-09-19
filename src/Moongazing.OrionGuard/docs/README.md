@@ -200,6 +200,7 @@ public static class DomainEventSetup
 | `OrionGuard.Swagger` | Writes OrionGuard attribute constraints into Swashbuckle OpenAPI schemas |
 | `OrionGuard.OpenApi` | Source generator that builds an OrionGuard validator from an OpenAPI 3 schema |
 | `OrionGuard.OpenTelemetry` | Metrics and tracing for validation and domain-event dispatch |
+| `OrionGuard.Aspire` | `builder.AddOrionGuardDefaults()`: every OrionGuard meter and activity source in the Aspire dashboard, plus the OrionGuard health checks |
 | `OrionGuard.EntityFrameworkCore` | `SaveChanges` interceptor that dispatches domain events inline or through a transactional outbox |
 | `OrionGuard.Outbox.PostgresNotify` | PostgreSQL `LISTEN`/`NOTIFY` wake signal for the outbox dispatcher |
 | `OrionGuard.Outbox.SqlServerBroker` | SQL Server Service Broker wake signal for the outbox dispatcher |
