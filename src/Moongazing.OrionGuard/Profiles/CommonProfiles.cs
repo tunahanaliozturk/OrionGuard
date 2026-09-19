@@ -66,7 +66,7 @@ public static class CommonProfiles
             .NotNull()
             .NotEmpty()
             .Length(minLength, maxLength)
-            .Matches(@"^[a-zA-Z0-9_]+$", $"{parameterName} can only contain letters, numbers, and underscores.")
+            .Matches(@"^[a-zA-Z0-9_]+\z", $"{parameterName} can only contain letters, numbers, and underscores.")
             .ToResult();
     }
 
@@ -129,7 +129,7 @@ public static class CommonProfiles
         return Core.Ensure.Accumulate(value, parameterName)
             .NotNull()
             .NotEmpty()
-            .Matches(@"^\+?[1-9]\d{1,14}$")
+            .Matches(@"^\+?[1-9][0-9]{1,14}\z")
             .ToResult();
     }
 
@@ -214,7 +214,7 @@ public static class CommonProfiles
             .NotNull()
             .NotEmpty()
             .Length(1, 200)
-            .Matches(@"^[a-z0-9]+(?:-[a-z0-9]+)*$", $"{parameterName} must be a valid URL slug.")
+            .Matches(@"^[a-z0-9]+(?:-[a-z0-9]+)*\z", $"{parameterName} must be a valid URL slug.")
             .ToResult();
     }
 

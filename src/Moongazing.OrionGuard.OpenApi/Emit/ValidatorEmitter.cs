@@ -240,7 +240,9 @@ namespace Moongazing.OrionGuard.OpenApi.Emit
             // documented regexes. Unknown formats are ignored (an open-ended set in OpenAPI).
             string? formatPattern = schema.Format switch
             {
-                "email" => @"^[^@\s]+@[^@\s]+\.[^@\s]+$",
+                // Same pattern as the core GeneratedRegexPatterns.Email: linear, and capped at 254 characters,
+                // because the emitted Regex.IsMatch call runs without a match timeout.
+                "email" => @"^(?=.{1,254}\z)[^@\s]+@[^@\s.]+(?:\.[^@\s.]+)+\z",
                 "uuid" => @"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
                 "date-time" => @"^\d{4}-\d{2}-\d{2}[Tt]\d{2}:\d{2}:\d{2}(\.\d+)?([Zz]|[+-]\d{2}:\d{2})?$",
                 "date" => @"^\d{4}-\d{2}-\d{2}$",

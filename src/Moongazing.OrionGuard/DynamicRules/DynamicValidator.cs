@@ -150,12 +150,12 @@ public sealed class DynamicValidator
             "REGEX" or "PATTERN" => ValidateRegex(rule, value, propertyName),
 
             "EMAIL" => value is string email && !string.IsNullOrWhiteSpace(email)
-                       && !Utilities.GeneratedRegexPatterns.Email().IsMatch(email)
+                       && !Utilities.FormatRules.IsEmail(email)
                 ? CreateError(rule, propertyName, $"{propertyName} must be a valid email address.")
                 : null,
 
             "URL" => value is string url && !string.IsNullOrWhiteSpace(url)
-                     && !Uri.TryCreate(url, UriKind.Absolute, out _)
+                     && !Utilities.FormatRules.IsHttpUrl(url)
                 ? CreateError(rule, propertyName, $"{propertyName} must be a valid URL.")
                 : null,
 
@@ -254,13 +254,27 @@ public sealed class DynamicValidator
         if (string.IsNullOrEmpty(pattern))
             return null;
 
-        if (!Regex.IsMatch(sv, pattern, RegexOptions.None, TimeSpan.FromSeconds(1)))
+        if (!IsMatchWithinTimeout(sv, pattern))
         {
             return CreateError(rule, propertyName,
                 $"{propertyName} does not match the required pattern.");
         }
 
         return null;
+    }
+
+    // A pattern that times out on this input reports a validation failure, like any other mismatch,
+    // rather than escaping Validate() as RegexMatchTimeoutException.
+    private static bool IsMatchWithinTimeout(string input, string pattern)
+    {
+        try
+        {
+            return Regex.IsMatch(input, pattern, RegexOptions.None, TimeSpan.FromSeconds(1));
+        }
+        catch (RegexMatchTimeoutException)
+        {
+            return false;
+        }
     }
 
     private static ValidationError? ValidateIn(

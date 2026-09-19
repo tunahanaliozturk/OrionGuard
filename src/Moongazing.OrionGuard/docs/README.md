@@ -27,7 +27,8 @@ public static class Registration
         // Span-based guard for hot paths.
         FastGuard.NotNullOrEmpty(displayName, nameof(displayName));
 
-        // Security guard: throws when the input matches known SQL injection patterns.
+        // Heuristic: rejects input that matches known SQL injection patterns. It is not a defence;
+        // the query that uses displayName must still be parameterized.
         displayName.AgainstSqlInjection(nameof(displayName));
     }
 }
@@ -41,7 +42,8 @@ public static class Registration
 - `Ensure.Accumulate(value)` with `GuardResult`: collect every error instead of throwing, merge results with `GuardResult.Combine`, and read them with `ToErrorDictionary()`. Errors carry a `Severity` (Error, Warning, Info) and results can carry a `SuggestedHttpStatusCode`.
 - `FastGuard`: span-based guards (`NotNullOrEmpty`, `Email`, `Ascii`, `AlphaNumeric`, `MaxLength`, `ValidGuid`, `Finite`, ...) with the throw paths moved into separate `[DoesNotReturn]` helpers to keep the hot path small.
 - Extension guards in `Moongazing.OrionGuard.Extensions`:
-  - Security: `AgainstSqlInjection`, `AgainstXss`, `AgainstPathTraversal`, `AgainstCommandInjection`, `AgainstLdapInjection`, `AgainstXxe`, `AgainstOpenRedirect`, `AgainstUnsafeFileName`, and `AgainstInjection` (all injection checks at once).
+  - Injection heuristics: `AgainstSqlInjection`, `AgainstXss`, `AgainstCommandInjection`, `AgainstLdapInjection`, `AgainstXxe`, and `AgainstInjection` (the checks combined, for free text). These are denylists, not a defence: they miss payloads they do not list and reject some ordinary text. Keep using parameterized queries, contextual output encoding, `ProcessStartInfo.ArgumentList` without a shell, LDAP escaping, and an XML reader with DTDs prohibited.
+  - Paths and redirects: `AgainstPathTraversal`, `AgainstPathEscape` (resolves a path and keeps it inside a root directory), `AgainstUnsafeFileName`, and `AgainstOpenRedirect` (local paths or allow-listed hosts, ASP.NET Core `IsLocalUrl` rules).
   - Format: latitude/longitude, MAC address, hostname, CIDR, ISO 3166 country code, IANA time zone, BCP 47 language tag, JWT structure, connection string, Base64.
   - International: SWIFT/BIC, ISBN, VIN, EAN, EU VAT number, IMEI.
   - Business: monetary amount, currency code, SKU, coupon code, discount, status transitions, business hours, date ranges.

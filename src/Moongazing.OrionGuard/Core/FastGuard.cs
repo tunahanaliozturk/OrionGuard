@@ -248,14 +248,17 @@ public static class FastGuard
     }
 
     /// <summary>
-    /// Validates email format using span-based parsing (no regex allocation).
+    /// Validates email format with the same rule as every other email check in the library
+    /// (<c>Guard.AgainstInvalidEmail</c>, <c>Ensure...Email()</c>, <c>[Email]</c>): one <c>@</c>, no
+    /// whitespace, a domain of at least two non-empty labels, at most 254 characters. The source-generated
+    /// regex does not allocate.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static string Email(string value, string parameterName)
     {
-        if (!IsValidEmailSpan(value.AsSpan()))
+        if (value is null || !Utilities.FormatRules.IsEmail(value))
             ThrowInvalidEmail(parameterName);
-        return value;
+        return value!;
     }
 
     /// <summary>
@@ -329,37 +332,6 @@ public static class FastGuard
             ThrowArgumentException($"{parameterName} must be a finite number.", parameterName);
         return value;
     }
-
-    #region Internal span-based helpers
-
-    private static bool IsValidEmailSpan(ReadOnlySpan<char> email)
-    {
-        if (email.IsEmpty || email.Length > 254)
-            return false;
-
-        int atIndex = email.IndexOf('@');
-        if (atIndex <= 0 || atIndex >= email.Length - 1)
-            return false;
-
-        var local = email[..atIndex];
-        var domain = email[(atIndex + 1)..];
-
-        if (local.IsEmpty || domain.IsEmpty)
-            return false;
-
-        // Domain must contain at least one dot
-        int dotIndex = domain.IndexOf('.');
-        if (dotIndex <= 0 || dotIndex >= domain.Length - 1)
-            return false;
-
-        // No spaces allowed
-        if (email.Contains(' '))
-            return false;
-
-        return true;
-    }
-
-    #endregion
 
     #region Throw helpers (separate methods to keep hot path small)
 

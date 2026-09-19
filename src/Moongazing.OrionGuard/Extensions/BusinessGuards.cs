@@ -18,7 +18,9 @@ public static class BusinessGuards
     #region Money & Currency
 
     /// <summary>
-    /// Validates that the value is a valid monetary amount (non-negative, max 2 decimal places).
+    /// Validates that the value is a valid monetary amount: non-negative, and equal to itself rounded to
+    /// <paramref name="maxDecimalPlaces"/> places (2 by default). Trailing zeros do not count, so
+    /// <c>10.5000m</c> is a valid 2-place amount.
     /// </summary>
     public static void AgainstInvalidMonetaryAmount(this decimal value, string parameterName, int maxDecimalPlaces = 2)
     {
@@ -27,8 +29,8 @@ public static class BusinessGuards
             throw new ArgumentException($"{parameterName} cannot be negative.", parameterName);
         }
 
-        var decimalPlaces = BitConverter.GetBytes(decimal.GetBits(value)[3])[2];
-        if (decimalPlaces > maxDecimalPlaces)
+        // decimal.Round accepts at most 28 places, the most a decimal can hold, so a larger limit never fails.
+        if (maxDecimalPlaces < 28 && decimal.Round(value, maxDecimalPlaces) != value)
         {
             throw new ArgumentException($"{parameterName} cannot have more than {maxDecimalPlaces} decimal places.", parameterName);
         }

@@ -99,7 +99,7 @@ public sealed class EmailAttribute : ValidationAttribute
     {
         if (value is string s)
         {
-            return !string.IsNullOrWhiteSpace(s) && Utilities.GeneratedRegexPatterns.Email().IsMatch(s);
+            return !string.IsNullOrWhiteSpace(s) && Utilities.FormatRules.IsEmail(s);
         }
         return value is null; // Null is valid, use [NotNull] for null check
     }
@@ -164,8 +164,8 @@ public sealed class RegexAttribute : ValidationAttribute
         if (value is string s)
         {
             // RegexCache applies a match timeout; the static Regex.IsMatch would backtrack on
-            // attacker-controlled input without limit.
-            return Core.RegexCache.GetOrCreate(Pattern).IsMatch(s);
+            // attacker-controlled input without limit. A timed-out match reports the value as invalid.
+            return Utilities.FormatRules.IsMatch(Core.RegexCache.GetOrCreate(Pattern), s);
         }
         return value is null;
     }
