@@ -1,0 +1,65 @@
+name: Benchmarks
+
+# Manual only. Shared GitHub-hosted runners are too noisy to gate merges on timing, so this never
+# runs on push or pull_request. Use it to produce a fresh OrionGuard vs FluentValidation report;
+# compare numbers only within one run, never across runs or machines.
+on:
+  workflow_dispatch:
+    inputs:
+      job:
+        description: BenchmarkDotNet job (short finishes in minutes; medium gives tighter intervals)
+        type: choice
+        options:
+          - short
+          - medium
+        default: short
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  DOTNET_NOLOGO: true
+
+jobs:
+  comparison:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          # The [GenerateValidator] generator needs SDK 10.0.400 or newer.
+          dotnet-version: '10.0.x'
+
+      - name: Run comparison benchmarks
+        env:
+          BENCH_JOB: ${{ inputs.job }}
+        run: >
+          dotnet run -c Release --project benchmarks/Moongazing.OrionGuard.Benchmarks --
+          --filter '*Comparison*' --job "$BENCH_JOB" --artifacts BenchmarkDotNet.Artifacts
+
+      - name: Publish reports to the job summary
+        if: always()
+        run: |
+          shopt -s nullglob
+          for report in BenchmarkDotNet.Artifacts/results/*-report-github.md; do
+            cat "$report" >> "$GITHUB_STEP_SUMMARY"
+            echo >> "$GITHUB_STEP_SUMMARY"
+          done
+
+      - name: Upload BenchmarkDotNet artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: benchmarkdotnet-comparison-${{ inputs.job }}
+          path: BenchmarkDotNet.Artifacts/
+          if-no-files-found: warn
+          retention-days: 30
