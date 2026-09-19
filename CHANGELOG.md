@@ -1,4 +1,4 @@
-# Changelog
+﻿# Changelog
 
 All notable changes to OrionGuard will be documented in this file.
 
@@ -258,6 +258,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     literal (any other argument would be evaluated twice, and a method group is the `Func<T, int>` overload). It used to be reported
     as an unknown rule.
   - `ExactLength(n)` is not a FluentValidation rule, so it is now reported instead of rewritten.
+- **The outbox dispatcher finishes the processed stamp when the host stops.** A row whose handlers had already
+  run left `ProcessedOnUtc` null if shutdown was requested before the stamp was written, so the event was
+  dispatched again on the next start. The stamp is no longer cancelled by shutdown; the database command
+  timeout and the host's shutdown timeout still bound it.
+  The rest of the batch is left for the next start: once shutdown is requested, no further row is dispatched.
 
 ### Deprecated
 
