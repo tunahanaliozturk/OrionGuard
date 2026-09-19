@@ -253,9 +253,11 @@ public static class GuardRunner
             }
             catch (PlatformNotSupportedException ex)
             {
-                // .NET on WebAssembly has no NFKC normalization, which AgainstPathTraversal applies
-                // before it looks for traversal sequences, so a non-ASCII value makes it throw here.
-                // On a server or desktop runtime the same call returns an answer.
+                // AgainstPathTraversal normalizes with FormKC before it looks for traversal sequences,
+                // and browser ICU ships without the compatibility-form data, so a non-ASCII value throws
+                // here. An ASCII value is returned by a fast path before normalization is attempted and
+                // never reaches this. A server or desktop runtime returns an answer instead - except
+                // under InvariantGlobalization, where normalization is skipped and the value passes.
                 outcomes.Add(new GuardOutcome(check, GuardVerdict.Unavailable, ex.Message, ex.GetType().Name));
             }
             catch (Exception ex)
