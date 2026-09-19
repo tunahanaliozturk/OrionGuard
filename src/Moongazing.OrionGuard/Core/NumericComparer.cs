@@ -20,6 +20,12 @@ namespace Moongazing.OrionGuard.Core;
 /// <see cref="float"/>, <see cref="double"/> and <see cref="decimal"/>. Other types compare only with
 /// a threshold of the same type, through that type's own <see cref="IComparable{T}"/>.
 /// </para>
+/// <para>
+/// Integers compare exactly with each other, with <see cref="decimal"/>, and with floating-point values
+/// (an integer above 2^53 is not rounded). A <see cref="decimal"/> compared with a <see cref="double"/> or
+/// <see cref="float"/> uses the floating-point value converted to decimal (15 significant digits), so
+/// <c>0.1m</c> equals the literal <c>0.1</c>.
+/// </para>
 /// </remarks>
 internal static class NumericComparer
 {
@@ -92,10 +98,9 @@ internal static class NumericComparer
         }
 
         // The pattern checks above guarantee both operands are non-null built-in numbers from here on.
-        if (leftKind == NumericKind.FloatingPoint || rightKind == NumericKind.FloatingPoint)
+        if (leftKind == NumericKind.FloatingPoint && rightKind == NumericKind.FloatingPoint)
         {
-            // ponytail: integers above 2^53 lose precision as double; exact mixed long/double ordering
-            // is only worth adding if someone guards such values against fractional thresholds.
+            // float widens to double exactly, so a double comparison is exact for float/double pairs.
             var leftDouble = ((IConvertible)left!).ToDouble(CultureInfo.InvariantCulture);
             var rightDouble = ((IConvertible)right!).ToDouble(CultureInfo.InvariantCulture);
             if (double.IsNaN(leftDouble) || double.IsNaN(rightDouble))
@@ -105,6 +110,24 @@ internal static class NumericComparer
 
             comparison = leftDouble.CompareTo(rightDouble);
             return true;
+        }
+
+        if (leftKind == NumericKind.FloatingPoint)
+        {
+            var floating = ((IConvertible)left!).ToDouble(CultureInfo.InvariantCulture);
+            if (!TryCompareWithFloatingPoint(right!, rightKind, floating, out var reversed))
+            {
+                return false;
+            }
+
+            comparison = -reversed;
+            return true;
+        }
+
+        if (rightKind == NumericKind.FloatingPoint)
+        {
+            var floating = ((IConvertible)right!).ToDouble(CultureInfo.InvariantCulture);
+            return TryCompareWithFloatingPoint(left!, leftKind, floating, out comparison);
         }
 
         if (leftKind == NumericKind.Decimal || rightKind == NumericKind.Decimal)
@@ -118,6 +141,64 @@ internal static class NumericComparer
         // Int128 holds every value of every built-in integer type, signed or unsigned, so a negative
         // long and a large ulong still order correctly.
         comparison = ToInt128(left!).CompareTo(ToInt128(right!));
+        return true;
+    }
+
+    // 2^127 and 2^96 are exact doubles: every Int128 lies strictly below the first, every decimal strictly below the second.
+    private const double Int128Bound = 1.7014118346046923E+38;
+    private const double DecimalBound = 7.922816251426434E+28;
+
+    /// <summary>
+    /// Compares an integer or decimal <paramref name="exact"/> with a double without rounding the exact side.
+    /// </summary>
+    private static bool TryCompareWithFloatingPoint(object exact, NumericKind exactKind, double floating, out int comparison)
+    {
+        comparison = 0;
+        if (double.IsNaN(floating))
+        {
+            return false;
+        }
+
+        if (exactKind == NumericKind.Integer)
+        {
+            // Integers compare exactly: an integer above 2^53 must not collapse onto a neighbouring double.
+            if (floating >= Int128Bound)
+            {
+                comparison = -1;
+                return true;
+            }
+
+            if (floating < -Int128Bound)
+            {
+                comparison = 1;
+                return true;
+            }
+
+            var integer = ToInt128(exact);
+            var floor = Math.Floor(floating);
+            var floorInteger = (Int128)floor;
+            comparison = integer != floorInteger
+                ? integer.CompareTo(floorInteger)
+                : floating == floor ? 0 : -1;
+            return true;
+        }
+
+        // Decimal: convert the double to decimal, which keeps its 15 significant digits. A decimal value
+        // is usually compared with a double literal, and 0.1m must equal the literal 0.1 rather than the
+        // binary value 0.1000000000000000055…
+        if (floating >= DecimalBound)
+        {
+            comparison = -1;
+            return true;
+        }
+
+        if (floating <= -DecimalBound)
+        {
+            comparison = 1;
+            return true;
+        }
+
+        comparison = ((IConvertible)exact).ToDecimal(CultureInfo.InvariantCulture).CompareTo((decimal)floating);
         return true;
     }
 

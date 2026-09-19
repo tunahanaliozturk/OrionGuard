@@ -1,4 +1,6 @@
 using System.Collections.Concurrent;
+using System.Reflection;
+using System.Runtime.CompilerServices;
 using Moongazing.OrionGuard.DependencyInjection;
 
 namespace Moongazing.OrionGuard.Core;
@@ -14,10 +16,13 @@ namespace Moongazing.OrionGuard.Core;
 /// <list type="bullet">
 /// <item><description>With a key selector (<see cref="CachedValidatorExtensions.WithCaching{T, TKey}"/>),
 /// the key is the selector's result. It must cover every value the inner validator reads.</description></item>
-/// <item><description>Without one, a <typeparamref name="T"/> that implements <see cref="IEquatable{T}"/>
-/// (every record does) is its own key, compared with <see cref="EqualityComparer{T}.Default"/>.</description></item>
+/// <item><description>Without one, a record whose equality is compiler-synthesized is its own key: that
+/// equality compares every member. Members are compared shallowly, so a record holding a mutable collection
+/// that changes between calls still needs a key selector.</description></item>
 /// <item><description>Any other <typeparamref name="T"/> bypasses the cache and always runs the inner
-/// validator: reference equality cannot tell whether a mutable object changed since it was cached.</description></item>
+/// validator. Reference equality cannot tell whether a mutable object changed since it was cached, and a
+/// hand-written <see cref="IEquatable{T}"/> (for example an entity compared by Id) can call two inputs equal
+/// while the validated state differs.</description></item>
 /// </list>
 /// <para>
 /// A call with a non-empty <see cref="ValidationContext"/> also bypasses the cache, because rules may read
@@ -27,7 +32,7 @@ namespace Moongazing.OrionGuard.Core;
 /// </remarks>
 public sealed class CachedValidator<T> : IValidator<T> where T : class
 {
-    private static readonly bool IsSelfKeyed = typeof(IEquatable<T>).IsAssignableFrom(typeof(T));
+    private static readonly bool IsSelfKeyed = HasSynthesizedValueEquality(typeof(T));
 
     private readonly IValidator<T> _inner;
     private readonly Func<T, object?>? _keySelector;
@@ -101,6 +106,11 @@ public sealed class CachedValidator<T> : IValidator<T> where T : class
 
     /// <summary>Current cache size.</summary>
     public int CacheSize => _cache.Count;
+
+    // Records get a compiler-synthesized Equals(T) marked [CompilerGenerated]; a hand-written one is not.
+    private static bool HasSynthesizedValueEquality(Type type) =>
+        type.GetMethod(nameof(Equals), BindingFlags.Public | BindingFlags.Instance, [type])
+            ?.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false) == true;
 
     /// <summary>
     /// Returns the cache key for <paramref name="value"/>, or <c>null</c> when this call must not use the
@@ -207,9 +217,10 @@ public sealed class CachedValidator<T> : IValidator<T> where T : class
 public static class CachedValidatorExtensions
 {
     /// <summary>
-    /// Wraps a validator with caching support. Results are cached only when <typeparamref name="T"/>
-    /// implements <see cref="IEquatable{T}"/> (records do); other types are validated on every call.
-    /// Use <see cref="WithCaching{T, TKey}"/> to cache any type by an explicit key.
+    /// Wraps a validator with caching support. Results are cached only when <typeparamref name="T"/> is a
+    /// record with compiler-synthesized equality; other types, including types with a hand-written
+    /// <see cref="IEquatable{T}"/>, are validated on every call. Use <see cref="WithCaching{T, TKey}"/> to
+    /// cache any type by an explicit key that covers the validated state.
     /// </summary>
     public static CachedValidator<T> WithCaching<T>(this IValidator<T> validator, TimeSpan? ttl = null, int maxCacheSize = 1000) where T : class
         => new(validator, ttl, maxCacheSize);

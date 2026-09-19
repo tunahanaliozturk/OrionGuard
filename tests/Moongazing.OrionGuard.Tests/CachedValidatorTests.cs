@@ -269,6 +269,40 @@ public class CachedValidatorTests
     }
 
     [Fact]
+    public void Validate_ShouldNotServeCachedValid_WhenTypeEqualityIgnoresValidatedState()
+    {
+        // An entity compared by Id: equal to its cached twin while IsBlocked differs.
+        var cached = new AccountValidator().WithCaching();
+
+        Assert.True(cached.Validate(new Account(1) { IsBlocked = false }).IsValid);
+
+        Assert.True(cached.Validate(new Account(1) { IsBlocked = true }).IsInvalid);
+    }
+
+    private sealed class Account : IEquatable<Account>
+    {
+        public Account(int id) => Id = id;
+
+        public int Id { get; }
+
+        public bool IsBlocked { get; init; }
+
+        public bool Equals(Account? other) => other is not null && other.Id == Id;
+
+        public override bool Equals(object? obj) => Equals(obj as Account);
+
+        public override int GetHashCode() => Id;
+    }
+
+    private sealed class AccountValidator : AbstractValidator<Account>
+    {
+        public AccountValidator()
+        {
+            RuleFor(a => !a.IsBlocked, "Account is blocked.", "IsBlocked");
+        }
+    }
+
+    [Fact]
     public void Validate_ShouldNotUseCache_WhenTypeHasNoValueEquality()
     {
         var inner = new CountingPersonValidator();

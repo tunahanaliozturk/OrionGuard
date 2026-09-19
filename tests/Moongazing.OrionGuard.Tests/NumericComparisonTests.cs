@@ -38,6 +38,30 @@ public class NumericComparisonTests
     #region FluentGuard
 
     [Fact]
+    public void GreaterThan_ShouldCompareExactly_WhenLongValueIsAboveDoublePrecision()
+    {
+        // 2^53 + 1 and 2^53 collapse to the same double; the integer side must not be rounded.
+        Assert.True(Ensure.Accumulate(9007199254740993L, "id").GreaterThan(9007199254740992d).ToResult().IsValid);
+        Assert.True(Ensure.Accumulate(9007199254740992L, "id").GreaterThan(9007199254740992d).ToResult().IsInvalid);
+    }
+
+    [Fact]
+    public void GreaterThan_ShouldHonourTheFraction_WhenIntValueIsComparedWithDoubleLiteral()
+    {
+        Assert.True(Ensure.Accumulate(5, "qty").GreaterThan(4.5).ToResult().IsValid);
+        Assert.True(Ensure.Accumulate(4, "qty").GreaterThan(4.5).ToResult().IsInvalid);
+        Assert.True(Ensure.Accumulate(-5, "qty").LessThan(-4.5).ToResult().IsValid);
+    }
+
+    [Fact]
+    public void InRange_ShouldTreatDoubleLiteralAsItsDecimalValue_WhenValueIsDecimal()
+    {
+        // The literal 0.1 is the binary 0.1000000000000000055...; a decimal 0.1m must still be in range.
+        Assert.True(Ensure.Accumulate(0.1m, "rate").InRange(0.1, 1.0).ToResult().IsValid);
+        Assert.True(Ensure.Accumulate(0.10000000000000001m, "rate").GreaterThan(0.1).ToResult().IsValid);
+    }
+
+    [Fact]
     public void GreaterThan_ShouldFail_WhenDecimalValueIsBelowIntLiteral()
     {
         var result = Ensure.Accumulate(-5m, "price").GreaterThan(0).ToResult();

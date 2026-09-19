@@ -80,7 +80,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Numeric comparison rules now compare by value across numeric types.** `GreaterThan`, `LessThan` and `InRange`
   (on `Ensure`, `Validate.For`, `Validate.Nested` and `AbstractValidator`'s `RuleFor`) took their type from the
   literal, so `GreaterThan(0)` on a `decimal`, `long` or `double` silently passed every value, negative ones
-  included. All built-in numeric types (`sbyte` through `decimal`) now compare with each other exactly. A value
+  included. All built-in numeric types (`sbyte` through `decimal`) now compare with each other: integers
+  exactly (also against floating-point values, so a `long` above 2^53 is not rounded), and a `decimal` against a
+  `double` literal by the literal's decimal value, so `0.1m` equals `0.1`. A value
   that cannot be compared with the threshold (for example a string against a number) now fails the rule instead
   of being skipped, and `NaN` fails every comparison. `Positive()`, `NotNegative()` and `NotZero()` now also
   check `short`, `byte`, `sbyte`, `ushort`, `uint` and `ulong`, and fail for `NaN`; on a non-numeric value they
@@ -94,8 +96,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   selectors are compiled per call.
 - **`CachedValidator` no longer serves a result cached for a different input.** Its key was built from each
   property's `ToString()`, so objects differing only in a collection, or `null` versus the string `"null"`,
-  shared one cached result. Without a key selector a result is now cached only when the model is a record or
-  implements `IEquatable<T>`; other models are validated on every call. The new
+  shared one cached result. Without a key selector a result is now cached only when the model is a record with
+  compiler-synthesized equality; other models, including types with a hand-written `IEquatable<T>` such as an
+  entity compared by Id, are validated on every call. The new
   `validator.WithCaching(keySelector)` overload caches any model by an explicit key. Calls with a non-empty
   `ValidationContext` now reach the inner validator's context overloads and are never cached; previously the
   context was dropped and results could be shared across tenants.
