@@ -291,7 +291,10 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
         bool marked;
         try
         {
-            marked = await MarkProcessedAsync(db, row, processedOnUtc, cancellationToken).ConfigureAwait(false);
+            // The handlers already ran. Abandoning the processed stamp because the host is shutting down
+            // would dispatch this row again on the next start, so the write is not cancellable; the
+            // database command timeout and the host's shutdown timeout still bound it.
+            marked = await MarkProcessedAsync(db, row, processedOnUtc, CancellationToken.None).ConfigureAwait(false);
         }
         catch (Exception ex) when (!IsShutdown(ex, cancellationToken))
         {
