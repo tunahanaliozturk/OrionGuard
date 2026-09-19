@@ -69,7 +69,7 @@ Hangfire's `BackgroundJobClient` wraps exceptions thrown during job creation in 
 
 ## What this package adds
 
-- `OrionGuardClientFilter`: a Hangfire `IClientFilter`. In `OnCreating` it resolves `IValidator<T>` for the runtime type of each job argument and runs it. If any argument is invalid, it throws `JobArgumentValidationException`.
+- `OrionGuardClientFilter`: a Hangfire `IClientFilter`. In `OnCreating` it runs every `IValidator<T>` registered for the runtime type of each job argument, one after another. If any argument is invalid, it throws `JobArgumentValidationException`.
 - `JobArgumentValidationException`: carries every `ValidationError` gathered across the job's arguments in `Errors`, plus `JobType` and `MethodName` for the target job method. Its `ToString()` appends one line per error.
 - `UseOrionGuardValidation(IServiceProvider)` on `IGlobalConfiguration` and `AddOrionGuardClientFilter(IServiceProvider)` on `JobFilterCollection`: registration helpers for the two usual Hangfire setups.
 

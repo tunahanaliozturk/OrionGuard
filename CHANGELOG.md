@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `OrionGuard`: `ValidatorInvoker.ValidateAsync(IServiceProvider, object, ValidationContext?, CancellationToken)`
+  in `Moongazing.OrionGuard.DependencyInjection` runs every `IValidator<T>` registered for an object's runtime
+  type through `ValidateAsync` and returns the combined result, or `null` when no validator is registered. The
+  SignalR, gRPC, MVC, and Hangfire integrations now share it.
+- `OrionGuard.MediatR`: `StreamValidationBehavior<TRequest, TResponse>`, an `IStreamPipelineBehavior<,>` that
+  validates stream requests.
+
 ### Changed
 
 - **Dependencies refreshed across the solution.** Package versions are bumped in the release PR.
@@ -36,6 +45,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   affected READMEs until they are fixed. The Blazor and Generators package descriptions were corrected too.
 - Test and benchmark tooling: xUnit 2.9.3, `xunit.runner.visualstudio` 4.0.0, `Microsoft.NET.Test.Sdk` 18.10.1,
   coverlet 10.0.1, BenchmarkDotNet 0.15.8.
+
+### Fixed
+
+- `OrionGuard.SignalR`: `OrionGuardHubFilter` threw `AmbiguousMatchException` for every hub call whose argument
+  had a registered validator, because it looked up `Validate` by name and `IValidator<T>` has two overloads. It
+  now validates the argument and throws `HubException` with a `Validation failed: <field>: <message>; ...`
+  message, errors listed in argument order and then validator registration order.
+- `OrionGuard.SignalR`: the filter is a singleton and resolved validators from the root service provider, so
+  scoped validators failed, and it called the synchronous `Validate`, so `RuleForAsync` rules never ran.
+  Validators now come from the hub invocation's scope and run through `ValidateAsync`.
+- `OrionGuard.AspNetCore`: `[ValidateRequest]` did nothing. `OrionGuardMvcFilter` was registered in DI but never
+  added to the MVC filter pipeline, and when added by hand it threw `AmbiguousMatchException`. The attribute now
+  adds the filter to the action's pipeline. The filter honours `OrionGuardAspNetCoreOptions.DefaultStatusCode`
+  and `UseProblemDetails` the same way the Minimal API endpoint filter does, and runs once per request when the
+  attribute is on both the controller and the action.
+- `OrionGuard.Grpc`: `OrionGuardInterceptor` is a singleton and resolved validators from the root service
+  provider, so scoped validators failed, and it called the synchronous `Validate`, so `RuleForAsync` rules never
+  ran. Validators now come from the call's request scope (`HttpContext.RequestServices`) and run through
+  `ValidateAsync` for unary and all streaming calls. The status code and `validation-errors-json` trailer are
+  unchanged.
+- The SignalR hub filter, gRPC interceptor, MVC filter, and Hangfire client filter ran only the last
+  `IValidator<T>` registered for a type. They now run every registered validator and combine the errors, as the
+  MediatR behavior already did.
+- `OrionGuard.MediatR`: `ValidationBehavior` ran validators concurrently with `Task.WhenAll`, so two validators
+  sharing a scoped `DbContext` failed with "A second operation was started on this context instance". Validators
+  now run one after another.
+- `OrionGuard.MediatR`: stream requests (`IStreamRequest<T>` sent with `IMediator.CreateStream`) were never
+  validated, because only `IPipelineBehavior<,>` was registered. `AddOrionGuardMediatR` now also registers
+  `StreamValidationBehavior<,>`, which validates the request before the handler yields its first item.
 
 ### Security
 

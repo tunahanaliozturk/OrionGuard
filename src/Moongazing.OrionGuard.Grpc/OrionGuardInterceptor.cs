@@ -1,7 +1,5 @@
 using Grpc.Core;
 using Grpc.Core.Interceptors;
-using Microsoft.Extensions.DependencyInjection;
-using Moongazing.OrionGuard.Core;
 using Moongazing.OrionGuard.DependencyInjection;
 
 namespace Moongazing.OrionGuard.Grpc;
@@ -10,10 +8,20 @@ namespace Moongazing.OrionGuard.Grpc;
 /// gRPC server interceptor that validates incoming request messages using OrionGuard validators.
 /// Throws RpcException with StatusCode.InvalidArgument when validation fails.
 /// </summary>
+/// <remarks>
+/// Validators are resolved from the call's request scope (<c>HttpContext.RequestServices</c>), and every
+/// validator registered for the message's runtime type runs through <c>ValidateAsync</c>, so scoped
+/// validators and async rules work even though the interceptor itself is a singleton.
+/// </remarks>
 public sealed class OrionGuardInterceptor : Interceptor
 {
     private readonly IServiceProvider _serviceProvider;
 
+    /// <summary>Initializes a new instance of the <see cref="OrionGuardInterceptor"/> class.</summary>
+    /// <param name="serviceProvider">
+    /// Used only when a call has no <c>HttpContext</c> (the service is not hosted by ASP.NET Core).
+    /// Otherwise validators come from the request scope.
+    /// </param>
     public OrionGuardInterceptor(IServiceProvider serviceProvider)
     {
         _serviceProvider = serviceProvider;
@@ -24,8 +32,8 @@ public sealed class OrionGuardInterceptor : Interceptor
         ServerCallContext context,
         UnaryServerMethod<TRequest, TResponse> continuation)
     {
-        ValidateRequest(request);
-        return await continuation(request, context);
+        await ValidateRequestAsync(request, ResolveServices(context), context.CancellationToken).ConfigureAwait(false);
+        return await continuation(request, context).ConfigureAwait(false);
     }
 
     public override async Task<TResponse> ClientStreamingServerHandler<TRequest, TResponse>(
@@ -34,8 +42,8 @@ public sealed class OrionGuardInterceptor : Interceptor
         ClientStreamingServerMethod<TRequest, TResponse> continuation)
     {
         // Wrap the stream reader to validate each message
-        var validatingStream = new ValidatingStreamReader<TRequest>(requestStream, this);
-        return await continuation(validatingStream, context);
+        var validatingStream = new ValidatingStreamReader<TRequest>(requestStream, ResolveServices(context));
+        return await continuation(validatingStream, context).ConfigureAwait(false);
     }
 
     public override async Task ServerStreamingServerHandler<TRequest, TResponse>(
@@ -44,8 +52,8 @@ public sealed class OrionGuardInterceptor : Interceptor
         ServerCallContext context,
         ServerStreamingServerMethod<TRequest, TResponse> continuation)
     {
-        ValidateRequest(request);
-        await continuation(request, responseStream, context);
+        await ValidateRequestAsync(request, ResolveServices(context), context.CancellationToken).ConfigureAwait(false);
+        await continuation(request, responseStream, context).ConfigureAwait(false);
     }
 
     public override async Task DuplexStreamingServerHandler<TRequest, TResponse>(
@@ -54,17 +62,33 @@ public sealed class OrionGuardInterceptor : Interceptor
         ServerCallContext context,
         DuplexStreamingServerMethod<TRequest, TResponse> continuation)
     {
-        var validatingStream = new ValidatingStreamReader<TRequest>(requestStream, this);
-        await continuation(validatingStream, responseStream, context);
+        var validatingStream = new ValidatingStreamReader<TRequest>(requestStream, ResolveServices(context));
+        await continuation(validatingStream, responseStream, context).ConfigureAwait(false);
     }
 
-    internal void ValidateRequest<TRequest>(TRequest request) where TRequest : class
+    private IServiceProvider ResolveServices(ServerCallContext context)
     {
-        var validator = _serviceProvider.GetService<IValidator<TRequest>>();
-        if (validator is null) return;
+        try
+        {
+            return context.GetHttpContext().RequestServices ?? _serviceProvider;
+        }
+        catch (InvalidOperationException)
+        {
+            // Why: GetHttpContext throws when the service is not hosted by ASP.NET Core, and there is no
+            // non-throwing way to ask. Without a request scope, the injected provider is the only option.
+            return _serviceProvider;
+        }
+    }
 
-        var result = validator.Validate(request);
-        if (result.IsInvalid)
+    private static async Task ValidateRequestAsync<TRequest>(
+        TRequest request,
+        IServiceProvider services,
+        CancellationToken cancellationToken)
+        where TRequest : class
+    {
+        var result = await ValidatorInvoker.ValidateAsync(services, request, cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
+        if (result is { IsInvalid: true })
         {
             var metadata = new Metadata();
             var errorsJson = System.Text.Json.JsonSerializer.Serialize(
@@ -81,22 +105,22 @@ public sealed class OrionGuardInterceptor : Interceptor
     private sealed class ValidatingStreamReader<T> : IAsyncStreamReader<T> where T : class
     {
         private readonly IAsyncStreamReader<T> _inner;
-        private readonly OrionGuardInterceptor _interceptor;
+        private readonly IServiceProvider _services;
 
-        public ValidatingStreamReader(IAsyncStreamReader<T> inner, OrionGuardInterceptor interceptor)
+        public ValidatingStreamReader(IAsyncStreamReader<T> inner, IServiceProvider services)
         {
             _inner = inner;
-            _interceptor = interceptor;
+            _services = services;
         }
 
         public T Current => _inner.Current;
 
         public async Task<bool> MoveNext(CancellationToken cancellationToken)
         {
-            if (!await _inner.MoveNext(cancellationToken))
+            if (!await _inner.MoveNext(cancellationToken).ConfigureAwait(false))
                 return false;
 
-            _interceptor.ValidateRequest(_inner.Current);
+            await ValidateRequestAsync(_inner.Current, _services, cancellationToken).ConfigureAwait(false);
             return true;
         }
     }

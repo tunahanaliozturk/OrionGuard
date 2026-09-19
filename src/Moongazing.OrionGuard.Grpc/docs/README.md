@@ -30,15 +30,15 @@ public sealed class CreateUserRequestValidator : AbstractValidator<CreateUserReq
 }
 ```
 
-`AddOrionGuardGrpc()` only registers `OrionGuardInterceptor` as a singleton. You still add the interceptor in `AddGrpc` and register each validator yourself, because the package does not scan assemblies.
+`AddOrionGuardGrpc()` only registers `OrionGuardInterceptor` as a singleton. You still add the interceptor in `AddGrpc` and register each validator yourself, because the package does not scan assemblies. Validators may be transient or scoped.
 
 ## Behaviour
 
 - For unary and server-streaming calls, the request is validated before the service method runs.
 - For client-streaming and duplex calls, each incoming message is validated as the service reads it (`MoveNext`). The call fails at the first invalid message, and messages read before it have already been processed.
-- The interceptor calls the synchronous `IValidator<TRequest>.Validate`, so `RuleForAsync` rules do not run.
+- Every `IValidator<T>` registered for the message's runtime type runs, through `ValidateAsync`, so `RuleForAsync` rules run too. Validators run one after another, and their errors are combined.
+- Validators are resolved from the call's request scope (`HttpContext.RequestServices`), so scoped validators, and validators that depend on scoped services such as a `DbContext`, work. Only a call without an `HttpContext` (a service not hosted by ASP.NET Core) falls back to the provider the interceptor was created with.
 - Messages whose type has no registered validator pass through.
-- The interceptor is a singleton and resolves validators from the root service provider. Validators must not be registered as scoped, and must not depend on scoped services. `AddValidator` registers them as transient.
 
 ## Error format
 

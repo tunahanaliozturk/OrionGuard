@@ -43,15 +43,11 @@ public sealed class ChatHub : Hub
 
 ## Behaviour
 
-- For each non-null argument, the filter resolves `IValidator<T>` for the argument's runtime type. Arguments without a registered validator are skipped.
-- Errors from all arguments are collected. If there are any, the filter throws `HubException` with the message `Validation failed: <messages>`, where the error messages are joined with `"; "`. SignalR sends a `HubException` message to the calling client, and the connection stays open.
+- For each non-null argument, the filter runs every `IValidator<T>` registered for the argument's runtime type. Arguments without a registered validator are skipped.
+- Validators are resolved from the hub invocation's service scope (`HubInvocationContext.ServiceProvider`), so scoped validators, and validators that depend on scoped services such as a `DbContext`, work.
+- The filter calls `ValidateAsync`, so both synchronous rules and `RuleForAsync` rules run. Validators run one after another, never concurrently, so they can share a scoped `DbContext`.
+- Errors from all arguments are collected. If there are any, the filter throws `HubException` with the message `Validation failed: <field>: <message>; <field>: <message>`. Errors are listed in argument order, then in validator registration order. SignalR sends a `HubException` message to the calling client, and the connection stays open.
 - The error arrives as a single message string, not as structured field errors.
-- The filter calls the synchronous `Validate`, so `RuleForAsync` rules do not run.
-- The filter is a singleton and resolves validators from the root service provider. Validators must not be registered as scoped, and must not depend on scoped services.
-
-## Known issue
-
-In this version the filter looks up `Validate` with `Type.GetMethod("Validate")`. That lookup is ambiguous because `IValidator<T>` declares two `Validate` overloads. As a result, any invocation with an argument that has a registered validator fails with `AmbiguousMatchException`, and the client sees a generic invocation error instead of the validation result. Invocations whose arguments have no registered validator are not affected. Until this is fixed, validate inside the hub method and throw `HubException` yourself.
 
 ## Targets
 

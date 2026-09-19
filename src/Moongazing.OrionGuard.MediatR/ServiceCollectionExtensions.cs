@@ -7,13 +7,14 @@ namespace Moongazing.OrionGuard.MediatR;
 public static class ServiceCollectionExtensions
 {
     /// <summary>
-    /// Registers OrionGuard MediatR validation pipeline behavior.
-    /// Scans assemblies for IValidator implementations and registers ValidationBehavior.
+    /// Registers OrionGuard MediatR validation pipeline behaviors for requests and stream requests.
+    /// Scans assemblies for IValidator implementations and registers ValidationBehavior and StreamValidationBehavior.
     /// </summary>
     public static IServiceCollection AddOrionGuardMediatR(this IServiceCollection services, params Assembly[] assemblies)
     {
-        // Register the open generic pipeline behavior
+        // Register the open generic pipeline behaviors
         services.AddTransient(typeof(global::MediatR.IPipelineBehavior<,>), typeof(ValidationBehavior<,>));
+        services.AddTransient(typeof(global::MediatR.IStreamPipelineBehavior<,>), typeof(StreamValidationBehavior<,>));
 
         // Scan assemblies for IValidator<T> implementations
         foreach (var assembly in assemblies)

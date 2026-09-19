@@ -69,7 +69,7 @@ Use the component inside an `EditForm`:
 `<OrionGuardFluentValidator TModel="..." />`
 
 - Injects `IValidator<TModel>`, so a validator for the model type must be registered.
-- Calls the synchronous `Validate(model)`, so `RuleForAsync` rules do not run.
+- Calls the synchronous `Validate(model)`, so `RuleForAsync` rules do not run. This is deliberate: `EditContext.Validate()` raises its validation events synchronously and returns the result at once, so an async rule could not finish before the form decides whether it is valid. If a form depends on async rules, inject `IValidator<TModel>` and await `ValidateAsync` in the submit handler.
 
 ## Behaviour
 

@@ -1,6 +1,6 @@
 # OrionGuard.MediatR
 
-MediatR 12 integration for [OrionGuard](https://github.com/tunahanaliozturk/OrionGuard). It adds a pipeline behavior that runs every `IValidator<TRequest>` before the request handler, and a domain-event dispatcher that publishes OrionGuard domain events as MediatR notifications.
+MediatR 12 integration for [OrionGuard](https://github.com/tunahanaliozturk/OrionGuard). It adds pipeline behaviors that run every `IValidator<TRequest>` before the request or stream handler, and a domain-event dispatcher that publishes OrionGuard domain events as MediatR notifications.
 
 ## Install
 
@@ -34,8 +34,9 @@ public sealed class CreateUserValidator : AbstractValidator<CreateUserCommand>
 
 ## Validation behavior
 
-- `AddOrionGuardMediatR(params Assembly[] assemblies)` registers `ValidationBehavior<,>` as an open-generic transient `IPipelineBehavior<,>`. It also registers every non-abstract `IValidator<T>` implementation found in the given assemblies as transient. It does not call `AddMediatR`, so register MediatR yourself.
-- `ValidationBehavior<TRequest, TResponse>` resolves all `IValidator<TRequest>` services and runs their `ValidateAsync` concurrently, so both synchronous rules and `RuleForAsync` rules run. The results are combined into one.
+- `AddOrionGuardMediatR(params Assembly[] assemblies)` registers `ValidationBehavior<,>` as an open-generic transient `IPipelineBehavior<,>` and `StreamValidationBehavior<,>` as an open-generic transient `IStreamPipelineBehavior<,>`. It also registers every non-abstract `IValidator<T>` implementation found in the given assemblies as transient. It does not call `AddMediatR`, so register MediatR yourself.
+- `ValidationBehavior<TRequest, TResponse>` resolves all `IValidator<TRequest>` services and runs their `ValidateAsync` one after another, so both synchronous rules and `RuleForAsync` rules run, and validators can share a scoped `DbContext`. The results are combined into one.
+- `StreamValidationBehavior<TRequest, TResponse>` does the same for `IStreamRequest<TResponse>` requests sent with `IMediator.CreateStream`. Validation runs when the stream is first enumerated, before the handler yields its first item.
 - If any error is found, it throws `AggregateValidationException` (namespace `Moongazing.OrionGuard.Core`) with every error in `Errors`, and the handler is not called. Requests without a validator pass straight through.
 - In ASP.NET Core, the exception handler in [OrionGuard.AspNetCore](https://www.nuget.org/packages/OrionGuard.AspNetCore) turns `AggregateValidationException` into a `ValidationProblemDetails` response with status 422 by default.
 
