@@ -1,4 +1,4 @@
-namespace Moongazing.OrionGuard.Outbox.Dashboard.Tests;
+﻿namespace Moongazing.OrionGuard.Outbox.Dashboard.Tests;
 
 using System.Data.Common;
 using System.Net;
@@ -785,6 +785,11 @@ public sealed class OutboxDashboardConfigurationTests
     [InlineData("Cookie")]
     [InlineData("Origin")]
     [InlineData("Sec-Fetch-Site")]
+    [InlineData("DNT")]
+    [InlineData("Via")]
+    [InlineData("TE")]
+    [InlineData("Proxy-Authorization")]
+    [InlineData("Access-Control-Request-Method")]
     public void MapOutboxDashboard_throws_on_a_mutation_header_that_does_not_force_a_preflight(string headerName)
     {
         Assert.Throws<InvalidOperationException>(() => Build(o => o.MutationHeaderName = headerName));
