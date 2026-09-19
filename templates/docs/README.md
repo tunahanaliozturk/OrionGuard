@@ -66,8 +66,34 @@ the rest of the schema.
 
 ## Targets
 
-The generated projects target `net10.0`. The packages they reference support `net8.0`, `net9.0` and
-`net10.0`, so lowering `TargetFramework` after generating works.
+Both templates generate a `net10.0` project.
+
+**`orionguard-webapi`** drops to `net9.0` or `net8.0` by editing `TargetFramework` and nothing else:
+`OrionGuard.AspNetCore` targets all three.
+
+**`orionguard-outbox`** needs the EF Core provider moved with it. `OrionGuard.EntityFrameworkCore`
+builds against EF Core 10 on `net10.0` and EF Core 9 on `net8.0` and `net9.0`, and the provider
+package the template pins is a 10.x one, which supports `net10.0` only. Lowering `TargetFramework`
+on its own fails the restore before it ever compiles:
+
+```text
+error NU1202: Package Microsoft.EntityFrameworkCore.Sqlite 10.0.12 is not compatible with
+net8.0 (.NETCoreApp,Version=v8.0). Package Microsoft.EntityFrameworkCore.Sqlite 10.0.12
+supports: net10.0 (.NETCoreApp,Version=v10.0)
+```
+
+Change the provider version in the same edit:
+
+| `--database` | Generated, for `net10.0` | For `net9.0` and `net8.0` |
+| --- | --- | --- |
+| `sqlite` | `Microsoft.EntityFrameworkCore.Sqlite` 10.0.12 | 9.0.20 |
+| `sqlserver` | `Microsoft.EntityFrameworkCore.SqlServer` 10.0.12 | 9.0.20 |
+| `postgres` | `Npgsql.EntityFrameworkCore.PostgreSQL` 10.0.3 | 9.0.4 |
+
+The rule behind the table is the one in the
+[OrionGuard.EntityFrameworkCore readme](https://www.nuget.org/packages/OrionGuard.EntityFrameworkCore):
+the provider package has to come from the same EF Core major version as the one the integration was
+built against for your target framework.
 
 ## Documentation
 
