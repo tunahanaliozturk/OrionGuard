@@ -228,6 +228,12 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
         var completed = 0;
         foreach (var row in batch)
         {
+            // A row whose handlers already ran is always stamped, even while stopping, but the rest of the batch
+            // waits for the next start: dispatching it during shutdown risks being killed mid-row.
+            if (cancellationToken.IsCancellationRequested)
+            {
+                break;
+            }
             if (await ProcessRowAsync(row, cancellationToken).ConfigureAwait(false))
             {
                 completed++;

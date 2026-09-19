@@ -72,6 +72,36 @@ public class OutboxWorkerPollingTests
     }
 
     [Fact]
+    public async Task DispatcherExecuteAsync_ShutdownRequestedMidBatch_LeavesTheRemainingRowsForTheNextStart()
+    {
+        // Only the row whose handlers already ran is finished during shutdown; dispatching the rest of the batch
+        // risks the host killing the worker between a handler and its processed stamp.
+        var handlerRan = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var stopRequested = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var dispatcher = new RecordingDispatcher(async (_, _) =>
+        {
+            handlerRan.TrySetResult();
+            await stopRequested.Task.ConfigureAwait(false);
+        });
+        await using var serviceProvider = OutboxTestServices.Build(_ => dispatcher, configureOutbox: o => o.PollingInterval = OneHour);
+        await OutboxTestServices.SeedAsync(serviceProvider, Enumerable.Range(0, 3)
+            .Select(i => (object)OutboxTestServices.Row(new OrderShipped(Guid.NewGuid()), DateTime.UtcNow.AddSeconds(i - 10)))
+            .ToArray());
+        var worker = OutboxTestServices.Worker(serviceProvider);
+
+        await worker.StartAsync(CancellationToken.None);
+        await handlerRan.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var stopping = worker.StopAsync(CancellationToken.None);
+        stopRequested.SetResult();
+        await stopping.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Single(dispatcher.Dispatched);
+        var rows = await OutboxTestServices.RowsAsync(serviceProvider);
+        Assert.Equal(1, rows.Count(r => r.ProcessedOnUtc is not null));
+        Assert.All(rows.Where(r => r.ProcessedOnUtc is null), r => Assert.Equal(0, r.RetryCount));
+    }
+
+    [Fact]
     public async Task DispatcherExecuteAsync_FullBatchWithAFailure_WaitsForThePollingIntervalBeforeRetrying()
     {
         // A full batch whose rows fail must not be re-polled at once: that would spend every retry in seconds.
