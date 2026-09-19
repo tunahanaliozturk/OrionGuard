@@ -17,6 +17,12 @@ public class OrionGuardSchemaFilterTests
         [Email] public string Email { get; set; } = "";
         [Regex("^[A-Z]{2}$")] public string CountryCode { get; set; } = "";
         [Positive] public int Quantity { get; set; }
+        [NotNull] public Address? Address { get; set; }
+    }
+
+    private sealed class Address
+    {
+        public string City { get; set; } = "";
     }
 
     private static OpenApiSchema GenerateSchema()
@@ -41,6 +47,15 @@ public class OrionGuardSchemaFilterTests
 
         Assert.Contains("name", schema.Required!);
         Assert.False(Property(schema, "name").Type!.Value.HasFlag(JsonSchemaType.Null));
+    }
+
+    [Fact]
+    public void NotNull_OnReferencedComponent_ShouldMarkRequired_WithoutMutatingComponent()
+    {
+        var schema = GenerateSchema();
+
+        Assert.IsType<OpenApiSchemaReference>(schema.Properties!["address"]);
+        Assert.Contains("address", schema.Required!);
     }
 
     [Fact]

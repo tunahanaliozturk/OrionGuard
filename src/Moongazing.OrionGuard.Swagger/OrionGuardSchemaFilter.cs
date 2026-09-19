@@ -23,18 +23,24 @@ public sealed class OrionGuardSchemaFilter : ISchemaFilter
         {
             var propertyName = System.Text.Json.JsonNamingPolicy.CamelCase.ConvertName(property.Name);
 
-            // $ref property schemas (OpenApiSchemaReference) point at shared components and must not be mutated.
-            if (!target.Properties.TryGetValue(propertyName, out var candidate) || candidate is not OpenApiSchema propertySchema)
+            if (!target.Properties.TryGetValue(propertyName, out var candidate))
                 continue;
 
             var attributes = property.GetCustomAttributes<ValidationAttribute>();
 
             foreach (var attribute in attributes)
             {
+                // "required" lives on the parent schema, so it applies even when the property is a $ref.
+                if (attribute is NotNullAttribute)
+                    (target.Required ??= new HashSet<string>()).Add(propertyName);
+
+                // $ref property schemas (OpenApiSchemaReference) point at shared components and must not be mutated.
+                if (candidate is not OpenApiSchema propertySchema)
+                    continue;
+
                 switch (attribute)
                 {
                     case NotNullAttribute:
-                        (target.Required ??= new HashSet<string>()).Add(propertyName);
                         // OpenAPI 3.1 models nullability as a "null" type flag instead of a Nullable property.
                         if (propertySchema.Type is { } type)
                             propertySchema.Type = type & ~JsonSchemaType.Null;
