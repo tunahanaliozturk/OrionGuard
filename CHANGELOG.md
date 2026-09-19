@@ -395,6 +395,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   it to pass it on to your database or HTTP call.
 
 ### Performance
+- **`Validate.CrossProperties` compiles its selectors once.** Every rule (`AreEqual`, `AreNotEqual`,
+  `IsGreaterThan`, `IsLessThan`, `AtLeastOneRequired`) compiled both of its selector expressions on each
+  call; they now come from the same accessor cache the other validators use.
 - **A generated validator allocates nothing when the input is valid.** The emitted code built its error list
   before the first check; it is now created on the first failure only, which with the shared success result
   takes the passing path of a generated validator to zero allocations.
