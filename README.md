@@ -612,7 +612,7 @@ catch (GuardException ex)
 }
 ```
 
-`IExceptionFactory` is never called by the guards. `AddOrionGuardExceptionFactory<T>()`, `ExceptionFactoryProvider.Configure` and `DefaultExceptionFactory` are obsolete and will be removed in v7.
+`IExceptionFactory` is never called by the guards. It, `AddOrionGuardExceptionFactory<T>()`, `ExceptionFactoryProvider` and `DefaultExceptionFactory` are obsolete and will be removed in v7.
 
 ---
 

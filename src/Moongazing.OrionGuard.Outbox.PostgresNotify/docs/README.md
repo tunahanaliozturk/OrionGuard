@@ -56,6 +56,7 @@ public partial class InstallOrionGuardOutboxNotify : Migration
 - `Create(tableName = "OrionGuard_Outbox", channelName = "orionguard_outbox")` creates (or replaces) the function `orionguard_outbox_notify_<channel>` and the `AFTER INSERT ... FOR EACH ROW` trigger `orionguard_outbox_notify_trigger_<channel>`, which calls `pg_notify(channel, NEW."Id"::text)`. It can be run again safely.
 - `Drop(tableName, channelName)` removes both. Pass the same arguments you gave `Create`.
 - For a custom outbox table or channel, pass the names to both methods and set `PostgresNotifyOptions.ChannelName` to the same channel.
+- Both names must be plain identifiers: 1 to 128 ASCII letters, digits or underscores, not starting with a digit. Anything else throws `ArgumentException`, because the names are spliced into DDL and into the function body.
 - The table name is written as a single quoted identifier, so it cannot include a schema prefix; the table must be reachable through the `search_path`.
 
 ## Options

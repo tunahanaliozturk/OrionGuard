@@ -1,7 +1,7 @@
 <Project>
   <!--
-    Repo-wide NuGet audit policy. This repository sets other build properties per-csproj; only
-    the two audit settings live here, so every project inherits them uniformly.
+    Repo-wide settings every project inherits uniformly. This repository sets other build
+    properties per-csproj.
 
     NuGetAuditMode=all audits the whole transitive dependency graph, not just direct references
     (the default), so a vulnerable transitive package is flagged at restore time. Advisories
@@ -13,5 +13,15 @@
   <PropertyGroup>
     <NuGetAuditMode>all</NuGetAuditMode>
     <WarningsNotAsErrors>NU1901;NU1902;NU1903;NU1904</WarningsNotAsErrors>
+  </PropertyGroup>
+
+  <!--
+    PublishRepositoryUrl writes the repository URL and the commit (from Source Link) into every
+    package's nuspec, so a package can be traced to the exact source it was built from. The release
+    job adds ContinuousIntegrationBuild=true on the command line for reproducible paths; it is not
+    set here so local and test builds keep their real source paths.
+  -->
+  <PropertyGroup>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
   </PropertyGroup>
 </Project>

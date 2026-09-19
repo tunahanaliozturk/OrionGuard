@@ -428,6 +428,42 @@ public class SecurityGuardsTests
         Assert.Null(exception);
     }
 
+    // Keywords are matched at word boundaries, so a word that merely contains one is not a SQL keyword.
+    [Theory]
+    [InlineData("Walter White")]              // ALTER
+    [InlineData("the executive summary")]     // EXEC
+    [InlineData("a family reunion")]          // UNION
+    [InlineData("selection criteria")]        // SELECT
+    [InlineData("an updated address")]        // UPDATE
+    [InlineData("deleted items")]             // DELETE
+    [InlineData("an enclosed envelope")]      // CLOSE
+    [InlineData("raindrops")]                 // DROP
+    [InlineData("recreated the report")]      // CREATE
+    [InlineData("a wasp_nest photo")]         // sp_
+    [InlineData("the podcast(2024) episode")] // CAST(
+    public void AgainstSqlInjection_ShouldNotThrow_WhenAKeywordIsOnlyPartOfAnOrdinaryWord(string input)
+    {
+        var exception = Record.Exception(() => input.AgainstSqlInjection(nameof(input)));
+        Assert.Null(exception);
+    }
+
+    // The same words, now used as SQL, must stay rejected.
+    [Theory]
+    [InlineData("1; ALTER TABLE users ADD c int")]
+    [InlineData("'; exec master..xp_cmdshell 'dir'")]
+    [InlineData("1 UNION ALL SELECT NULL")]
+    [InlineData("1 AND 1=CAST((SELECT TOP 1 name FROM sysobjects) AS int)")]
+    [InlineData("'+CHAR(65)+'")]
+    [InlineData("cast to NVARCHAR(4000)")]
+    [InlineData("CONVERT(int, @x)")]
+    [InlineData("1; DROP TABLE users")]
+    [InlineData("SELECT * FROM INFORMATION_SCHEMA.TABLES")]
+    [InlineData("1; CLOSE c; DEALLOCATE c")]
+    public void AgainstSqlInjection_ShouldStillThrow_WhenTheKeywordIsUsedAsSql(string input)
+    {
+        Assert.Throws<ArgumentException>(() => input.AgainstSqlInjection(nameof(input)));
+    }
+
     [Theory]
     [InlineData("<img src=x onerror =print()>")]
     [InlineData("<img src=x onerror\t=\nprint()>")]

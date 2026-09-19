@@ -4,6 +4,7 @@ using Microsoft.Extensions.Hosting;
 using Moongazing.OrionGuard.DependencyInjection;
 using Moongazing.OrionGuard.EntityFrameworkCore;
 using Moongazing.OrionGuard.EntityFrameworkCore.Outbox;
+using Moongazing.OrionGuard.EntityFrameworkCore.Outbox.Locking;
 
 namespace Moongazing.OrionGuard.Demo;
 
@@ -36,11 +37,16 @@ public static class DomainEventsOutboxDemo
         var builder = Host.CreateApplicationBuilder();
         builder.Services.AddOrionGuardDomainEvents();
         builder.Services.AddOrionGuardDomainEventHandlers(typeof(DomainEventsOutboxDemo).Assembly);
-        builder.Services.AddOrionGuardEfCore<OutboxDbContext>(o => o.UseOutbox(opt =>
-        {
-            opt.PollingInterval = TimeSpan.FromMilliseconds(200);
-            opt.BatchSize = 10;
-        }));
+        // One process, one dispatcher: NullDistributedLock always acquires, so the demo needs no
+        // OrionGuard_OutboxLocks table. The default SkipLockedDistributedLock needs OutboxLock mapped in the
+        // model and skips every poll without it.
+        builder.Services.AddOrionGuardEfCore<OutboxDbContext>(o => o
+            .UseOutbox(opt =>
+            {
+                opt.PollingInterval = TimeSpan.FromMilliseconds(200);
+                opt.BatchSize = 10;
+            })
+            .UseDistributedLock<NullDistributedLock>());
         builder.Services.AddDbContext<OutboxDbContext>((sp, o) =>
             o.UseSqlite("DataSource=outbox-demo.db")
              .UseOrionGuardDomainEvents(sp));

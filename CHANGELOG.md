@@ -22,6 +22,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   MassTransit's retry and error pipeline to the `_error` queue. Add `r.Ignore<MessageValidationException>()` to
   the retry policy, because a validation failure fails the same way on every retry. Built against MassTransit
   **8.5.10**, the last Apache-2.0 line; MassTransit 9 requires a commercial license.
+- `OrionGuard`: `LdapEncoding` in `Moongazing.OrionGuard.Utilities` with `EscapeFilterValue(string)`
+  (RFC 4515: `*`, `(`, `)`, `\`, NUL) and `EscapeDistinguishedNameValue(string)` (RFC 4514: `"`, `+`, `,`,
+  `;`, `<`, `>`, `\`, a leading space or `#`, a trailing space, NUL). These are the defence
+  `AgainstLdapInjection` is not; its documentation now points to them.
+- `OrionGuard.Outbox.Dashboard`: `OutboxDashboardOptions.RequireMutationHeader` (default `true`) and
+  `OutboxDashboardOptions.MutationHeaderName` (default `X-OrionGuard-Dashboard`); see Security.
 
 ### Changed
 
@@ -270,13 +276,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   dispatched again on the next start. The stamp is no longer cancelled by shutdown; the database command
   timeout and the host's shutdown timeout still bound it.
   The rest of the batch is left for the next start: once shutdown is requested, no further row is dispatched.
+- **`OrionGuard.AspNetCore`: the health check reports the version it actually runs.** `AddOrionGuardCheck()`
+  reported `"Version" = "6.0.0"` and `"SupportedLanguages" = 14` as literals, and an `"ExceptionFactory"` entry
+  for a factory no guard calls. A healthy result now carries `ValidatorFactory` and `Version`, read from the
+  `AssemblyInformationalVersionAttribute` of the loaded OrionGuard core assembly. The language count is gone
+  because the message catalogue does not expose one. `Degraded` (no `IValidatorFactory`) is unchanged.
+- **`AgainstInvalidMasterCard` accepts Mastercard's 2-series.** Cards in the `2221`-`2720` range Mastercard
+  added in 2017 were rejected as invalid; only `51`-`55` was recognized. `GeneratedRegexPatterns.MasterCard()`
+  matches both ranges now, the Luhn check is unchanged.
+- **`AgainstNonEmojiCharacters` rejects non-emoji characters.** It used the unanchored
+  `GeneratedRegexPatterns.Emoji()` pattern, so any value that merely contained an emoji passed (`"abc😀"`).
+  The whole value must now be emoji; joiners (ZWJ, variation selectors) and keycaps are accepted, so
+  `❤️`, `👨‍👩‍👧` and `1️⃣` still pass. `Emoji()` itself is unchanged and documented as a "contains" pattern.
+- **The SQL denylist matches keywords at word boundaries.** `AgainstSqlInjection` and `AgainstInjection`
+  matched keywords as substrings, so ordinary words containing one were rejected: "Walter" (ALTER),
+  "executive" (EXEC), "reunion" (UNION), "selection", "updated", "deleted", "enclosed", "raindrops",
+  "wasp_nest" (`sp_`), "podcast(" (`CAST(`). The keywords, the `xp_`/`sp_` prefixes and the string functions
+  (`CHAR(`, `CAST(`, ...) are now matched at a word boundary; comment and operator sequences (`--`, `/*`,
+  `*/`, `@@`) still match anywhere, and every payload the guard caught before is still caught.
 
 ### Deprecated
 
-- `AddOrionGuardExceptionFactory<TFactory>()`, `ExceptionFactoryProvider.Configure` / `Reset` and
-  `DefaultExceptionFactory` are marked `[Obsolete]` and will be removed in v7. No guard ever called
-  `IExceptionFactory`, so registering a factory never changed the exceptions guards throw, contrary to the
-  documentation. Catch `GuardException` (or the specific exception type) at your boundary instead.
+- `IExceptionFactory`, `ExceptionFactoryProvider`, `AddOrionGuardExceptionFactory<TFactory>()`,
+  `ExceptionFactoryProvider.Configure` / `Reset` and `DefaultExceptionFactory` are marked `[Obsolete]` and will
+  be removed in v7. No guard ever called `IExceptionFactory`, so registering a factory never changed the
+  exceptions guards throw, contrary to the documentation. Catch `GuardException` (or the specific exception
+  type) at your boundary instead. The interface and the provider were left un-obsoleted before because the
+  ASP.NET Core health check read them; it no longer does. `AddOrionGuard()` still registers
+  `DefaultExceptionFactory` so code that resolves the interface keeps working until it is removed.
 
 ### Security
 
@@ -380,6 +407,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   other numbers, recognizes Mastercard 2221-2720 and UnionPay `62` prefixes, and only counts ASCII digits.
   `AgainstContainsSecret` (and `AgainstContainsPii`) also rejects bare JWTs, GitHub tokens (`ghp_`, `gho_`, `ghs_`,
   `ghu_`, `ghr_`, `github_pat_`) and Stripe live keys (`sk_live_`, `rk_live_`).
+- **`OrionGuard.Outbox.Dashboard` requires a custom header on replay and discard.** Both endpoints take no
+  body, so a page on another origin could call them with `fetch(url, { method: "POST", credentials: "include" })`,
+  which the browser sends without a CORS preflight and with the operator's cookies. They now require the
+  `X-OrionGuard-Dashboard` header with any non-empty value and answer 400 with
+  `error: "missing-mutation-header"` without it; a custom header forces a preflight, which a cross-site page
+  cannot pass unless your CORS policy allows that origin and header. The read endpoints are unaffected.
+  `MutationHeaderName` renames the header (a CORS-safelisted name, or one the browser sends itself, is
+  rejected when the dashboard is mapped) and `RequireMutationHeader = false` turns the check off, for hosts
+  where no caller authenticates with a cookie. Existing callers must send the header.
+- **The outbox setup SQL helpers validate every name.** `SqlServerBrokerSetupSql.Create` / `Drop` and
+  `PostgresNotifyTriggerSql.Create` / `Drop` spliced their name parameters into DDL: identifiers inside
+  `EXEC('...')` were bracket-escaped but their single quotes were not doubled for the `EXEC` literal, so
+  `tableName: "Outbox]'); DROP TABLE dbo.Users; --"` broke out of it, and a `$$` in `channelName` ended the
+  PostgreSQL function body. Every name must now be a plain identifier (1 to 128 ASCII letters, digits or
+  underscores, not starting with a digit) or the call throws `ArgumentException`; the escapes were completed
+  as well (the `EXEC` literal is quote-doubled, the function body uses a named dollar-quote tag). Names with
+  other characters, including a schema prefix, are rejected rather than escaped.
+- **The outbox dispatcher warns about the assembly-qualified-name fallback.**
+  `OutboxTypeMapOptions.AllowAssemblyQualifiedNameFallback` stays `true` by default, since rows written
+  without a type map carry assembly-qualified names, but the event type then comes from the row: anyone who
+  can write to the outbox table can have any loadable `IDomainEvent` type deserialized from a payload they
+  choose and dispatched to its handlers. The dispatcher now logs one warning the first time it resolves a row
+  through the fallback, and the EF Core README documents the trade-off and how to turn the fallback off.
+- **CI/CD workflow hardening.** The workflow declares `permissions: contents: read` at the top level and per
+  job, with `packages: write` only on the publish job; `actions/checkout` and `actions/setup-dotnet` are
+  pinned to full commit SHAs (with the version in a trailing comment) instead of moving tags; checkout runs
+  with `persist-credentials: false`, so the token is not left in `.git/config` while third-party MSBuild and
+  package code runs; the NuGet and GitHub Packages credentials are passed through `env:` instead of being
+  written into the command line; and the release build and pack run with `ContinuousIntegrationBuild=true`
+  while `PublishRepositoryUrl=true` (new, in `Directory.Build.props`) records the repository and commit in
+  every package. Triggers, job names and the publishing steps are unchanged.
 
 ## [6.8.1] - 2026-07-21
 

@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Primitives;
 using Moongazing.OrionGuard.EntityFrameworkCore.Outbox;
 
 /// <summary>
@@ -15,6 +16,15 @@ using Moongazing.OrionGuard.EntityFrameworkCore.Outbox;
 /// </summary>
 public static class OutboxDashboardEndpointRouteBuilderExtensions
 {
+    // CORS-safelisted request headers (a cross-site page may set them without a preflight) and headers the
+    // browser adds to every request by itself. Neither can serve as the mutation header.
+    private static readonly HashSet<string> HeadersSentWithoutPreflight = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Accept", "Accept-Language", "Content-Language", "Content-Type", "Range",
+        "Accept-Charset", "Accept-Encoding", "Connection", "Content-Length", "Cookie", "Host",
+        "Origin", "Priority", "Referer", "User-Agent",
+    };
+
     /// <summary>
     /// Map the dashboard endpoints (failed-message listings and, when
     /// <see cref="OutboxDashboardOptions.EnableMutations"/> is on, replay / discard). The
@@ -23,7 +33,9 @@ public static class OutboxDashboardEndpointRouteBuilderExtensions
     /// requires the host's default policy (an authenticated user). Pass an explicit
     /// <see cref="OutboxDashboardOptions.AuthorizationPolicyName"/> to require a named
     /// policy, or set <see cref="OutboxDashboardOptions.AllowAnonymous"/> = <c>true</c>
-    /// to opt out entirely (NOT recommended for production).
+    /// to opt out entirely (NOT recommended for production). Replay and discard also require the
+    /// <see cref="OutboxDashboardOptions.MutationHeaderName"/> header unless
+    /// <see cref="OutboxDashboardOptions.RequireMutationHeader"/> is <see langword="false"/>.
     /// </summary>
     /// <typeparam name="TDbContext">The consumer's <see cref="DbContext"/> that owns the outbox <see cref="DbSet{TEntity}"/>.</typeparam>
     /// <param name="endpoints">The endpoint route builder.</param>
@@ -83,8 +95,14 @@ public static class OutboxDashboardEndpointRouteBuilderExtensions
             group.RequireAuthorization();
         }
 
-        group.MapGet("/failed", async (TDbContext db, HttpContext http, int? page, int? size, string? sort) =>
+        // The handlers resolve TDbContext from RequestServices instead of taking it as a parameter: ASP.NET
+        // Core's RouteHandlerAnalyzer throws a NullReferenceException (AD0001) on a handler parameter whose type
+        // is a generic type parameter, which switches off every ASP0xxx route-handler check for this project
+        // (https://github.com/dotnet/aspnetcore/issues/56831; still reproduces with the net8.0/net9.0 analyzers).
+        // Parameter binding resolved the same service from the same place, so behaviour is unchanged.
+        group.MapGet("/failed", async (HttpContext http, int? page, int? size, string? sort) =>
         {
+            var db = http.RequestServices.GetRequiredService<TDbContext>();
             var pageNumber = page is null or < 1 ? 1 : page.Value;
             var pageSize = ResolvePageSize(size, options);
             // In long arithmetic: a huge page number overflowed int into a negative OFFSET. A page past the end
@@ -142,8 +160,9 @@ public static class OutboxDashboardEndpointRouteBuilderExtensions
             });
         });
 
-        group.MapGet("/failed/cursor", async (TDbContext db, HttpContext http, string? cursor, int? size, string? sort) =>
+        group.MapGet("/failed/cursor", async (HttpContext http, string? cursor, int? size, string? sort) =>
         {
+            var db = http.RequestServices.GetRequiredService<TDbContext>();
             var pageSize = ResolvePageSize(size, options);
             var threshold = options.FailedRetryThreshold;
             var truncation = options.ErrorTruncationLength;
@@ -249,9 +268,10 @@ public static class OutboxDashboardEndpointRouteBuilderExtensions
             // finishes between a separate read and write would otherwise be re-queued and delivered
             // again. The dispatcher's own row updates are conditional the same way, so an in-flight
             // dispatch cannot undo a replay either.
-            group.MapPost("/{id:guid}/replay",
-                async (TDbContext db, HttpContext http, Guid id) =>
+            var replay = group.MapPost("/{id:guid}/replay",
+                async (HttpContext http, Guid id) =>
                 {
+                    var db = http.RequestServices.GetRequiredService<TDbContext>();
                     // Cleanly-processed rows (processed, no error) are not replayable: clearing their
                     // ProcessedOnUtc would re-deliver an event whose handlers already ran. Failed and
                     // dead-lettered rows (Error set) are - that's the whole point.
@@ -295,9 +315,10 @@ public static class OutboxDashboardEndpointRouteBuilderExtensions
             // can still see what failed. Returns 200 on success, 404 if the id is unknown.
             // Conditional on the row still being unprocessed, like replay, so it never overwrites a
             // dispatch that completed in the meantime.
-            group.MapPost("/{id:guid}/discard",
-                async (TDbContext db, HttpContext http, Guid id) =>
+            var discard = group.MapPost("/{id:guid}/discard",
+                async (HttpContext http, Guid id) =>
                 {
+                    var db = http.RequestServices.GetRequiredService<TDbContext>();
                     var discardedOnUtc = DateTime.UtcNow;
                     var discarded = await db.Set<OutboxMessage>()
                         .Where(m => m.Id == id && m.ProcessedOnUtc == null)
@@ -327,9 +348,37 @@ public static class OutboxDashboardEndpointRouteBuilderExtensions
                     }
                     return Results.Ok(new { id, action = "discard" });
                 });
+
+            // Cross-site request forgery: replay and discard take no body, so a page on another origin can send
+            // them as a "simple" cross-origin POST that the browser does not preflight, carrying the operator's
+            // cookies. Requiring a custom header turns the request into a preflighted one, which the browser only
+            // sends if the host's CORS policy explicitly allows that origin and header.
+            if (options.RequireMutationHeader)
+            {
+                var headerName = options.MutationHeaderName;
+                replay.AddEndpointFilter((context, next) => RequireHeaderAsync(context, next, headerName));
+                discard.AddEndpointFilter((context, next) => RequireHeaderAsync(context, next, headerName));
+            }
         }
 
         return group;
+    }
+
+    private static ValueTask<object?> RequireHeaderAsync(
+        EndpointFilterInvocationContext context,
+        EndpointFilterDelegate next,
+        string headerName)
+    {
+        if (!StringValues.IsNullOrEmpty(context.HttpContext.Request.Headers[headerName]))
+        {
+            return next(context);
+        }
+
+        return ValueTask.FromResult<object?>(Results.BadRequest(new
+        {
+            error = "missing-mutation-header",
+            message = $"Replay and discard requests must carry the '{headerName}' header.",
+        }));
     }
 
     private static int ResolvePageSize(int? requested, OutboxDashboardOptions options)
@@ -386,5 +435,18 @@ public static class OutboxDashboardEndpointRouteBuilderExtensions
         {
             throw new InvalidOperationException("OutboxDashboardOptions.ErrorTruncationLength must be non-negative.");
         }
+        if (options.RequireMutationHeader && !IsPreflightedHeader(options.MutationHeaderName))
+        {
+            throw new InvalidOperationException(
+                "OutboxDashboardOptions.MutationHeaderName must be a custom header name such as 'X-OrionGuard-Dashboard'. " +
+                "A CORS-safelisted header or one the browser sends on its own does not stop cross-site requests.");
+        }
     }
+
+    // A header only forces a CORS preflight if the page has to set it itself and it is not CORS-safelisted.
+    private static bool IsPreflightedHeader(string? name) =>
+        !string.IsNullOrWhiteSpace(name)
+        && !HeadersSentWithoutPreflight.Contains(name)
+        && !name.StartsWith("Sec-", StringComparison.OrdinalIgnoreCase)
+        && !name.StartsWith("Proxy-", StringComparison.OrdinalIgnoreCase);
 }

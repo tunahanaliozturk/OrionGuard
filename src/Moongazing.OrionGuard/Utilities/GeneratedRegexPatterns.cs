@@ -52,8 +52,23 @@ public static partial class GeneratedRegexPatterns
     [GeneratedRegex(@"^\P{C}+\z", RegexOptions.None, DefaultTimeoutMs)]
     public static partial Regex Unicode();
 
+    /// <summary>
+    /// Matches a run of emoji characters <b>anywhere</b> in the input: this pattern is unanchored, so
+    /// <c>IsMatch</c> answers "contains an emoji", not "is only emoji". <see cref="EmojiOnly"/> is the
+    /// anchored form.
+    /// </summary>
     [GeneratedRegex(@"[\p{So}\p{Cs}]+", RegexOptions.None, DefaultTimeoutMs)]
     public static partial Regex Emoji();
+
+    /// <summary>
+    /// Anchored form of <see cref="Emoji"/>: the whole value must be emoji. An emoji character (an Other
+    /// Symbol such as ❤, or a surrogate pair, which is how every emoji above U+FFFF is stored) may be
+    /// followed by the joiners real emoji are built from - zero-width joiner, variation selector 15/16 -
+    /// and a keycap (<c>1️⃣</c>) is a digit, <c>#</c> or <c>*</c> plus the combining enclosing keycap.
+    /// Each alternative starts with a different character, so matching stays linear.
+    /// </summary>
+    [GeneratedRegex(@"^(?:[\p{So}\p{Cs}][‍︎️]*|[0-9#*]️?⃣)+\z", RegexOptions.None, DefaultTimeoutMs)]
+    internal static partial Regex EmojiOnly();
 
     [GeneratedRegex(@"^[A-Z0-9]+\z", RegexOptions.None, DefaultTimeoutMs)]
     public static partial Regex UppercaseAlphanumeric();
@@ -88,7 +103,11 @@ public static partial class GeneratedRegexPatterns
     [GeneratedRegex(@"^4[0-9]{12}(?:[0-9]{3})?\z", RegexOptions.None, DefaultTimeoutMs)]
     public static partial Regex VisaCard();
 
-    [GeneratedRegex(@"^5[1-5][0-9]{14}\z", RegexOptions.None, DefaultTimeoutMs)]
+    /// <summary>
+    /// Mastercard PANs: the original <c>51</c>-<c>55</c> range and the <c>2221</c>-<c>2720</c> range
+    /// Mastercard added in 2017, both 16 digits.
+    /// </summary>
+    [GeneratedRegex(@"^(?:5[1-5][0-9]{2}|222[1-9]|22[3-9][0-9]|2[3-6][0-9]{2}|27[01][0-9]|2720)[0-9]{12}\z", RegexOptions.None, DefaultTimeoutMs)]
     public static partial Regex MasterCard();
 
     [GeneratedRegex(@"^[A-Z]{2}[0-9]{2}[A-Z0-9]+\z", RegexOptions.None, DefaultTimeoutMs)]

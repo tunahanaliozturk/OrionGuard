@@ -113,7 +113,7 @@ builder.Services.AddHealthChecks().AddOrionGuardCheck(); // name "orionguard", t
 app.MapHealthChecks("/health");
 ```
 
-The check reports `Degraded` when `IValidatorFactory` is not registered, and `Healthy` otherwise.
+The check reports `Degraded` when `IValidatorFactory` is not registered, and `Healthy` otherwise. A healthy result's data has `ValidatorFactory` (the registered factory's type name) and `Version` (the informational version of the OrionGuard core assembly loaded in the process).
 
 ## Targets
 
