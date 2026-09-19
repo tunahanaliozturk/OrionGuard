@@ -158,6 +158,7 @@ if (result.IsInvalid)
 | `OrionGuard.Grpc` | `dotnet add package OrionGuard.Grpc` | Server interceptor |
 | `OrionGuard.SignalR` | `dotnet add package OrionGuard.SignalR` | Hub method validation |
 | `OrionGuard.Hangfire` | `dotnet add package OrionGuard.Hangfire` | Background job argument validation at enqueue time |
+| `OrionGuard.MassTransit` | `dotnet add package OrionGuard.MassTransit` | Consume filter that validates messages before the consumer (MassTransit 8.x) |
 | `OrionGuard.EntityFrameworkCore` | `dotnet add package OrionGuard.EntityFrameworkCore` | EF Core SaveChanges interceptor + transactional outbox |
 | `OrionGuard.Locks.Redis` | `dotnet add package OrionGuard.Locks.Redis` | Redis backend for the outbox `IDistributedLock` |
 | `OrionGuard.Testing` | `dotnet add package OrionGuard.Testing` | DomainEventCapture + InMemoryDispatcher + assertions |
