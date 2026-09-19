@@ -143,25 +143,31 @@ public sealed class GuardResult
 
     /// <summary>
     /// Combines multiple validation results into one. All issues (errors, warnings, infos)
-    /// from every input are preserved.
+    /// from every input are preserved, and the first non-null <see cref="SuggestedHttpStatusCode"/>
+    /// (in argument order) is carried over.
     /// </summary>
     public static GuardResult Combine(params GuardResult[] results)
     {
         int total = 0;
+        int? statusCode = null;
         foreach (var result in results)
+        {
             total += result._issues.Count;
+            statusCode ??= result.SuggestedHttpStatusCode;
+        }
 
-        if (total == 0) return Success();
+        if (total == 0 && statusCode is null) return Success();
 
         var all = new List<ValidationError>(total);
         foreach (var result in results)
             all.AddRange(result._issues);
 
-        return new GuardResult(all);
+        return new GuardResult(all) { SuggestedHttpStatusCode = statusCode };
     }
 
     /// <summary>
-    /// Combines this result with another.
+    /// Combines this result with another. This result's <see cref="SuggestedHttpStatusCode"/> wins when
+    /// both carry one.
     /// </summary>
     public GuardResult Merge(GuardResult other) => Combine(this, other);
 

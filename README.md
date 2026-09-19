@@ -575,18 +575,22 @@ public class UserValidator : FluentStyleValidator<User>
 
 ---
 
-## Custom Exception Factory
+## Custom Exception Types
+
+`Guard` and `Ensure` throw `GuardException` or one of its subclasses (`NullValueException`, `OutOfRangeException`, ...); most extension guards throw `ArgumentException`. To surface your own exception types, translate at your boundary:
 
 ```csharp
-public class MyExceptionFactory : IExceptionFactory
+try
 {
-    public Exception CreateException(string errorCode, string parameterName, string message, Exception? inner)
-        => new MyCustomException(errorCode, parameterName, message);
+    Guard.AgainstNull(order, nameof(order));
 }
-
-services.AddOrionGuardExceptionFactory<MyExceptionFactory>();
-// Or globally: ExceptionFactoryProvider.Configure(new MyExceptionFactory());
+catch (GuardException ex)
+{
+    throw new MyCustomException(ex.ErrorCode, ex.ParameterName, ex.Message);
+}
 ```
+
+`IExceptionFactory` is never called by the guards. `AddOrionGuardExceptionFactory<T>()`, `ExceptionFactoryProvider.Configure` and `DefaultExceptionFactory` are obsolete and will be removed in v7.
 
 ---
 

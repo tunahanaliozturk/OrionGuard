@@ -57,7 +57,7 @@ public sealed class Delta<T> where T : class
         ArgumentNullException.ThrowIfNull(selector);
         if (Original is null) return true;
 
-        var accessor = AccessorCache<TProperty>.Get(selector);
+        var accessor = AccessorCache<T, TProperty>.Get(selector);
         var original = accessor(Original);
         var updated = accessor(Updated);
         return !EqualityComparer<TProperty>.Default.Equals(original, updated);
@@ -82,23 +82,6 @@ public sealed class Delta<T> where T : class
             var newVal = prop.GetValue(Updated);
             if (!Equals(oldVal, newVal))
                 yield return prop.Name;
-        }
-    }
-
-    /// <summary>
-    /// Per-(T, TProperty) compiled accessor cache keyed by <see cref="Expression.ToString()"/>.
-    /// The generic static class is partitioned per closed generic type, so lookups never
-    /// collide across property types.
-    /// </summary>
-    internal static class AccessorCache<TProperty>
-    {
-        private static readonly ConcurrentDictionary<string, Func<T, TProperty>> Compiled = new();
-
-        public static Func<T, TProperty> Get(Expression<Func<T, TProperty>> selector)
-        {
-            var key = selector.ToString();
-            if (Compiled.TryGetValue(key, out var cached)) return cached;
-            return Compiled.GetOrAdd(key, static (_, sel) => sel.Compile(), selector);
         }
     }
 
@@ -141,7 +124,7 @@ public sealed class DeltaValidator<T> where T : class
 
         if (!_delta.HasChanged(selector)) return this;
 
-        var accessor = Delta<T>.AccessorCache<TProperty>.Get(selector);
+        var accessor = AccessorCache<T, TProperty>.Get(selector);
         var value = accessor(_delta.Updated);
         var propertyName = GetPropertyName(selector);
 

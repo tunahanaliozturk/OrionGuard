@@ -10,7 +10,10 @@ public static class ValidationMessages
 {
     private static volatile Func<string, string?, string> _messageResolver = DefaultMessageResolver;
     private static readonly AsyncLocal<CultureInfo?> _asyncLocalCulture = new();
-    private static volatile CultureInfo _globalCulture = CultureInfo.CurrentCulture;
+
+    // Null until SetCulture is called. Capturing CultureInfo.CurrentCulture here instead froze whichever
+    // thread first touched this class as the process-wide default for every other thread.
+    private static volatile CultureInfo? _globalCulture;
 
     private static readonly ConcurrentDictionary<string, ConcurrentDictionary<string, string>> _messages = new(
         new Dictionary<string, ConcurrentDictionary<string, string>>
@@ -522,9 +525,11 @@ public static class ValidationMessages
         });
 
     /// <summary>
-    /// Gets the current effective culture (async-local takes priority over global).
+    /// Gets the current effective culture: the culture set for the current async scope, else the culture
+    /// set with <see cref="SetCulture(CultureInfo)"/>, else the calling thread's
+    /// <see cref="CultureInfo.CurrentCulture"/>, read on every call.
     /// </summary>
-    public static CultureInfo CurrentCulture => _asyncLocalCulture.Value ?? _globalCulture;
+    public static CultureInfo CurrentCulture => _asyncLocalCulture.Value ?? _globalCulture ?? CultureInfo.CurrentCulture;
 
     /// <summary>
     /// Sets the culture globally for validation messages.

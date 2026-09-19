@@ -1,3 +1,5 @@
+using System.Globalization;
+using Moongazing.OrionGuard.Core;
 using Moongazing.OrionGuard.DynamicRules;
 
 namespace Moongazing.OrionGuard.Tests;
@@ -511,6 +513,131 @@ public class DynamicRuleEngineTests
 
         var result = factory.Validate("UserRules", new UserDto { Name = "Alice" });
         Assert.True(result.IsValid);
+    }
+
+    #endregion
+
+    #region Culture Independence (BUG-C4)
+
+    // Under a comma-decimal culture the old code turned 0.5 into the text "0,5", which the invariant
+    // parser read as 5. Every test here runs the validation under tr-TR and de-DE.
+
+    private sealed class PricedItem
+    {
+        public decimal Price { get; set; }
+    }
+
+    private static DynamicValidator RangeValidator(string min, string max) => DynamicValidator.FromJson($$"""
+        {
+            "Name": "Prices",
+            "Rules": [
+                { "PropertyName": "Price", "RuleType": "Range", "Parameters": { "Min": {{min}}, "Max": {{max}} } }
+            ]
+        }
+        """);
+
+    private static GuardResult ValidateUnderCulture(string cultureName, DynamicValidator validator, PricedItem item)
+    {
+        var original = CultureInfo.CurrentCulture;
+        CultureInfo.CurrentCulture = new CultureInfo(cultureName);
+        try
+        {
+            return validator.Validate(item);
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = original;
+        }
+    }
+
+    [Theory]
+    [InlineData("tr-TR")]
+    [InlineData("de-DE")]
+    public void Validate_Range_ShouldFail_WhenFractionalValueIsBelowMinUnderCommaDecimalCulture(string cultureName)
+    {
+        var result = ValidateUnderCulture(cultureName, RangeValidator("1", "1000"), new PricedItem { Price = 0.5m });
+
+        Assert.True(result.IsInvalid);
+    }
+
+    [Theory]
+    [InlineData("tr-TR")]
+    [InlineData("de-DE")]
+    public void Validate_Range_ShouldPass_WhenFractionalValueIsInRangeUnderCommaDecimalCulture(string cultureName)
+    {
+        var result = ValidateUnderCulture(cultureName, RangeValidator("1", "1000"), new PricedItem { Price = 150.75m });
+
+        Assert.True(result.IsValid);
+    }
+
+    [Theory]
+    [InlineData("tr-TR")]
+    [InlineData("de-DE")]
+    public void Validate_Range_ShouldPass_WhenValueIsInsideFractionalBoundsUnderCommaDecimalCulture(string cultureName)
+    {
+        var result = ValidateUnderCulture(cultureName, RangeValidator("0.5", "2.5"), new PricedItem { Price = 2m });
+
+        Assert.True(result.IsValid);
+    }
+
+    [Theory]
+    [InlineData("tr-TR")]
+    [InlineData("de-DE")]
+    public void Validate_Range_ShouldFail_WhenValueIsAboveFractionalMaxUnderCommaDecimalCulture(string cultureName)
+    {
+        var result = ValidateUnderCulture(cultureName, RangeValidator("0.5", "2.5"), new PricedItem { Price = 10m });
+
+        Assert.True(result.IsInvalid);
+    }
+
+    [Theory]
+    [InlineData("tr-TR")]
+    [InlineData("de-DE")]
+    public void Validate_GreaterThan_ShouldFail_WhenFractionalValueIsBelowThresholdUnderCommaDecimalCulture(string cultureName)
+    {
+        var validator = DynamicValidator.FromJson("""
+            {
+                "Name": "Prices",
+                "Rules": [ { "PropertyName": "Price", "RuleType": "GreaterThan", "Parameters": { "Value": 0.5 } } ]
+            }
+            """);
+
+        var result = ValidateUnderCulture(cultureName, validator, new PricedItem { Price = 0.25m });
+
+        Assert.True(result.IsInvalid);
+    }
+
+    [Theory]
+    [InlineData("tr-TR")]
+    [InlineData("de-DE")]
+    public void Validate_Range_ShouldFail_WhenClrDecimalParameterIsAboveValueUnderCommaDecimalCulture(string cultureName)
+    {
+        var validator = new DynamicValidator(new DynamicRuleSet
+        {
+            Name = "Prices",
+            Rules = new List<DynamicRule>
+            {
+                new() { PropertyName = "Price", RuleType = "Range", Parameters = new() { ["Min"] = 0.5m } }
+            }
+        });
+
+        var result = ValidateUnderCulture(cultureName, validator, new PricedItem { Price = 0.25m });
+
+        Assert.True(result.IsInvalid);
+    }
+
+    [Fact]
+    public void Validate_MinLength_ShouldAcceptWholeNumberWrittenAsDecimal_WhenParameterIsJsonDouble()
+    {
+        var validator = DynamicValidator.FromJson("""
+            {
+                "Name": "Names",
+                "Rules": [ { "PropertyName": "Name", "RuleType": "MinLength", "Parameters": { "Min": 3.0 } } ]
+            }
+            """);
+
+        Assert.True(validator.Validate(new UserDto { Name = "Al" }).IsInvalid);
+        Assert.True(validator.Validate(new UserDto { Name = "Alice" }).IsValid);
     }
 
     #endregion

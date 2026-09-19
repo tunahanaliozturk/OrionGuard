@@ -1,17 +1,24 @@
 namespace Moongazing.OrionGuard.Core;
 
 /// <summary>
-/// Provides the global exception factory for OrionGuard.
-/// Set a custom factory via Configure() or use the default.
+/// Holds a process-wide <see cref="IExceptionFactory"/>.
 /// </summary>
+/// <remarks>
+/// OrionGuard's guards do not read <see cref="Current"/>; configuring a factory here does not change the
+/// exceptions they throw. See <see cref="IExceptionFactory"/>.
+/// </remarks>
 public static class ExceptionFactoryProvider
 {
+#pragma warning disable CS0618 // DefaultExceptionFactory is obsolete; it stays the value of Current until v7.
     private static volatile IExceptionFactory _factory = DefaultExceptionFactory.Instance;
+#pragma warning restore CS0618
 
-    /// <summary>Current exception factory.</summary>
+    /// <summary>Current exception factory. Not consulted by OrionGuard's guards.</summary>
     public static IExceptionFactory Current => _factory;
 
     /// <summary>Set a custom exception factory.</summary>
+    [Obsolete("OrionGuard guards never read ExceptionFactoryProvider, so configuring a factory does not change the exceptions they throw. " +
+              "Catch GuardException (or the specific exception type) and translate it at your boundary instead. This method will be removed in v7.")]
     public static void Configure(IExceptionFactory factory)
     {
         ArgumentNullException.ThrowIfNull(factory);
@@ -19,5 +26,6 @@ public static class ExceptionFactoryProvider
     }
 
     /// <summary>Reset to default factory.</summary>
+    [Obsolete("OrionGuard guards never read ExceptionFactoryProvider. This method will be removed in v7.")]
     public static void Reset() => _factory = DefaultExceptionFactory.Instance;
 }

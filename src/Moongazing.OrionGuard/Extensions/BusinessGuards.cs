@@ -214,10 +214,11 @@ public static class BusinessGuards
     /// <summary>
     /// Validates that the expiration date has not passed (expirationDate >= DateTime.UtcNow).
     /// Useful for tokens, coupons, subscriptions, and licenses.
+    /// A <see cref="DateTimeKind.Local"/> value is converted to UTC first; <see cref="DateTimeKind.Unspecified"/> is treated as UTC.
     /// </summary>
     public static void AgainstExpired(this DateTime expirationDate, string parameterName)
     {
-        if (expirationDate < DateTime.UtcNow)
+        if (Utilities.DateTimeNormalization.ToUtc(expirationDate) < DateTime.UtcNow)
         {
             throw new ArgumentException($"{parameterName} has expired.", parameterName);
         }
@@ -226,10 +227,11 @@ public static class BusinessGuards
     /// <summary>
     /// Validates that the activation date has already passed (activationDate &lt;= DateTime.UtcNow).
     /// Ensures the resource is already active and available for use.
+    /// A <see cref="DateTimeKind.Local"/> value is converted to UTC first; <see cref="DateTimeKind.Unspecified"/> is treated as UTC.
     /// </summary>
     public static void AgainstNotYetActive(this DateTime activationDate, string parameterName)
     {
-        if (activationDate > DateTime.UtcNow)
+        if (Utilities.DateTimeNormalization.ToUtc(activationDate) > DateTime.UtcNow)
         {
             throw new ArgumentException($"{parameterName} is not yet active.", parameterName);
         }

@@ -256,15 +256,20 @@ public sealed class PropertyValidationBuilder<TProperty>
         return this;
     }
 
+    // The comparison rules compare by numeric value across all built-in numeric types (see
+    // NumericComparer), so GreaterThan(0) on a decimal property really compares with zero. A null value
+    // is left to NotNull()/NotEmpty(); a value that cannot be ordered against the threshold (NaN, or an
+    // unrelated type) fails the rule instead of being skipped.
+
     /// <summary>
     /// Validates that the property value is strictly greater than the specified threshold.
-    /// Generic overload avoids boxing for value types.
+    /// Generic overload avoids boxing when the value and threshold share a type.
     /// </summary>
     /// <typeparam name="TValue">The comparable type of the threshold.</typeparam>
     /// <param name="threshold">The exclusive lower bound.</param>
     public PropertyValidationBuilder<TProperty> GreaterThan<TValue>(TValue threshold) where TValue : IComparable<TValue>
     {
-        if (_value is TValue comparable && comparable.CompareTo(threshold) <= 0)
+        if (_value is not null && (!NumericComparer.TryCompare(_value, threshold, out var comparison) || comparison <= 0))
             _errors.Add(new ValidationError(_path, $"{_path} must be greater than {threshold}.", "GREATER_THAN"));
         return this;
     }
@@ -275,20 +280,20 @@ public sealed class PropertyValidationBuilder<TProperty>
     /// <param name="threshold">The exclusive lower bound.</param>
     public PropertyValidationBuilder<TProperty> GreaterThan(IComparable threshold)
     {
-        if (_value is IComparable comparable && comparable.CompareTo(threshold) <= 0)
+        if (_value is not null && (!NumericComparer.TryCompare(_value, threshold, out var comparison) || comparison <= 0))
             _errors.Add(new ValidationError(_path, $"{_path} must be greater than {threshold}.", "GREATER_THAN"));
         return this;
     }
 
     /// <summary>
     /// Validates that the property value is strictly less than the specified threshold.
-    /// Generic overload avoids boxing for value types.
+    /// Generic overload avoids boxing when the value and threshold share a type.
     /// </summary>
     /// <typeparam name="TValue">The comparable type of the threshold.</typeparam>
     /// <param name="threshold">The exclusive upper bound.</param>
     public PropertyValidationBuilder<TProperty> LessThan<TValue>(TValue threshold) where TValue : IComparable<TValue>
     {
-        if (_value is TValue comparable && comparable.CompareTo(threshold) >= 0)
+        if (_value is not null && (!NumericComparer.TryCompare(_value, threshold, out var comparison) || comparison >= 0))
             _errors.Add(new ValidationError(_path, $"{_path} must be less than {threshold}.", "LESS_THAN"));
         return this;
     }
@@ -299,21 +304,23 @@ public sealed class PropertyValidationBuilder<TProperty>
     /// <param name="threshold">The exclusive upper bound.</param>
     public PropertyValidationBuilder<TProperty> LessThan(IComparable threshold)
     {
-        if (_value is IComparable comparable && comparable.CompareTo(threshold) >= 0)
+        if (_value is not null && (!NumericComparer.TryCompare(_value, threshold, out var comparison) || comparison >= 0))
             _errors.Add(new ValidationError(_path, $"{_path} must be less than {threshold}.", "LESS_THAN"));
         return this;
     }
 
     /// <summary>
     /// Validates that the property value falls within the specified inclusive range.
-    /// Generic overload avoids boxing for value types.
+    /// Generic overload avoids boxing when the value and bounds share a type.
     /// </summary>
     /// <typeparam name="TValue">The comparable type of the bounds.</typeparam>
     /// <param name="min">The inclusive lower bound.</param>
     /// <param name="max">The inclusive upper bound.</param>
     public PropertyValidationBuilder<TProperty> InRange<TValue>(TValue min, TValue max) where TValue : IComparable<TValue>
     {
-        if (_value is TValue comparable && (comparable.CompareTo(min) < 0 || comparable.CompareTo(max) > 0))
+        if (_value is not null &&
+            (!NumericComparer.TryCompare(_value, min, out var lower) || lower < 0 ||
+             !NumericComparer.TryCompare(_value, max, out var upper) || upper > 0))
             _errors.Add(new ValidationError(_path, $"{_path} must be between {min} and {max}.", "IN_RANGE"));
         return this;
     }
@@ -325,7 +332,9 @@ public sealed class PropertyValidationBuilder<TProperty>
     /// <param name="max">The inclusive upper bound.</param>
     public PropertyValidationBuilder<TProperty> InRange(IComparable min, IComparable max)
     {
-        if (_value is IComparable comparable && (comparable.CompareTo(min) < 0 || comparable.CompareTo(max) > 0))
+        if (_value is not null &&
+            (!NumericComparer.TryCompare(_value, min, out var lower) || lower < 0 ||
+             !NumericComparer.TryCompare(_value, max, out var upper) || upper > 0))
             _errors.Add(new ValidationError(_path, $"{_path} must be between {min} and {max}.", "IN_RANGE"));
         return this;
     }

@@ -1,9 +1,21 @@
 namespace Moongazing.OrionGuard.Core;
 
 /// <summary>
-/// Factory interface for creating custom validation exceptions.
-/// Register via DI to override default exception creation behavior.
+/// Factory interface for creating validation exceptions from an error code, parameter name and message.
 /// </summary>
+/// <remarks>
+/// <para>
+/// OrionGuard's own guards do not call this interface. <c>Guard</c>, <c>Ensure</c>, <c>FastGuard</c> and the
+/// extension guards always throw their own exception types (<c>NullValueException</c>,
+/// <c>GuardException</c>, <see cref="ArgumentException"/>, ...), whatever factory is registered.
+/// </para>
+/// <para>
+/// The registration entry points (<c>AddOrionGuardExceptionFactory</c>,
+/// <see cref="ExceptionFactoryProvider.Configure(IExceptionFactory)"/>) and
+/// <see cref="DefaultExceptionFactory"/> are obsolete and will be removed in v7. To map guard failures to
+/// your own exception types, catch <c>GuardException</c> (or the specific type) at your boundary.
+/// </para>
+/// </remarks>
 public interface IExceptionFactory
 {
     /// <summary>

@@ -1,13 +1,20 @@
-﻿namespace Moongazing.OrionGuard.Extensions
+using Moongazing.OrionGuard.Utilities;
+
+namespace Moongazing.OrionGuard.Extensions
 {
     /// <summary>
     /// Provides validation methods for DateTime values.
     /// </summary>
+    /// <remarks>
+    /// Guards that compare with the current time use <see cref="DateTime.UtcNow"/>. A value with
+    /// <see cref="DateTimeKind.Local"/> is converted to UTC before the comparison, and a value with
+    /// <see cref="DateTimeKind.Unspecified"/> is treated as UTC.
+    /// </remarks>
     public static class DateTimeGuards
     {
         public static void AgainstPastDate(this DateTime date, string parameterName)
         {
-            if (date < DateTime.UtcNow)
+            if (DateTimeNormalization.ToUtc(date) < DateTime.UtcNow)
             {
                 throw new ArgumentException($"{parameterName} cannot be in the past.", parameterName);
             }
@@ -15,7 +22,7 @@
 
         public static void AgainstFutureDate(this DateTime date, string parameterName)
         {
-            if (date > DateTime.UtcNow)
+            if (DateTimeNormalization.ToUtc(date) > DateTime.UtcNow)
             {
                 throw new ArgumentException($"{parameterName} cannot be in the future.", parameterName);
             }
@@ -46,7 +53,8 @@
         }
         public static void AgainstNonToday(this DateTime date, string parameterName)
         {
-            if (date.Date != DateTime.UtcNow.Date)
+            // "Today" is the current UTC date, consistent with the other guards in this class.
+            if (DateTimeNormalization.ToUtc(date).Date != DateTime.UtcNow.Date)
             {
                 throw new ArgumentException($"{parameterName} must be today's date.", parameterName);
             }
@@ -55,6 +63,7 @@
         {
             var now = DateTime.UtcNow;
             var maxDate = now.AddYears(-120);
+            date = DateTimeNormalization.ToUtc(date);
             if (date > now || date < maxDate)
             {
                 throw new ArgumentException($"{parameterName} is not a realistic birth date.", parameterName);
@@ -62,7 +71,7 @@
         }
         public static void AgainstFuturePeriod(this DateTime date, TimeSpan period, string parameterName)
         {
-            if (date > DateTime.UtcNow.Add(period))
+            if (DateTimeNormalization.ToUtc(date) > DateTime.UtcNow.Add(period))
             {
                 throw new ArgumentException($"{parameterName} cannot be beyond {period} from now.", parameterName);
             }
