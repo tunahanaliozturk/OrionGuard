@@ -1,0 +1,28 @@
+validator: CreateUserValidator
+model: CreateUserRequest
+
+[Age]
+  -1 -> AGE: Age must be greater than 0.
+  0 -> AGE: Age must be greater than 0.
+  1 -> accepted
+
+[Email]
+  null -> EMAIL: Email is required.
+  "" -> EMAIL: Email is required.
+  "   " -> EMAIL: Email is required.
+  "x" -> EMAIL: Email must be a valid address.
+  string(256) -> EMAIL: Email must be a valid address.
+
+[Name]
+  null -> NAME: Name is required.
+  "" -> NAME: Name must be 2 to 50 characters.
+  "   " -> accepted
+  "x" -> NAME: Name must be 2 to 50 characters.
+  string(256) -> NAME: Name must be 2 to 50 characters.
+
+[Notes]
+  null -> accepted
+  "" -> accepted
+  "   " -> accepted
+  "x" -> accepted
+  string(256) -> accepted

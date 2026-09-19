@@ -9,6 +9,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `OrionGuard.Testing`: **validator snapshots.**
+  `OrionGuardSnapshot.Of<CreateUserValidator, CreateUserRequest>().MatchAsync()` writes the rules a validator
+  actually enforces to a `CreateUserValidator.verified.txt` file beside the test's source file, and fails the
+  test when they change without the file being updated. The snapshot is one section per property listing the
+  error code and message the validator reports for each of a fixed set of probe values (`null`, `""`, `"   "`,
+  `"x"`, a 256-character string, `-1`/`0`/`1`, every enum member, empty and non-empty `Guid`, `DateTime.MinValue`
+  and a fixed past and future date, `[]`/`[default]`), plus the values it accepted. Nothing machine- or
+  run-dependent goes in: ordinal ordering, invariant-culture numbers and dates, and `\n` line endings on every
+  platform. A mismatch writes a `.received.txt` beside the snapshot and names the first three differing lines.
+  `MatchAsync(snapshotPath:)` overrides the location; `MatchAsync(ci: true)` makes a *missing* snapshot a
+  failure instead of creating one, so a build server never accepts a snapshot nobody reviewed — pass the switch
+  yourself, no environment variable is read for you. No dependency on Verify, Snapshooter, or any other
+  snapshot library.
+- `OrionGuard.Testing`: **rule coverage.**
+  `OrionGuardCoverage.For<CreateUserValidator, CreateUserRequest>().AssertEveryPropertyIsValidated(except: [...])`
+  fails when a property of the model carries no rule, so adding a property and forgetting to validate it breaks
+  a test. Each `except` entry must be a real property, so a rename cannot leave a stale exemption behind. Rules
+  are found from a `ValidationAttribute` on the property, or by running the validator over the probe values and
+  reading the `ParameterName` off what it reports — the only option for `AbstractValidator<T>` and
+  `FluentStyleValidator<T>`, which keep their rules as closures and expose neither the rule list nor the property
+  a rule targets. A rule no probe value can make fail is therefore invisible, and when *nothing* is visible
+  `For<,>()` throws naming the validator rather than reporting every property as unvalidated. Both features
+  throw `ValidatorAssertionException`, which any test runner reports as a failure.
 - `OrionGuard`: `ValidatorInvoker.ValidateAsync(IServiceProvider, object, ValidationContext?, CancellationToken)`
   in `Moongazing.OrionGuard.DependencyInjection` runs every `IValidator<T>` registered for an object's runtime
   type through `ValidateAsync` and returns the combined result, or `null` when no validator is registered. The

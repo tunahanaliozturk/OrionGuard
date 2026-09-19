@@ -10,8 +10,8 @@
     <PackageId>OrionGuard.Testing</PackageId>
     <Version>6.7.0</Version>
     <Authors>Tunahan Ali Ozturk</Authors>
-    <Description>Testing helpers for OrionGuard. Provides DomainEventCapture and InMemoryDomainEventDispatcher with framework-agnostic assertions (no xUnit / NUnit / FluentAssertions dependency). Works with any test runner.</Description>
-    <PackageTags>guard;validation;testing;ddd;domain-events;assertions;test-helpers</PackageTags>
+    <Description>Testing helpers for OrionGuard. Provides DomainEventCapture and InMemoryDomainEventDispatcher for domain events, plus OrionGuardSnapshot (pin a validator's rules to a .verified.txt file) and OrionGuardCoverage (fail when a model property carries no rule), with framework-agnostic assertions (no xUnit / NUnit / FluentAssertions / Verify dependency). Works with any test runner.</Description>
+    <PackageTags>guard;validation;testing;ddd;domain-events;assertions;test-helpers;snapshot-testing</PackageTags>
     <PackageReadmeFile>docs/README.md</PackageReadmeFile>
     <PackageIcon>docs/logo.png</PackageIcon>
     <RepositoryUrl>https://github.com/tunahanaliozturk/OrionGuard</RepositoryUrl>
