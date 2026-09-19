@@ -373,3 +373,7 @@ FodyWeavers.xsd
 /graphify-out/
 /CLAUDE.md
 /.graphifyignore
+
+# OrionGuard.Testing validator snapshots: the .verified.txt files are committed,
+# the .received.txt files a failing run writes beside them are not.
+*.received.txt
