@@ -11,6 +11,7 @@ public sealed class OutboxArchivalState
 {
     private long lastSuccessfulBatchUtcTicks;
     private int totalBatches;
+    private long pollingIntervalTicks;
 
     /// <summary>UTC timestamp of the most recent successful <c>ArchiveBatchAsync</c> call, or null if none yet.</summary>
     public DateTime? LastSuccessfulBatchUtc
@@ -24,6 +25,18 @@ public sealed class OutboxArchivalState
 
     /// <summary>Number of successful batches observed since service start. Monotonic.</summary>
     public int TotalBatches => Interlocked.CompareExchange(ref totalBatches, 0, 0);
+
+    /// <summary>The archival worker's polling interval, or null when no worker has reported one.</summary>
+    internal TimeSpan? PollingInterval
+    {
+        get
+        {
+            var ticks = Interlocked.Read(ref pollingIntervalTicks);
+            return ticks <= 0 ? null : TimeSpan.FromTicks(ticks);
+        }
+    }
+
+    internal void UsePollingInterval(TimeSpan interval) => Interlocked.Exchange(ref pollingIntervalTicks, interval.Ticks);
 
     /// <summary>Called by the hosted service after each successful batch. Idempotent on the timestamp.</summary>
     public void RecordSuccessfulBatch(DateTime utcNow)

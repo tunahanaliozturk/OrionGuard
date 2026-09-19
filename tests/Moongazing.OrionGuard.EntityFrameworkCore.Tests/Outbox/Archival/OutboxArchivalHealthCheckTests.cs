@@ -1,7 +1,9 @@
 namespace Moongazing.OrionGuard.EntityFrameworkCore.Tests.Outbox.Archival;
 
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Moongazing.OrionGuard.EntityFrameworkCore.Outbox.Archival;
+using Moongazing.OrionGuard.EntityFrameworkCore.Outbox.Locking;
 using Xunit;
 
 public sealed class OutboxArchivalHealthCheckTests
@@ -73,6 +75,64 @@ public sealed class OutboxArchivalHealthCheckTests
         var sut = NewSut(state, nowUtc: now);
 
         var result = await sut.CheckHealthAsync(new HealthCheckContext());
+
+        Assert.Equal(HealthStatus.Unhealthy, result.Status);
+    }
+
+    // The archival worker reports its polling interval to the shared state when it is constructed.
+    private static OutboxArchivalState StateOfWorkerPollingEvery(TimeSpan pollingInterval)
+    {
+        var state = new OutboxArchivalState();
+        _ = new OutboxArchivalHostedService(
+            new OutboxArchivalOptions { PollingInterval = pollingInterval },
+            new ServiceCollection().BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(),
+            new NullDistributedLock(),
+            logger: null,
+            archiver: null,
+            state);
+        return state;
+    }
+
+    private static OutboxArchivalHealthCheck NewSutWithDefaultThresholds(OutboxArchivalState state, DateTime nowUtc)
+        => new(state, new OutboxArchivalHealthCheckOptions(), new FixedClock { Now = new DateTimeOffset(nowUtc, TimeSpan.Zero) });
+
+    [Fact]
+    public async Task Default_thresholds_report_Healthy_between_hourly_archival_batches()
+    {
+        // The fixed 15 minute default reported every healthy hourly worker as Unhealthy between batches.
+        var now = new DateTime(2026, 6, 11, 12, 0, 0, DateTimeKind.Utc);
+        var state = StateOfWorkerPollingEvery(TimeSpan.FromHours(1));
+        state.RecordSuccessfulBatch(now.AddMinutes(-50));
+
+        var result = await NewSutWithDefaultThresholds(state, now).CheckHealthAsync(new HealthCheckContext());
+
+        Assert.Equal(HealthStatus.Healthy, result.Status);
+    }
+
+    [Theory]
+    [InlineData(119, HealthStatus.Healthy)]
+    [InlineData(121, HealthStatus.Degraded)]     // two missed intervals
+    [InlineData(181, HealthStatus.Unhealthy)]    // three missed intervals
+    public async Task Default_thresholds_follow_the_archival_polling_interval(int minutesSinceLastBatch, HealthStatus expected)
+    {
+        var now = new DateTime(2026, 6, 11, 12, 0, 0, DateTimeKind.Utc);
+        var state = StateOfWorkerPollingEvery(TimeSpan.FromHours(1));
+        state.RecordSuccessfulBatch(now.AddMinutes(-minutesSinceLastBatch));
+
+        var result = await NewSutWithDefaultThresholds(state, now).CheckHealthAsync(new HealthCheckContext());
+
+        Assert.Equal(expected, result.Status);
+    }
+
+    [Fact]
+    public async Task Explicit_thresholds_win_over_the_archival_polling_interval()
+    {
+        var now = new DateTime(2026, 6, 11, 12, 0, 0, DateTimeKind.Utc);
+        var state = StateOfWorkerPollingEvery(TimeSpan.FromHours(1));
+        state.RecordSuccessfulBatch(now.AddMinutes(-20));
+
+        var result = await NewSut(state, now, degraded: TimeSpan.FromMinutes(5), unhealthy: TimeSpan.FromMinutes(15))
+            .CheckHealthAsync(new HealthCheckContext());
 
         Assert.Equal(HealthStatus.Unhealthy, result.Status);
     }

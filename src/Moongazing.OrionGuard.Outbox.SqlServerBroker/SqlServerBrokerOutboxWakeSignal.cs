@@ -1,5 +1,6 @@
 namespace Moongazing.OrionGuard.Outbox.SqlServerBroker;
 
+using System.Data.Common;
 using System.Threading.Channels;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Hosting;
@@ -56,11 +57,6 @@ public sealed partial class SqlServerBrokerOutboxWakeSignal :
         {
             // Polling interval elapsed without a wake; return normally so the dispatcher
             // runs a polling tick. This is the documented polling-fallback contract.
-        }
-        catch (ChannelClosedException)
-        {
-            // StopAsync completed the writer. Treat as a clean wake-stop so the dispatcher's
-            // outer loop can observe its own cancellation token rather than seeing a fault.
         }
     }
 
@@ -129,8 +125,7 @@ SELECT @h AS conversation_handle;
                         CommandTimeout = receiveTimeoutMs / 1000 + 30,
                     };
                     await using var reader = await cmd.ExecuteReaderAsync(stoppingToken).ConfigureAwait(false);
-                    var received = await reader.ReadAsync(stoppingToken).ConfigureAwait(false);
-                    if (received)
+                    if (await ReceivedConversationAsync(reader, stoppingToken).ConfigureAwait(false))
                     {
                         _ = wake.Writer.TryWrite(true);
                     }
@@ -157,12 +152,14 @@ SELECT @h AS conversation_handle;
         }
     }
 
-    /// <inheritdoc />
-    public override async Task StopAsync(CancellationToken cancellationToken)
-    {
-        wake.Writer.TryComplete();
-        await base.StopAsync(cancellationToken).ConfigureAwait(false);
-    }
+    // The wake channel is never completed on stop: the host stops hosted services in reverse order, so the
+    // dispatcher can still be waiting on it, and a completed channel made every wait return at once (a hot poll
+    // loop). After the listener stops, waits simply run to the polling interval.
+
+    // SELECT @h returns a row even when WAITFOR timed out; only a non-NULL handle means a message arrived.
+    internal static async Task<bool> ReceivedConversationAsync(DbDataReader reader, CancellationToken cancellationToken)
+        => await reader.ReadAsync(cancellationToken).ConfigureAwait(false)
+           && !await reader.IsDBNullAsync(0, cancellationToken).ConfigureAwait(false);
 
     [LoggerMessage(EventId = 1, Level = LogLevel.Information,
         Message = "OrionGuard SQL Server Service Broker listener connected on queue '{Queue}'")]

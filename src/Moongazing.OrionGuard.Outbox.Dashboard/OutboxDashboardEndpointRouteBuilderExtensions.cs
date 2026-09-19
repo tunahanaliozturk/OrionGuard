@@ -87,7 +87,9 @@ public static class OutboxDashboardEndpointRouteBuilderExtensions
         {
             var pageNumber = page is null or < 1 ? 1 : page.Value;
             var pageSize = ResolvePageSize(size, options);
-            var skip = (pageNumber - 1) * pageSize;
+            // In long arithmetic: a huge page number overflowed int into a negative OFFSET. A page past the end
+            // (clamped to int.MaxValue rows) simply comes back empty.
+            var skip = (int)Math.Min((long)(pageNumber - 1) * pageSize, int.MaxValue);
             var threshold = options.FailedRetryThreshold;
             var truncation = options.ErrorTruncationLength;
             var sortOrder = ResolveSort(sort, options.DefaultSort);
@@ -240,35 +242,42 @@ public static class OutboxDashboardEndpointRouteBuilderExtensions
         {
             // Replay: clear RetryCount + Error so the next dispatcher pass re-attempts the
             // row. ProcessedOnUtc stays null (or is cleared if the dispatcher already
-            // dead-lettered). Returns 200 on success, 404 if the id is unknown.
+            // dead-lettered). Returns 200 on success, 404 if the id is unknown, 409 if the row
+            // was processed successfully.
+            //
+            // The eligibility check and the write are one conditional UPDATE: a row the dispatcher
+            // finishes between a separate read and write would otherwise be re-queued and delivered
+            // again. The dispatcher's own row updates are conditional the same way, so an in-flight
+            // dispatch cannot undo a replay either.
             group.MapPost("/{id:guid}/replay",
                 async (TDbContext db, HttpContext http, Guid id) =>
                 {
-                    var row = await db.Set<OutboxMessage>()
-                        .FirstOrDefaultAsync(m => m.Id == id, http.RequestAborted)
+                    // Cleanly-processed rows (processed, no error) are not replayable: clearing their
+                    // ProcessedOnUtc would re-deliver an event whose handlers already ran. Failed and
+                    // dead-lettered rows (Error set) are - that's the whole point.
+                    var replayed = await db.Set<OutboxMessage>()
+                        .Where(m => m.Id == id && (m.ProcessedOnUtc == null || m.Error != null))
+                        .ExecuteUpdateAsync(
+                            setters => setters
+                                .SetProperty(m => m.RetryCount, 0)
+                                .SetProperty(m => m.Error, (string?)null)
+                                .SetProperty(m => m.ProcessedOnUtc, (DateTime?)null),
+                            http.RequestAborted)
                         .ConfigureAwait(false);
-                    if (row is null)
+                    if (replayed == 0)
                     {
-                        return Results.NotFound();
+                        var exists = await db.Set<OutboxMessage>()
+                            .AnyAsync(m => m.Id == id, http.RequestAborted)
+                            .ConfigureAwait(false);
+                        return exists
+                            ? Results.Conflict(new
+                            {
+                                id,
+                                error = "already-processed-success",
+                                message = "Row was dispatched successfully and has no error; replay would re-deliver a clean event.",
+                            })
+                            : Results.NotFound();
                     }
-                    // Reject replay for cleanly-processed rows (Error null AND already
-                    // processed). Without this guard a caller could clear ProcessedOnUtc
-                    // on a successful event, causing the dispatcher to re-dispatch it as
-                    // if the original handler never ran. Failed + dead-lettered rows
-                    // (Error != null) remain replayable - that's the whole point.
-                    if (row.ProcessedOnUtc is not null && row.Error is null)
-                    {
-                        return Results.Conflict(new
-                        {
-                            id,
-                            error = "already-processed-success",
-                            message = "Row was dispatched successfully and has no error; replay would re-deliver a clean event.",
-                        });
-                    }
-                    row.RetryCount = 0;
-                    row.Error = null;
-                    row.ProcessedOnUtc = null;
-                    await db.SaveChangesAsync(http.RequestAborted).ConfigureAwait(false);
 
                     if (options.OnMutation is { } hook)
                     {
@@ -284,25 +293,29 @@ public static class OutboxDashboardEndpointRouteBuilderExtensions
             // Discard: mark the row processed without re-dispatch. ProcessedOnUtc is set so
             // the dispatcher loop skips it; Error/RetryCount stay intact so future operators
             // can still see what failed. Returns 200 on success, 404 if the id is unknown.
+            // Conditional on the row still being unprocessed, like replay, so it never overwrites a
+            // dispatch that completed in the meantime.
             group.MapPost("/{id:guid}/discard",
                 async (TDbContext db, HttpContext http, Guid id) =>
                 {
-                    var row = await db.Set<OutboxMessage>()
-                        .FirstOrDefaultAsync(m => m.Id == id, http.RequestAborted)
+                    var discardedOnUtc = DateTime.UtcNow;
+                    var discarded = await db.Set<OutboxMessage>()
+                        .Where(m => m.Id == id && m.ProcessedOnUtc == null)
+                        .ExecuteUpdateAsync(
+                            setters => setters.SetProperty(m => m.ProcessedOnUtc, (DateTime?)discardedOnUtc),
+                            http.RequestAborted)
                         .ConfigureAwait(false);
-                    if (row is null)
+                    if (discarded == 0)
                     {
-                        return Results.NotFound();
+                        var exists = await db.Set<OutboxMessage>()
+                            .AnyAsync(m => m.Id == id, http.RequestAborted)
+                            .ConfigureAwait(false);
+                        // Already processed (by a dispatch or a prior discard). Idempotent: report 200
+                        // without re-stamping so audit hooks don't fire again.
+                        return exists
+                            ? Results.Ok(new { id, action = "discard", note = "already processed" })
+                            : Results.NotFound();
                     }
-                    if (row.ProcessedOnUtc is not null)
-                    {
-                        // Already processed (either by successful dispatch or a prior discard).
-                        // Idempotent: report 200 without re-stamping so audit hooks don't fire
-                        // again.
-                        return Results.Ok(new { id, action = "discard", note = "already processed" });
-                    }
-                    row.ProcessedOnUtc = DateTime.UtcNow;
-                    await db.SaveChangesAsync(http.RequestAborted).ConfigureAwait(false);
 
                     if (options.OnMutation is { } hook)
                     {

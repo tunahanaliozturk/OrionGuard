@@ -155,6 +155,76 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   no longer count: `10.5000m` is a valid 2-place amount.
 - **`AgainstInvalidBase64`** uses `Convert.TryFromBase64String` instead of catching `FormatException`; the accepted
   set is unchanged.
+- **`OrionGuard.EntityFrameworkCore`: a synchronous `SaveChanges()` now handles domain events.** Only
+  `SaveChangesAsync()` was intercepted, so a synchronous save wrote no outbox row (Outbox) and dispatched nothing
+  (Inline); the events stayed on the aggregate and were lost or went out with a later, unrelated save. Both modes now
+  work with `SaveChanges()`. In Inline mode the handlers run on a thread-pool thread and `SaveChanges()` blocks until
+  they finish, the same contract as the async path; prefer `SaveChangesAsync()` when handlers do I/O.
+- **The outbox dispatcher no longer retries a row forever when a handler's writes cannot be saved.** A handler that
+  succeeded but left a write violating a constraint made every save of the row fail without counting the attempt, so
+  the row blocked the outbox forever. Each row is now dispatched in its own DI scope: the handler's writes commit
+  together with the row's processed stamp, and when they cannot be saved they are discarded and the row is recorded as
+  a failed attempt that counts towards `MaxRetries` and dead-lettering. The writes of a handler that throws are no
+  longer saved along with its failure either.
+- **An `OperationCanceledException` from a handler no longer stops the outbox dispatcher or the archival worker.** A
+  handler's `HttpClient` timeout (or an archiver's) ended the background worker for good while the host kept running.
+  Only cancellation of the host's stopping token stops the workers now; any other cancellation is an ordinary failed
+  row or batch.
+- **A failed dispatcher poll is logged.** Faults outside any single row (an unreachable database, a missing table or
+  `DbContext` registration) were swallowed without a trace. They are now logged at Error and counted by the new
+  `orionguard.outbox.dispatcher.batch_faults` counter.
+- **The outbox dispatcher and archival worker drain a backlog without waiting for the polling interval.** Each
+  processed one batch per interval, capping dispatch at `BatchSize` rows per `PollingInterval` (about 1,000 rows an
+  hour for archival). Both now poll again straight away while a full batch left the queue, and wait only after a
+  partial or empty batch, or, for the dispatcher, one in which a row failed and will be retried.
+- **Trace metadata can no longer fail the business save.** A hierarchical activity id (a legacy `Request-Id` parent)
+  or a long `tracestate` was written unchecked into the 64- and 256-character `TraceParent`/`TraceState` columns, so
+  SQL Server and PostgreSQL rejected the whole `SaveChanges`. Only a W3C id is stored now, and a `tracestate` longer
+  than its column keeps the leading list members that fit. Column sizes are unchanged.
+- **Inline mode waits for an explicit transaction to commit.** Inside `Database.BeginTransaction()`, Inline handlers
+  ran as soon as `SaveChanges` returned, before the commit, and still ran when the transaction rolled back. The events
+  are now held until the transaction commits and dropped if it rolls back or is disposed. An ambient `TransactionScope`
+  or a transaction passed to `UseTransaction()` cannot be observed; there events are still dispatched after the save
+  and a warning is logged once.
+- **`AddDbContextPool` and `AddDbContextFactory` work with the domain-event interceptor.** Their options callback
+  receives the root provider, so one "scoped" collector and dispatcher were shared by every context in the process:
+  one request's save could dispatch another request's events, and with scope validation on the first save threw.
+  Per-save state is now kept per `DbContext` instance, and with the root provider each Inline dispatch gets a DI scope
+  of its own.
+- **`orionguard.outbox.enqueued_rows_per_save` is recorded.** The count was lost between `SavingChanges` and
+  `SavedChanges`, so the histogram never had a sample.
+- **A dashboard replay or discard is no longer undone by an in-flight dispatch.** The dispatcher wrote a row's whole
+  state back after dispatching, overwriting a replay or discard made meanwhile (a replayed row could end up
+  dead-lettered), and the dashboard's read-then-write could re-queue a row the dispatcher had just finished. Both sides
+  now use conditional updates on the row's expected state; replaying a row that was processed successfully in the
+  meantime returns 409. No schema change is needed. The dashboard's replay and discard now need a relational EF Core
+  provider.
+- **`OrionGuard.Outbox.PostgresNotify` and `OrionGuard.Outbox.SqlServerBroker` no longer break the dispatcher on
+  shutdown.** Stopping the listener completed its wake channel; when it stopped before the dispatcher, the Postgres
+  signal faulted the dispatcher and the Service Broker signal made it poll in a tight loop. The channel is no longer
+  completed, and waits fall back to the polling interval.
+- **The Service Broker listener wakes the dispatcher only when a message arrived.** `SELECT @h` returns a row even when
+  `WAITFOR` times out, so every timeout (every 30 seconds by default) woke the dispatcher; a NULL handle is now ignored.
+- **`SkipLockedDistributedLock` reports a lost INSERT race as contention.** Raw SQL surfaces the provider's
+  `DbException`, which the `DbUpdateException` handler never caught, so the losing replica threw instead of returning
+  null and recording `lock_contended`.
+- **`SkipLockedDistributedLock` works on PostgreSQL.** Its raw SQL used unquoted names, which PostgreSQL folds to lower
+  case, so it never found the `"OrionGuard_OutboxLocks"` table and outbox dispatch never started. The table, schema and
+  column names now come from the `OutboxLock` mapping in the model and are quoted by the provider (renamed tables and
+  naming conventions work too); values stay parameterized. A missing mapping or table is logged with its cause.
+- **The dashboard's `/failed` endpoint handles very large page numbers.** `(page - 1) * size` overflowed into a negative
+  OFFSET, which SQL Server and PostgreSQL reject with a 500 and SQLite treats as the first page. A page past the end now
+  returns an empty page.
+- **`CopyToTableOutboxArchiver` works with a retrying execution strategy.** It opened its own transaction outside the
+  strategy, which EF Core rejects under `EnableRetryOnFailure`, so every archival batch failed. The copy-and-delete now
+  runs through the context's execution strategy.
+- **`OutboxArchivalHealthCheck` no longer flaps between hourly archival batches.** Its fixed 15-minute Unhealthy
+  threshold fired on every healthy worker at the default 1-hour interval. Unset thresholds now follow the archival
+  polling interval (Degraded after two intervals, Unhealthy after three, never below 5 and 15 minutes); explicit
+  `DegradedAfter`/`UnhealthyAfter` values are still used as given.
+- **The outbox dispatcher, archival worker and `SkipLockedDistributedLock` read the time from a `TimeProvider`.** They
+  used `DateTime.UtcNow`, so their timestamps could not be controlled in tests. New constructor overloads take a
+  `TimeProvider`, and the DI registrations pass one when it is registered; existing constructors are unchanged.
 
 ### Deprecated
 

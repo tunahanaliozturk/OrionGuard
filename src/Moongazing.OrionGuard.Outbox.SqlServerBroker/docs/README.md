@@ -28,10 +28,11 @@ Then run the one-time setup below.
 
 `AddSqlServerBrokerOutboxWakeSignal` registers `SqlServerBrokerOutboxWakeSignal` as the `IOutboxWakeSignal`, replacing the polling-only default whichever order you call it in, and as a hosted service.
 
-- The hosted service opens its own `SqlConnection` (not one from your `DbContext` pool) and loops on `WAITFOR (RECEIVE TOP(1) conversation_handle FROM [queue]), TIMEOUT <ReceiveTimeout>`. It ends each received conversation and wakes the dispatcher.
-- Every `SaveChangesAsync` in the same process also signals directly after the commit. Wake-ups coalesce: at most one is pending at a time.
+- The hosted service opens its own `SqlConnection` (not one from your `DbContext` pool) and loops on `WAITFOR (RECEIVE TOP(1) conversation_handle FROM [queue]), TIMEOUT <ReceiveTimeout>`. It ends each received conversation and wakes the dispatcher. A `WAITFOR` that times out without a message wakes nothing.
+- Every `SaveChanges`/`SaveChangesAsync` in the same process also signals directly after the save. Wake-ups coalesce: at most one is pending at a time.
 - A wake-up does not carry rows. The dispatcher still takes its lock and reads the table, so on several replicas only the lock holder dispatches.
 - If the connection drops, the listener reconnects with a doubling delay (1 s up to 30 s by default). Until then the dispatcher falls back to `OutboxOptions.PollingInterval`, which bounds latency in every case.
+- Hosted services stop in reverse registration order, so on shutdown the listener can stop before the dispatcher. The dispatcher's remaining waits then simply last the polling interval until it stops too.
 
 ## One-time setup
 

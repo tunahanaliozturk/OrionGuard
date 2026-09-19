@@ -1,12 +1,15 @@
 namespace Moongazing.OrionGuard.Outbox.Dashboard.Tests;
 
+using System.Data.Common;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Moongazing.OrionGuard.EntityFrameworkCore.Outbox;
@@ -17,11 +20,13 @@ public sealed class OutboxDashboardEndpointTests : IAsyncLifetime
     private IHost host = default!;
     private HttpClient client = default!;
 
-    private readonly Microsoft.EntityFrameworkCore.Storage.InMemoryDatabaseRoot inMemoryRoot = new();
+    // SQLite rather than InMemory: replay and discard are conditional UPDATEs, which only a relational provider runs.
+    private readonly SqliteConnection connection = new("DataSource=:memory:");
+    private readonly ConcurrentWriteInterceptor concurrentWrite = new();
 
     public async Task InitializeAsync()
     {
-        var dbName = "dashboard-tests-" + Guid.NewGuid().ToString("N");
+        await connection.OpenAsync();
         host = await new HostBuilder()
             .ConfigureWebHost(builder =>
             {
@@ -29,7 +34,7 @@ public sealed class OutboxDashboardEndpointTests : IAsyncLifetime
                 builder.ConfigureServices(s =>
                 {
                     s.AddRouting();
-                    s.AddDbContext<TestDbContext>(opts => opts.UseInMemoryDatabase(dbName, inMemoryRoot).ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.CoreEventId.ManyServiceProvidersCreatedWarning)));
+                    s.AddDbContext<TestDbContext>(opts => opts.UseSqlite(connection).AddInterceptors(concurrentWrite));
                 });
                 builder.Configure(app =>
                 {
@@ -42,6 +47,10 @@ public sealed class OutboxDashboardEndpointTests : IAsyncLifetime
                 });
             })
             .StartAsync();
+        using (var scope = host.Services.CreateScope())
+        {
+            await scope.ServiceProvider.GetRequiredService<TestDbContext>().Database.EnsureCreatedAsync();
+        }
         client = host.GetTestClient();
     }
 
@@ -50,6 +59,7 @@ public sealed class OutboxDashboardEndpointTests : IAsyncLifetime
         client.Dispose();
         await host.StopAsync();
         host.Dispose();
+        await connection.DisposeAsync();
     }
 
     private async Task SeedAsync(IEnumerable<OutboxMessage> rows)
@@ -418,6 +428,104 @@ public sealed class OutboxDashboardEndpointTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
+    [Fact]
+    public async Task Replay_endpoint_returns_409_when_the_dispatcher_processes_the_row_before_the_replay_is_written()
+    {
+        var failing = Row(retryCount: 5);
+        await SeedAsync(new[] { failing });
+        // The dispatcher finishes the row successfully right before the replay's write reaches the database.
+        concurrentWrite.RunBeforeNextUpdate(MarkProcessedSql(failing.Id));
+
+        var response = await client.PostAsync($"/_orion/outbox/{failing.Id}/replay", content: null);
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        var fresh = await ReadAsync(failing.Id);
+        Assert.NotNull(fresh.ProcessedOnUtc);   // not re-queued: the event was delivered
+        Assert.Null(fresh.Error);
+    }
+
+    [Fact]
+    public async Task Discard_endpoint_reports_already_processed_when_the_dispatcher_processes_the_row_before_the_discard_is_written()
+    {
+        var failing = Row(retryCount: 2);
+        await SeedAsync(new[] { failing });
+        concurrentWrite.RunBeforeNextUpdate(MarkProcessedSql(failing.Id));
+
+        var response = await client.PostAsync($"/_orion/outbox/{failing.Id}/discard", content: null);
+
+        response.EnsureSuccessStatusCode();
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("already processed", body.GetProperty("note").GetString());
+        Assert.Null((await ReadAsync(failing.Id)).Error);   // the successful dispatch is what the row records
+    }
+
+    [Fact]
+    public async Task Failed_endpoint_with_a_page_number_near_int_MaxValue_returns_an_empty_page()
+    {
+        await SeedAsync(Enumerable.Range(0, 3).Select(_ => Row(retryCount: 3)));
+
+        // (page - 1) * size overflowed int into a negative OFFSET, which some databases reject (500) and others
+        // treat as 0, serving the first page instead.
+        var response = await client.GetAsync("/_orion/outbox/failed?page=2147483647&size=10");
+
+        response.EnsureSuccessStatusCode();
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(0, body.GetProperty("items").GetArrayLength());
+        Assert.Equal(3, body.GetProperty("total").GetInt32());
+        Assert.Equal(int.MaxValue, body.GetProperty("page").GetInt32());
+    }
+
+    private async Task<OutboxMessage> ReadAsync(Guid id)
+    {
+        using var scope = host.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<TestDbContext>();
+        return await db.Set<OutboxMessage>().AsNoTracking().SingleAsync(x => x.Id == id);
+    }
+
+    // What the dispatcher writes when it finishes a row: processed, error cleared.
+    private static string MarkProcessedSql(Guid id) =>
+        $"UPDATE \"OutboxMessages\" SET \"ProcessedOnUtc\" = '2026-01-01 00:00:00', \"Error\" = NULL " +
+        $"WHERE upper(\"Id\") = '{id.ToString().ToUpperInvariant()}'";
+
+    /// <summary>
+    /// Runs a write on the same connection immediately before the next UPDATE the endpoint issues, standing in
+    /// for a dispatcher that commits in the window between the endpoint's decision and its write.
+    /// </summary>
+    private sealed class ConcurrentWriteInterceptor : DbCommandInterceptor
+    {
+        private string? pendingSql;
+
+        public void RunBeforeNextUpdate(string sql) => pendingSql = sql;
+
+        public override async ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(
+            DbCommand command, CommandEventData eventData, InterceptionResult<DbDataReader> result, CancellationToken cancellationToken = default)
+        {
+            await RunPendingWriteAsync(command, cancellationToken);
+            return result;
+        }
+
+        public override async ValueTask<InterceptionResult<int>> NonQueryExecutingAsync(
+            DbCommand command, CommandEventData eventData, InterceptionResult<int> result, CancellationToken cancellationToken = default)
+        {
+            await RunPendingWriteAsync(command, cancellationToken);
+            return result;
+        }
+
+        private async Task RunPendingWriteAsync(DbCommand command, CancellationToken cancellationToken)
+        {
+            if (pendingSql is not { } sql
+                || !command.CommandText.TrimStart().StartsWith("UPDATE", StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+            pendingSql = null;
+            await using var concurrent = command.Connection!.CreateCommand();
+            concurrent.CommandText = sql;
+            concurrent.Transaction = command.Transaction;
+            await concurrent.ExecuteNonQueryAsync(cancellationToken);
+        }
+    }
+
     private sealed class TestDbContext : DbContext
     {
         public TestDbContext(DbContextOptions<TestDbContext> options) : base(options) { }
@@ -434,7 +542,8 @@ public sealed class OutboxDashboardEndpointTests : IAsyncLifetime
 
 public sealed class OutboxDashboardMutationHookTests : IAsyncLifetime
 {
-    private readonly Microsoft.EntityFrameworkCore.Storage.InMemoryDatabaseRoot inMemoryRoot = new();
+    // SQLite rather than InMemory: replay and discard are conditional UPDATEs, which only a relational provider runs.
+    private readonly SqliteConnection connection = new("DataSource=:memory:");
     private IHost host = default!;
     private HttpClient client = default!;
     private List<OutboxMutationEvent> events = default!;
@@ -442,7 +551,7 @@ public sealed class OutboxDashboardMutationHookTests : IAsyncLifetime
     public async Task InitializeAsync()
     {
         events = new List<OutboxMutationEvent>();
-        var dbName = "mut-hook-" + Guid.NewGuid().ToString("N");
+        await connection.OpenAsync();
         host = await new HostBuilder()
             .ConfigureWebHost(builder =>
             {
@@ -450,7 +559,7 @@ public sealed class OutboxDashboardMutationHookTests : IAsyncLifetime
                 builder.ConfigureServices(s =>
                 {
                     s.AddRouting();
-                    s.AddDbContext<MutHookCtx>(opts => opts.UseInMemoryDatabase(dbName, inMemoryRoot).ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.CoreEventId.ManyServiceProvidersCreatedWarning)));
+                    s.AddDbContext<MutHookCtx>(opts => opts.UseSqlite(connection));
                 });
                 builder.Configure(app =>
                 {
@@ -467,6 +576,10 @@ public sealed class OutboxDashboardMutationHookTests : IAsyncLifetime
                 });
             })
             .StartAsync();
+        using (var scope = host.Services.CreateScope())
+        {
+            await scope.ServiceProvider.GetRequiredService<MutHookCtx>().Database.EnsureCreatedAsync();
+        }
         client = host.GetTestClient();
     }
 
@@ -475,6 +588,7 @@ public sealed class OutboxDashboardMutationHookTests : IAsyncLifetime
         client.Dispose();
         await host.StopAsync();
         host.Dispose();
+        await connection.DisposeAsync();
     }
 
     [Fact]
