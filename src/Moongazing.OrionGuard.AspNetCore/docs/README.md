@@ -1,6 +1,6 @@
 # OrionGuard.AspNetCore
 
-ASP.NET Core integration for [OrionGuard](https://github.com/tunahanaliozturk/OrionGuard). It maps OrionGuard exceptions to RFC 9457 `ProblemDetails` responses, validates Minimal API requests with an endpoint filter, and validates bound options at startup.
+ASP.NET Core integration for [OrionGuard](https://github.com/tunahanaliozturk/OrionGuard). It maps OrionGuard exceptions to RFC 9457 `ProblemDetails` responses, validates Minimal API requests with an endpoint filter and MVC controller actions with `[ValidateRequest]`, and validates bound options at startup.
 
 ## Install
 
@@ -41,14 +41,14 @@ public sealed class CreateUserValidator : AbstractValidator<CreateUserRequest>
 }
 ```
 
-`AddOrionGuardAspNetCore(Action<OrionGuardAspNetCoreOptions>? configure = null)` calls `AddOrionGuard()`, registers the options as a singleton, and registers `OrionGuardExceptionHandler` with `AddExceptionHandler` and `AddProblemDetails()`. It does not scan assemblies, so register each validator with `AddValidator<T, TValidator>()`.
+`AddOrionGuardAspNetCore(Action<OrionGuardAspNetCoreOptions>? configure = null)` calls `AddOrionGuard()`, registers the options as a singleton, registers `OrionGuardExceptionHandler` with `AddExceptionHandler` and `AddProblemDetails()`, and registers `OrionGuardMvcFilter`. It does not scan assemblies, so register each validator with `AddValidator<T, TValidator>()`.
 
 ## Options
 
 | Option | Default | Effect |
 | --- | --- | --- |
-| `UseProblemDetails` | `true` | When `false`, the exception handler and endpoint filter write plain JSON instead of `ProblemDetails` |
-| `DefaultStatusCode` | `422` | Status for endpoint-filter failures and `AggregateValidationException` |
+| `UseProblemDetails` | `true` | When `false`, the exception handler, endpoint filter, and MVC filter write plain JSON instead of `ProblemDetails` |
+| `DefaultStatusCode` | `422` | Status for `AggregateValidationException`, and for endpoint-filter and MVC-filter failures whose validator suggests no status |
 | `BusinessRuleStatusCode` | `422` | Status for `BusinessRuleValidationException` (set to 400 for clients that expect it) |
 | `SuppressModelStateInvalidFilter` | `false` | Turns off MVC's automatic 400 response for invalid model state |
 
@@ -66,7 +66,35 @@ Other exceptions are not handled here and go on to the next handler. With `UsePr
 
 ## Minimal API endpoint filter
 
-`.WithValidation<TRequest>()` adds `OrionGuardEndpointFilter<TRequest>` to the route handler. The filter resolves `IValidator<TRequest>` from the request services and finds the first handler argument of type `TRequest`. It then runs `ValidateAsync`, so async rules run too. On failure it returns `ValidationProblemDetails` with `DefaultStatusCode`. If no validator is registered, or no argument matches, the handler runs without validation.
+`.WithValidation<TRequest>()` adds `OrionGuardEndpointFilter<TRequest>` to the route handler. The filter resolves `IValidator<TRequest>` from the request services and finds the first handler argument of type `TRequest`. It then runs `ValidateAsync`, so async rules run too. On failure it returns `ValidationProblemDetails` with the validator's suggested status (`GuardResult.FailureWithStatus`), or `DefaultStatusCode` when none is suggested. If no validator is registered, or no argument matches, the handler runs without validation.
+
+## MVC controllers: `[ValidateRequest]`
+
+```csharp
+using Microsoft.AspNetCore.Mvc;
+using Moongazing.OrionGuard.AspNetCore.Attributes;
+
+builder.Services.AddControllers();
+builder.Services.AddOrionGuardAspNetCore();
+builder.Services.AddValidator<CreateUserRequest, CreateUserValidator>();
+
+[ApiController]
+[Route("users")]
+public sealed class UsersController : ControllerBase
+{
+    [HttpPost]
+    [ValidateRequest]
+    public IActionResult Create(CreateUserRequest request) => Ok(request);
+}
+```
+
+`[ValidateRequest]` (namespace `Moongazing.OrionGuard.AspNetCore.Attributes`) goes on a controller or an action and adds `OrionGuardMvcFilter` to that action's filter pipeline. No global filter registration is needed.
+
+- For each non-null action argument, the filter runs every `IValidator<T>` registered for the argument's runtime type, resolved from the request services. Scoped validators work.
+- It calls `ValidateAsync`, so `RuleForAsync` rules run too. Validators run one after another.
+- On the first invalid argument, the action does not run. The response uses the validator's suggested status, or `DefaultStatusCode` when none is suggested, and is a `ValidationProblemDetails` body, or the plain `{ "<field>": ["<message>"] }` JSON when `UseProblemDetails` is `false`, the same as the endpoint filter.
+- With the attribute on both the controller and the action, validation still runs once per request.
+- With `[ApiController]`, MVC's own model-state check (400 for missing required fields) runs before this filter. Set `SuppressModelStateInvalidFilter = true` to let OrionGuard produce every validation response.
 
 ## Options validation
 
@@ -86,10 +114,6 @@ app.MapHealthChecks("/health");
 ```
 
 The check reports `Degraded` when `IValidatorFactory` is not registered, and `Healthy` otherwise.
-
-## Known issue: `[ValidateRequest]`
-
-The package contains `[ValidateRequest]` and `OrionGuardMvcFilter` for MVC controllers, but they do not work in this version. `AddOrionGuardAspNetCore()` registers the filter in DI without adding it to the MVC filter pipeline. If you add it yourself, it throws `AmbiguousMatchException` for any action argument that has a registered validator. For controllers, call the validator in the action, or call `ThrowIfInvalid()` on the result and let the exception handler produce the response.
 
 ## Targets
 

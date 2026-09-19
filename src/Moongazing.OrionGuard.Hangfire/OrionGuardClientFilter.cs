@@ -1,6 +1,4 @@
 using System.Diagnostics.CodeAnalysis;
-using System.Reflection;
-using System.Runtime.ExceptionServices;
 using global::Hangfire.Client;
 using global::Hangfire.Common;
 using Microsoft.Extensions.DependencyInjection;
@@ -20,10 +18,10 @@ namespace Moongazing.OrionGuard.Hangfire;
 /// </summary>
 /// <remarks>
 /// <para>
-/// This reuses the exact validator-resolution mechanism of the other OrionGuard integrations: a closed
-/// <c>IValidator&lt;TArg&gt;</c> service is requested from DI for each argument's runtime type. Because the
-/// job's argument types are only known at runtime, resolution and invocation go through reflection, the
-/// same approach taken by the SignalR hub filter.
+/// Validation goes through <see cref="ValidatorInvoker"/>, the mechanism shared by the other OrionGuard
+/// integrations: every <c>IValidator&lt;TArg&gt;</c> registered for each argument's runtime type is resolved
+/// from DI and run, and their errors are combined. Because the job's argument types are only known at
+/// runtime, the invoker builds its typed call through reflection once per type.
 /// </para>
 /// <para>
 /// <b>Lifetime.</b> The filter captures an <see cref="IServiceScopeFactory"/> rather than a resolution
@@ -118,7 +116,12 @@ public sealed class OrionGuardClientFilter : IClientFilter
                 continue;
             }
 
-            var result = Validate(provider, argument);
+            // Run the FULL validation (every registered validator, including async rules): a validator that
+            // declares only async rules (RuleForAsync) is a no-op under the synchronous Validate(T) overload.
+            // OnCreating is synchronous, so we block on the task here. Acceptable at enqueue time (foreground,
+            // not a worker hot path). GetAwaiter().GetResult() rethrows a throwing validator's original
+            // exception with its stack preserved, instead of wrapping it in an AggregateException.
+            var result = ValidatorInvoker.ValidateAsync(provider, argument).GetAwaiter().GetResult();
             if (result is { IsInvalid: true })
             {
                 (errors ??= new List<ValidationError>()).AddRange(result.Errors);
@@ -138,59 +141,5 @@ public sealed class OrionGuardClientFilter : IClientFilter
     public void OnCreated(CreatedContext context)
     {
         // Intentionally empty: enqueue-time validation is complete once OnCreating returns.
-    }
-
-    /// <summary>
-    /// Resolves the closed <see cref="IValidator{T}"/> for the argument's runtime type from
-    /// <paramref name="provider"/> and runs the full validation pipeline (sync + async rules).
-    /// Returns <see langword="null"/> when no validator is registered for the type.
-    /// </summary>
-    private static GuardResult? Validate(IServiceProvider provider, object argument)
-    {
-        var argumentType = argument.GetType();
-        var validatorType = typeof(IValidator<>).MakeGenericType(argumentType);
-
-        var validator = provider.GetService(validatorType);
-        if (validator is null)
-        {
-            return null;
-        }
-
-        // Run the FULL validation, including async rules: a validator that declares only async rules
-        // (RuleForAsync) is a no-op under the synchronous Validate(T) overload, so enqueue-time
-        // enforcement must go through ValidateAsync(T, CancellationToken). OnCreating is synchronous, so
-        // we block on the task here. Acceptable at enqueue time (foreground, not a worker hot path).
-        var validateAsyncMethod = validatorType.GetMethod(
-            nameof(IValidator<object>.ValidateAsync),
-            new[] { argumentType, typeof(CancellationToken) });
-        if (validateAsyncMethod is null)
-        {
-            return null;
-        }
-
-        object? invocationResult;
-        try
-        {
-            invocationResult = validateAsyncMethod.Invoke(
-                validator,
-                new[] { argument, CancellationToken.None });
-        }
-        catch (TargetInvocationException ex) when (ex.InnerException is not null)
-        {
-            // The validator threw synchronously (before returning its Task). Surface the validator's
-            // real failure with its original stack trace rather than the reflection wrapper, so a
-            // throwing validator is not masked and the stack still points at the rule that failed.
-            ExceptionDispatchInfo.Capture(ex.InnerException).Throw();
-            throw; // unreachable; satisfies definite-assignment / flow analysis.
-        }
-
-        if (invocationResult is not Task<GuardResult> task)
-        {
-            return null;
-        }
-
-        // Block on the async pipeline. GetAwaiter().GetResult() rethrows the original exception
-        // (with its stack preserved) instead of wrapping it in an AggregateException the way .Result/.Wait would.
-        return task.GetAwaiter().GetResult();
     }
 }

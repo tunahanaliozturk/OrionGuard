@@ -9,6 +9,12 @@ namespace Moongazing.OrionGuard.Blazor;
 /// Blazor component that validates EditForm models using registered IValidator implementations.
 /// Usage: &lt;OrionGuardFluentValidator TModel="MyModel" /&gt; inside an EditForm.
 /// </summary>
+/// <remarks>
+/// Only synchronous rules run. <see cref="EditContext.Validate"/> raises its validation events
+/// synchronously and returns its result immediately, so an async rule (<c>RuleForAsync</c>) could not
+/// finish before the form decides whether it is valid. Run <c>IValidator&lt;TModel&gt;.ValidateAsync</c>
+/// in the submit handler when a form depends on async rules.
+/// </remarks>
 public sealed class OrionGuardFluentValidator<TModel> : ComponentBase, IDisposable where TModel : class
 {
     private EditContext? _editContext;

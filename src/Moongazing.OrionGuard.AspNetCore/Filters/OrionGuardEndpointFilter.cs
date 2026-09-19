@@ -39,7 +39,8 @@ public sealed class OrionGuardEndpointFilter<TRequest> : IEndpointFilter where T
         }
 
         var options = context.HttpContext.RequestServices.GetService<OrionGuardAspNetCoreOptions>();
-        var statusCode = options?.DefaultStatusCode ?? 422;
+        // A validator that returns FailureWithStatus (e.g. 409) knows better than the global default.
+        var statusCode = result.SuggestedHttpStatusCode ?? options?.DefaultStatusCode ?? 422;
 
         if (options is null || options.UseProblemDetails)
         {

@@ -20,15 +20,32 @@ public sealed class ValidationBehavior<TRequest, TResponse> : IPipelineBehavior<
 
     public async Task<TResponse> Handle(TRequest request, RequestHandlerDelegate<TResponse> next, CancellationToken cancellationToken)
     {
-        if (!_validators.Any())
-            return await next();
+        await ValidateAllAsync(_validators, request, cancellationToken).ConfigureAwait(false);
+        return await next().ConfigureAwait(false);
+    }
 
-        var validationTasks = _validators.Select(v => v.ValidateAsync(request, cancellationToken));
-        var results = await Task.WhenAll(validationTasks);
-        var combined = GuardResult.Combine(results);
+    /// <summary>
+    /// Runs every validator and throws <see cref="AggregateValidationException"/> with the combined errors.
+    /// Shared with <see cref="StreamValidationBehavior{TRequest, TResponse}"/>.
+    /// </summary>
+    internal static async Task ValidateAllAsync(
+        IEnumerable<IValidator<TRequest>> validators,
+        TRequest request,
+        CancellationToken cancellationToken)
+    {
+        List<GuardResult>? results = null;
 
-        combined.ThrowIfInvalid();
+        // Why: validators run one after another, not concurrently. Validators resolved from the same
+        // scope can share scoped dependencies such as a DbContext, which does not allow concurrent use.
+        foreach (var validator in validators)
+        {
+            (results ??= new List<GuardResult>())
+                .Add(await validator.ValidateAsync(request, cancellationToken).ConfigureAwait(false));
+        }
 
-        return await next();
+        if (results is not null)
+        {
+            GuardResult.Combine(results.ToArray()).ThrowIfInvalid();
+        }
     }
 }

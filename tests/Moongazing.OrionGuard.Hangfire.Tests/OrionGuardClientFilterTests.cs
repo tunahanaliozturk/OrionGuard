@@ -141,6 +141,28 @@ public sealed class OrionGuardClientFilterTests
         Assert.Equal("boom from validator", exception.Message);
     }
 
+    private sealed class ReservedNameValidator : AbstractValidator<CreateUserArgs>
+    {
+        public ReservedNameValidator()
+        {
+            RuleFor(x => x.Name != "admin", "Name is reserved.", "Name");
+        }
+    }
+
+    // Every validator registered for the argument type runs, not only the last one registered.
+    [Fact]
+    public void OnCreating_RunsEveryRegisteredValidator()
+    {
+        using var provider = BuildProvider(s => s.AddValidator<CreateUserArgs, ReservedNameValidator>());
+        var filter = new OrionGuardClientFilter(provider);
+        var context = JobContextFactory.Creating(j => j.CreateUser(new CreateUserArgs("not-an-email", "admin")));
+
+        var exception = Assert.Throws<JobArgumentValidationException>(() => filter.OnCreating(context));
+
+        Assert.Equal(new[] { "Email", "Name" }, exception.Errors.Select(e => e.ParameterName));
+        Assert.Equal("Name is reserved.", exception.Errors[1].Message);
+    }
+
     // OnCreated is a no-op: validation is finished by the time OnCreating returns.
     [Fact]
     public void OnCreated_DoesNothing()

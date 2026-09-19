@@ -58,7 +58,7 @@ public static class Registration
 - `DynamicValidator.FromJson(json)`: rules loaded at runtime from JSON (a database, config file, or API).
 - Attribute validation: `[NotNull]`, `[NotEmpty]`, `[Length]`, `[Email]`, `[Range]`, `[Regex]`, `[Positive]` checked with `AttributeValidator.Validate(obj)`.
 - FluentValidation-style syntax: `FluentStyleValidator<T>` in `Moongazing.OrionGuard.Compatibility` supports `RuleFor(x => x.Email).NotEmpty().EmailAddress()`. The `OrionGuard.Migration` tool rewrites existing FluentValidation validators onto it.
-- Dependency injection: `services.AddOrionGuard()` and `services.AddValidator<T, TValidator>()`.
+- Dependency injection: `services.AddOrionGuard()` and `services.AddValidator<T, TValidator>()`. `ValidatorInvoker.ValidateAsync(services, instance)` runs every `IValidator<T>` registered for an object's runtime type and combines the results (`null` when none is registered); the transport integrations use it.
 
 ### DDD and domain events
 
