@@ -446,7 +446,9 @@ namespace Moongazing.OrionGuard.Generators
             sb.AppendLine($"{indent}    /// <returns>A <see cref=\"Moongazing.OrionGuard.Core.GuardResult\"/> indicating success or failure.</returns>");
             sb.AppendLine($"{indent}    public static Moongazing.OrionGuard.Core.GuardResult Validate({typeName} instance)");
             sb.AppendLine($"{indent}    {{");
-            sb.AppendLine($"{indent}        var errors = new System.Collections.Generic.List<Moongazing.OrionGuard.Core.ValidationError>();");
+            // Allocated on the first failure only: validation that passes is the common case, and it now
+            // allocates nothing at all, since GuardResult.Success() is a shared instance.
+            sb.AppendLine($"{indent}        System.Collections.Generic.List<Moongazing.OrionGuard.Core.ValidationError>? errors = null;");
             sb.AppendLine();
 
             foreach (PropertyValidation prop in classInfo.Properties)
@@ -455,7 +457,7 @@ namespace Moongazing.OrionGuard.Generators
                 sb.AppendLine();
             }
 
-            sb.AppendLine($"{indent}        return errors.Count == 0");
+            sb.AppendLine($"{indent}        return errors is null");
             sb.AppendLine($"{indent}            ? Moongazing.OrionGuard.Core.GuardResult.Success()");
             sb.AppendLine($"{indent}            : Moongazing.OrionGuard.Core.GuardResult.Failure(errors);");
             sb.AppendLine($"{indent}    }}");
@@ -543,7 +545,7 @@ namespace Moongazing.OrionGuard.Generators
                 string errorCode = EscapeString(rule.CustomErrorCode ?? "NOT_NULL");
 
                 sb.AppendLine($"{indent}if (instance.{prop.Name} is null)");
-                sb.AppendLine($"{indent}    errors.Add(new Moongazing.OrionGuard.Core.ValidationError(\"{prop.Name}\", \"{message}\", \"{errorCode}\"));");
+                sb.AppendLine($"{indent}    (errors ??= new System.Collections.Generic.List<Moongazing.OrionGuard.Core.ValidationError>()).Add(new Moongazing.OrionGuard.Core.ValidationError(\"{prop.Name}\", \"{message}\", \"{errorCode}\"));");
                 needsElseIf = true;
             }
 
@@ -566,7 +568,7 @@ namespace Moongazing.OrionGuard.Generators
                     sb.AppendLine($"{indent}{keyword} (instance.{prop.Name} is null || (instance.{prop.Name} is System.Collections.IEnumerable __enumerable_{prop.Name} && !__enumerable_{prop.Name}.GetEnumerator().MoveNext()))");
                 }
 
-                sb.AppendLine($"{indent}    errors.Add(new Moongazing.OrionGuard.Core.ValidationError(\"{prop.Name}\", \"{message}\", \"{errorCode}\"));");
+                sb.AppendLine($"{indent}    (errors ??= new System.Collections.Generic.List<Moongazing.OrionGuard.Core.ValidationError>()).Add(new Moongazing.OrionGuard.Core.ValidationError(\"{prop.Name}\", \"{message}\", \"{errorCode}\"));");
                 needsElseIf = true;
             }
 
@@ -611,7 +613,7 @@ namespace Moongazing.OrionGuard.Generators
                         string errorCode = EscapeString(rule.CustomErrorCode ?? "LENGTH");
 
                         sb.AppendLine($"{indent}if (instance.{prop.Name} != null && (instance.{prop.Name}.Length < {min} || instance.{prop.Name}.Length > {max}))");
-                        sb.AppendLine($"{indent}    errors.Add(new Moongazing.OrionGuard.Core.ValidationError(\"{prop.Name}\", \"{message}\", \"{errorCode}\"));");
+                        sb.AppendLine($"{indent}    (errors ??= new System.Collections.Generic.List<Moongazing.OrionGuard.Core.ValidationError>()).Add(new Moongazing.OrionGuard.Core.ValidationError(\"{prop.Name}\", \"{message}\", \"{errorCode}\"));");
                     }
                     break;
 
@@ -622,7 +624,7 @@ namespace Moongazing.OrionGuard.Generators
 
                         // The core package's source-generated email regex carries a match timeout.
                         sb.AppendLine($"{indent}if (instance.{prop.Name} != null && !{RegexHelperName}(Moongazing.OrionGuard.Utilities.GeneratedRegexPatterns.Email(), instance.{prop.Name}))");
-                        sb.AppendLine($"{indent}    errors.Add(new Moongazing.OrionGuard.Core.ValidationError(\"{prop.Name}\", \"{message}\", \"{errorCode}\"));");
+                        sb.AppendLine($"{indent}    (errors ??= new System.Collections.Generic.List<Moongazing.OrionGuard.Core.ValidationError>()).Add(new Moongazing.OrionGuard.Core.ValidationError(\"{prop.Name}\", \"{message}\", \"{errorCode}\"));");
                     }
                     break;
 
@@ -641,7 +643,7 @@ namespace Moongazing.OrionGuard.Generators
                             : $"{RangeComparison(prop, "<", min)} || {RangeComparison(prop, ">", max)}";
 
                         sb.AppendLine($"{indent}if ({condition})");
-                        sb.AppendLine($"{indent}    errors.Add(new Moongazing.OrionGuard.Core.ValidationError(\"{prop.Name}\", \"{message}\", \"{errorCode}\"));");
+                        sb.AppendLine($"{indent}    (errors ??= new System.Collections.Generic.List<Moongazing.OrionGuard.Core.ValidationError>()).Add(new Moongazing.OrionGuard.Core.ValidationError(\"{prop.Name}\", \"{message}\", \"{errorCode}\"));");
                     }
                     break;
 
@@ -651,7 +653,7 @@ namespace Moongazing.OrionGuard.Generators
                         string errorCode = EscapeString(rule.CustomErrorCode ?? "POSITIVE");
 
                         sb.AppendLine($"{indent}if (instance.{prop.Name} <= 0)");
-                        sb.AppendLine($"{indent}    errors.Add(new Moongazing.OrionGuard.Core.ValidationError(\"{prop.Name}\", \"{message}\", \"{errorCode}\"));");
+                        sb.AppendLine($"{indent}    (errors ??= new System.Collections.Generic.List<Moongazing.OrionGuard.Core.ValidationError>()).Add(new Moongazing.OrionGuard.Core.ValidationError(\"{prop.Name}\", \"{message}\", \"{errorCode}\"));");
                     }
                     break;
 
@@ -667,7 +669,7 @@ namespace Moongazing.OrionGuard.Generators
                         // RegexCache in the core package applies a match timeout, so a hostile input
                         // cannot backtrack indefinitely inside the consumer's generated validator.
                         sb.AppendLine($"{indent}if (instance.{prop.Name} != null && !{RegexHelperName}(Moongazing.OrionGuard.Core.RegexCache.GetOrCreate(@\"{escapedPattern}\"), instance.{prop.Name}))");
-                        sb.AppendLine($"{indent}    errors.Add(new Moongazing.OrionGuard.Core.ValidationError(\"{prop.Name}\", \"{message}\", \"{errorCode}\"));");
+                        sb.AppendLine($"{indent}    (errors ??= new System.Collections.Generic.List<Moongazing.OrionGuard.Core.ValidationError>()).Add(new Moongazing.OrionGuard.Core.ValidationError(\"{prop.Name}\", \"{message}\", \"{errorCode}\"));");
                     }
                     break;
             }

@@ -1,4 +1,4 @@
-namespace Moongazing.OrionGuard.Generators.Tests;
+﻿namespace Moongazing.OrionGuard.Generators.Tests;
 
 using static GeneratorTestHarness;
 
@@ -125,5 +125,36 @@ public class GenerateValidatorTargetShapeTests
         Assert.Contains(Validate(assembly, "GlobalRequestValidator", New(assembly, "GlobalRequest")).Errors,
             e => e.ParameterName == "Name" && e.ErrorCode == "NOT_NULL");
         Assert.False(assembly.GetType("App.HiddenValidator")!.IsPublic);
+    }
+    [Fact]
+    public void GeneratedValidator_ShouldAllocateItsErrorList_OnlyOnTheFirstFailure()
+    {
+        // Validation that passes is the common case; it used to allocate a list it never filled.
+        const string source = """
+            using Moongazing.OrionGuard.Attributes;
+            using Moongazing.OrionGuard.Generators;
+
+            namespace App
+            {
+                [GenerateValidator]
+                public sealed class Sample
+                {
+                    [NotNull] public string? Name { get; set; }
+                }
+            }
+            """;
+
+        var (_, run) = Run(source, new OrionGuardGenerator());
+        var generated = run.Results.Single().GeneratedSources
+            .Single(s => s.HintName.Contains("SampleValidator", StringComparison.Ordinal))
+            .SourceText.ToString();
+
+        Assert.DoesNotContain("var errors = new System.Collections.Generic.List", generated, StringComparison.Ordinal);
+        Assert.Contains("errors ??= new System.Collections.Generic.List", generated, StringComparison.Ordinal);
+
+        var assembly = Compile(source, new OrionGuardGenerator());
+        Assert.True(Validate(assembly, "App.SampleValidator", New(assembly, "App.Sample", ("Name", "Ada"))).IsValid);
+        Assert.Contains(Validate(assembly, "App.SampleValidator", New(assembly, "App.Sample")).Errors,
+            e => e.ParameterName == "Name");
     }
 }
