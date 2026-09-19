@@ -60,6 +60,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   adds the filter to the action's pipeline. The filter honours `OrionGuardAspNetCoreOptions.DefaultStatusCode`
   and `UseProblemDetails` the same way the Minimal API endpoint filter does, and runs once per request when the
   attribute is on both the controller and the action.
+- `OrionGuard.AspNetCore`: the Minimal API endpoint filter and the MVC filter now respond with the status a
+  validator suggests through `GuardResult.FailureWithStatus` (for example 409), and fall back to
+  `DefaultStatusCode` only when none is suggested. The endpoint filter previously always used `DefaultStatusCode`.
 - `OrionGuard.Grpc`: `OrionGuardInterceptor` is a singleton and resolved validators from the root service
   provider, so scoped validators failed, and it called the synchronous `Validate`, so `RuleForAsync` rules never
   ran. Validators now come from the call's request scope (`HttpContext.RequestServices`) and run through

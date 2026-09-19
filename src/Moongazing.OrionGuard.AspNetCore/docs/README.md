@@ -48,7 +48,7 @@ public sealed class CreateUserValidator : AbstractValidator<CreateUserRequest>
 | Option | Default | Effect |
 | --- | --- | --- |
 | `UseProblemDetails` | `true` | When `false`, the exception handler, endpoint filter, and MVC filter write plain JSON instead of `ProblemDetails` |
-| `DefaultStatusCode` | `422` | Status for endpoint-filter and MVC-filter failures and `AggregateValidationException` |
+| `DefaultStatusCode` | `422` | Status for `AggregateValidationException`, and for endpoint-filter and MVC-filter failures whose validator suggests no status |
 | `BusinessRuleStatusCode` | `422` | Status for `BusinessRuleValidationException` (set to 400 for clients that expect it) |
 | `SuppressModelStateInvalidFilter` | `false` | Turns off MVC's automatic 400 response for invalid model state |
 
@@ -66,7 +66,7 @@ Other exceptions are not handled here and go on to the next handler. With `UsePr
 
 ## Minimal API endpoint filter
 
-`.WithValidation<TRequest>()` adds `OrionGuardEndpointFilter<TRequest>` to the route handler. The filter resolves `IValidator<TRequest>` from the request services and finds the first handler argument of type `TRequest`. It then runs `ValidateAsync`, so async rules run too. On failure it returns `ValidationProblemDetails` with `DefaultStatusCode`. If no validator is registered, or no argument matches, the handler runs without validation.
+`.WithValidation<TRequest>()` adds `OrionGuardEndpointFilter<TRequest>` to the route handler. The filter resolves `IValidator<TRequest>` from the request services and finds the first handler argument of type `TRequest`. It then runs `ValidateAsync`, so async rules run too. On failure it returns `ValidationProblemDetails` with the validator's suggested status (`GuardResult.FailureWithStatus`), or `DefaultStatusCode` when none is suggested. If no validator is registered, or no argument matches, the handler runs without validation.
 
 ## MVC controllers: `[ValidateRequest]`
 
@@ -92,7 +92,7 @@ public sealed class UsersController : ControllerBase
 
 - For each non-null action argument, the filter runs every `IValidator<T>` registered for the argument's runtime type, resolved from the request services. Scoped validators work.
 - It calls `ValidateAsync`, so `RuleForAsync` rules run too. Validators run one after another.
-- On the first invalid argument, the action does not run. The response uses `DefaultStatusCode` and is a `ValidationProblemDetails` body, or the plain `{ "<field>": ["<message>"] }` JSON when `UseProblemDetails` is `false`, the same as the endpoint filter.
+- On the first invalid argument, the action does not run. The response uses the validator's suggested status, or `DefaultStatusCode` when none is suggested, and is a `ValidationProblemDetails` body, or the plain `{ "<field>": ["<message>"] }` JSON when `UseProblemDetails` is `false`, the same as the endpoint filter.
 - With the attribute on both the controller and the action, validation still runs once per request.
 - With `[ApiController]`, MVC's own model-state check (400 for missing required fields) runs before this filter. Set `SuppressModelStateInvalidFilter = true` to let OrionGuard produce every validation response.
 
