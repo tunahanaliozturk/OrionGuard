@@ -358,7 +358,7 @@ services.AddOrionGuardStronglyTypedIds();
 
 > **v6.2 update:** `IStronglyTypedId<TValue>` marker interface unifies source-gen struct ids and manual record ids under one guard. `DomainEventBase` record spares you the `EventId`/`OccurredOnUtc` boilerplate. Generated ids implement `IParsable<TSelf>` / `ISpanParsable<TSelf>` for ASP.NET Core minimal API binding. EF Core converter emission is now conditional on the consumer referencing EF Core. Sub-package NuGet IDs dropped the `Moongazing.` prefix — install as `OrionGuard.AspNetCore`, `OrionGuard.Blazor`, etc. (C# namespaces unchanged).
 >
-> v6.3.0 (next) adds `IDomainEventDispatcher` + MediatR bridge + EF Core `SaveChanges` interceptor. v6.4.0 adds the `BusinessRule` base class, `Guard.Against.BrokenRule`, and ASP.NET Core ProblemDetails integration.
+> Domain events ship as `IDomainEventDispatcher`, the MediatR bridge and the EF Core `SaveChanges` interceptor. The `BusinessRule` base class, `Guard.Against.BrokenRule` and the ASP.NET Core ProblemDetails integration ship alongside them.
 
 ---
 
@@ -565,7 +565,7 @@ var msg = ValidationMessages.Get("NotNull", "Email");
 - **ThrowHelper** — `[DoesNotReturn]` + `[StackTraceHidden]` for minimal JIT footprint
 - **Validation Caching** — Cache results with TTL for identical inputs
 - **NativeAOT** — Source generator enables reflection-free validation
-- **AOT story for v6.3.0 domain events:** `ServiceProviderDomainEventDispatcher` and `OutboxDispatcherHostedService` use runtime reflection; they are marked with `[RequiresUnreferencedCode]` and `[RequiresDynamicCode]`. Two AOT-friendly paths exist: (1) use the **MediatR bridge** (`MediatRDomainEventDispatcher`) which has no reflection, or (2) root your event/handler types via `[DynamicDependency]` and use System.Text.Json source generation for outbox payloads. The core guard / validation surface remains fully AOT-safe.
+- **AOT story for domain events:** `ServiceProviderDomainEventDispatcher` and `OutboxDispatcherHostedService` use runtime reflection; they are marked with `[RequiresUnreferencedCode]` and `[RequiresDynamicCode]`. Two AOT-friendly paths exist: (1) use the **MediatR bridge** (`MediatRDomainEventDispatcher`) which has no reflection, or (2) root your event/handler types via `[DynamicDependency]` and use System.Text.Json source generation for outbox payloads. The core guard / validation surface remains fully AOT-safe.
 
 ---
 

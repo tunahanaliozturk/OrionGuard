@@ -94,6 +94,8 @@ StyleCopReport.xml
 *.tmp_proj
 *_wpftmp.csproj
 *.log
+# vstest.console writes its diagnostic trace here; *.log above does not catch it.
+/log.txt
 *.vspscc
 *.vssscc
 .builds
