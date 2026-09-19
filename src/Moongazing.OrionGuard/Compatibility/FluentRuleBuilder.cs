@@ -230,6 +230,94 @@ public sealed class FluentRuleBuilder<T, TProperty>
     }
 
     /// <summary>
+    /// Validates that the property value is greater than the specified threshold. Preferred over the
+    /// <see cref="IComparable"/> overload: the threshold keeps its own type, so neither it nor the property
+    /// value is boxed on every call.
+    /// </summary>
+    /// <param name="threshold">The exclusive lower bound.</param>
+    public FluentRuleBuilder<T, TProperty> GreaterThan<TValue>(TValue threshold) where TValue : IComparable<TValue>
+    {
+        _rules.Add(instance =>
+            Passes(_accessor(instance), threshold, static comparison => comparison > 0)
+                ? null
+                : new ValidationError(_propertyName, $"'{_propertyName}' must be greater than '{threshold}'.", "GREATER_THAN"));
+        return this;
+    }
+
+    /// <summary>
+    /// Validates that the property value is less than the specified threshold, without boxing.
+    /// </summary>
+    /// <param name="threshold">The exclusive upper bound.</param>
+    public FluentRuleBuilder<T, TProperty> LessThan<TValue>(TValue threshold) where TValue : IComparable<TValue>
+    {
+        _rules.Add(instance =>
+            Passes(_accessor(instance), threshold, static comparison => comparison < 0)
+                ? null
+                : new ValidationError(_propertyName, $"'{_propertyName}' must be less than '{threshold}'.", "LESS_THAN"));
+        return this;
+    }
+
+    /// <summary>
+    /// Validates that the property value is greater than or equal to the specified threshold, without boxing.
+    /// </summary>
+    /// <param name="threshold">The inclusive lower bound.</param>
+    public FluentRuleBuilder<T, TProperty> GreaterThanOrEqualTo<TValue>(TValue threshold) where TValue : IComparable<TValue>
+    {
+        _rules.Add(instance =>
+            Passes(_accessor(instance), threshold, static comparison => comparison >= 0)
+                ? null
+                : new ValidationError(_propertyName, $"'{_propertyName}' must be greater than or equal to '{threshold}'.", "GREATER_THAN_OR_EQUAL"));
+        return this;
+    }
+
+    /// <summary>
+    /// Validates that the property value is less than or equal to the specified threshold, without boxing.
+    /// </summary>
+    /// <param name="threshold">The inclusive upper bound.</param>
+    public FluentRuleBuilder<T, TProperty> LessThanOrEqualTo<TValue>(TValue threshold) where TValue : IComparable<TValue>
+    {
+        _rules.Add(instance =>
+            Passes(_accessor(instance), threshold, static comparison => comparison <= 0)
+                ? null
+                : new ValidationError(_propertyName, $"'{_propertyName}' must be less than or equal to '{threshold}'.", "LESS_THAN_OR_EQUAL"));
+        return this;
+    }
+
+    /// <summary>
+    /// Validates that the property value falls within the specified inclusive range, without boxing.
+    /// </summary>
+    /// <param name="from">The inclusive lower bound.</param>
+    /// <param name="to">The inclusive upper bound.</param>
+    public FluentRuleBuilder<T, TProperty> InclusiveBetween<TValue>(TValue from, TValue to) where TValue : IComparable<TValue>
+    {
+        _rules.Add(instance =>
+        {
+            var value = _accessor(instance);
+            return Passes(value, from, static comparison => comparison >= 0) && Passes(value, to, static comparison => comparison <= 0)
+                ? null
+                : new ValidationError(_propertyName, $"'{_propertyName}' must be between {from} and {to} (inclusive).", "INCLUSIVE_BETWEEN");
+        });
+        return this;
+    }
+
+    /// <summary>
+    /// Validates that the property value falls within the specified exclusive range, without boxing.
+    /// </summary>
+    /// <param name="from">The exclusive lower bound.</param>
+    /// <param name="to">The exclusive upper bound.</param>
+    public FluentRuleBuilder<T, TProperty> ExclusiveBetween<TValue>(TValue from, TValue to) where TValue : IComparable<TValue>
+    {
+        _rules.Add(instance =>
+        {
+            var value = _accessor(instance);
+            return Passes(value, from, static comparison => comparison > 0) && Passes(value, to, static comparison => comparison < 0)
+                ? null
+                : new ValidationError(_propertyName, $"'{_propertyName}' must be between {from} and {to} (exclusive).", "EXCLUSIVE_BETWEEN");
+        });
+        return this;
+    }
+
+    /// <summary>
     /// Validates that the property value is equal to the specified value.
     /// </summary>
     /// <param name="comparisonValue">The value to compare against.</param>
@@ -409,6 +497,16 @@ public sealed class FluentRuleBuilder<T, TProperty>
     /// </summary>
     private static bool Passes(TProperty? value, IComparable? threshold, Func<int, bool> accepts) =>
         value is null || (NumericComparer.TryCompare(value, threshold, out var comparison) && accepts(comparison));
+
+    /// <summary>
+    /// The generic counterpart of <see cref="Passes(TProperty, IComparable, Func{int, bool})"/>: the
+    /// threshold keeps its own type all the way into the comparison, so neither side is boxed. A null
+    /// threshold still fails the rule rather than ordering against null.
+    /// </summary>
+    private static bool Passes<TValue>(TProperty? value, TValue threshold, Func<int, bool> accepts)
+        where TValue : IComparable<TValue> =>
+        value is null ||
+        (threshold is not null && NumericComparer.TryCompare(value, threshold, out var comparison) && accepts(comparison));
 
     private ValidationError? MinimumLengthError(TProperty? value, int min) =>
         value is string text && text.Length < min

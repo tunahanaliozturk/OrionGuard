@@ -53,6 +53,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - A serialized name that is not a valid TypeScript identifier, such as one from
     `[JsonPropertyName("first-name")]`, is emitted as a quoted and escaped member name so the declaration
     parses.
+- `OrionGuard`: `ObjectValidator<T>.Property(Func<T, TProperty> selector, string propertyName, Action<FluentGuard<TProperty>>)`,
+  a delegate-based counterpart to the expression overload for hot paths. The expression overload is unchanged
+  and still the ergonomic default; the delegate overload skips the expression tree the C# compiler rebuilds on
+  every call, at the cost of spelling the property name out.
+- `OrionGuard`: `AbstractValidator<T>.RuleForAsync(Func<T, ValidationContext, CancellationToken, Task<bool>>, string, string)`,
+  an async rule that receives the `CancellationToken` passed to `ValidateAsync`.
+- `OrionGuard.Compatibility`: generic `GreaterThan<TValue>`, `GreaterThanOrEqualTo<TValue>`, `LessThan<TValue>`,
+  `LessThanOrEqualTo<TValue>`, `InclusiveBetween<TValue>` and `ExclusiveBetween<TValue>` overloads on
+  `FluentRuleBuilder<T, TProperty>`. They compare exactly as the `IComparable` overloads do, including across
+  numeric types, but keep the threshold's own type so nothing is boxed per call. A threshold written as a
+  literal (`GreaterThan(0)`) now picks the generic overload automatically.
 
 ### Changed
 
@@ -378,6 +389,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   "wasp_nest" (`sp_`), "podcast(" (`CAST(`). The keywords, the `xp_`/`sp_` prefixes and the string functions
   (`CHAR(`, `CAST(`, ...) are now matched at a word boundary; comment and operator sequences (`--`, `/*`,
   `*/`, `@@`) still match anywhere, and every payload the guard caught before is still caught.
+- **An `AbstractValidator<T>` async rule can now be cancelled.** `ValidateAsync`'s `CancellationToken` was
+  checked between rules but never handed to the rule, so a `RuleForAsync` predicate doing I/O ran to
+  completion after the caller had given up. The token now flows into the rule; use the new overload that takes
+  it to pass it on to your database or HTTP call.
+
+### Performance
+- **`Validate.CrossProperties` compiles its selectors once.** Every rule (`AreEqual`, `AreNotEqual`,
+  `IsGreaterThan`, `IsLessThan`, `AtLeastOneRequired`) compiled both of its selector expressions on each
+  call; they now come from the same accessor cache the other validators use.
+- **A generated validator allocates nothing when the input is valid.** The emitted code built its error list
+  before the first check; it is now created on the first failure only, which with the shared success result
+  takes the passing path of a generated validator to zero allocations.
+
+Measured with BenchmarkDotNet (`--job short`, .NET 10, `HotPathBenchmarks`). Your hardware will differ; the
+ratios are the point.
+
+- **Nested and collection validation no longer compiles an expression on every call.**
+  `Validate.Nested(...)`'s `Property`, `Nested` and `Collection` each called `Expression.Compile()` per
+  invocation, so validating an order with a customer, an address and ten lines compiled 24 selectors every
+  time. They now use the same process-wide accessor cache `Validate.For(...)` uses, which compiles a selector
+  once per process. That order went from 837 us and 128 KB to 7.2 us and 19 KB -- 117x faster -- and from
+  1,120 us to 9.3 us when it fails validation.
+- **A selector read at a wider type than the member is declared is now cached too.** `o => o.Items`, where
+  `Items` is a `List<T>` taken as `IEnumerable<T>`, arrives wrapped in a reference upcast that the accessor
+  cache did not look through, so every `Collection(...)` call kept compiling. Only conversions that can never
+  fail or change a value are unwrapped, so two different members are still never served the same accessor.
+- **A successful `GuardResult` costs nothing.** `GuardResult.Success()` allocated a result object and an empty
+  error list on every call; it is now a single shared instance -- a success carries no state -- and a result
+  holds no list until its first issue. 64 B and 14 ns per call became zero, which is every allocation an
+  `AbstractValidator<T>` made validating a passing object.
+- **Reading `Errors`, `Warnings`, `Infos` or `AllIssues` no longer allocates when there is nothing to report,**
+  and no longer builds an intermediate LINQ list when there is. Reading `Errors` twice off a two-error result
+  went from 282 ns / 336 B to 36 ns / 224 B. `ThrowIfInvalid()` reads `Errors`, so it benefits too.
+- **`Validate.For(...)` and `Validate.Delta(...)` stopped building a `GuardResult` per property.** Each
+  property validated created a result object and a filtered copy of its errors, only to unpack them again --
+  on passing properties as much as failing ones. A five-property DTO went from 1,644 ns / 3,872 B to
+  1,453 ns / 3,328 B when valid, and from 2,137 ns / 5,888 B to 1,848 ns / 4,640 B when invalid.
+- **The new delegate-based `Property` overload removes the remaining expression-tree cost.** The same
+  five-property DTO validates in 73 ns / 392 B through it, against 1,453 ns / 3,328 B through the expression
+  overload: the accessor was already cached, but the C# compiler rebuilds the expression tree itself at every
+  call site on every call, and nothing inside the library can cache that.
+- **`AbstractValidator<T>` no longer copies every validation error it produces.** Each error was cloned to
+  re-apply the rule's severity and error code even when the rule had no modifier chained onto it, which is the
+  default. A failing validator went from 179 ns / 536 B to 149 ns / 440 B.
+- **The FluentValidation compatibility layer's comparison rules no longer box.** `GreaterThan(0)` on an `int`
+  property, or `InclusiveBetween(1m, 10_000m)` on a `decimal` one, boxed the property value on every call to
+  reach the shared numeric comparison. Together with the lazy error list in `FluentStyleValidator<T>.Validate`
+  and the shared success result, a three-rule validator on a passing object went from 51 ns / 184 B to
+  23 ns / 0 B.
+- **Not fixed: `Validate.ForStrict(...)` on invalid input is still dominated by the throw** (1.8 us). Its
+  allocation dropped 15% with the changes above, but the cost is the exception itself, and the API's contract
+  is to throw. Use `Validate.For(...)` and read the result if you want a failure without one.
 
 ### Deprecated
 

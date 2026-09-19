@@ -7,6 +7,12 @@ namespace Moongazing.OrionGuard.Core;
 /// Provides fluent nested/hierarchical object validation with unlimited depth.
 /// Supports validating complex object graphs with parent-child relationships.
 /// </summary>
+/// <remarks>
+/// <b>Accessor caching.</b> Selectors are resolved through <see cref="AccessorCache{T, TProperty}"/>, the
+/// same process-wide cache <see cref="ObjectValidator{T}"/> uses, so a member selector is compiled once per
+/// process instead of once per <c>Property</c>/<c>Nested</c>/<c>Collection</c> call. The cache is keyed by the
+/// members the selector reads, never by the instance, so a cached accessor always reads the current value.
+/// </remarks>
 public sealed class NestedValidator<T> where T : class
 {
     private readonly T _instance;
@@ -32,8 +38,7 @@ public sealed class NestedValidator<T> where T : class
     {
         var memberName = GetMemberName(selector);
         var fullPath = string.IsNullOrEmpty(_pathPrefix) ? memberName : $"{_pathPrefix}.{memberName}";
-        var compiled = selector.Compile();
-        var value = compiled(_instance);
+        var value = AccessorCache<T, TProperty>.Get(selector)(_instance);
 
         var builder = new PropertyValidationBuilder<TProperty>(value, fullPath);
         configure(builder);
@@ -65,8 +70,7 @@ public sealed class NestedValidator<T> where T : class
     {
         var memberName = GetMemberName(selector);
         var fullPath = string.IsNullOrEmpty(_pathPrefix) ? memberName : $"{_pathPrefix}.{memberName}";
-        var compiled = selector.Compile();
-        var child = compiled(_instance);
+        var child = AccessorCache<T, TChild?>.Get(selector)(_instance);
 
         if (child is null)
         {
@@ -105,8 +109,7 @@ public sealed class NestedValidator<T> where T : class
     {
         var memberName = GetMemberName(selector);
         var fullPath = string.IsNullOrEmpty(_pathPrefix) ? memberName : $"{_pathPrefix}.{memberName}";
-        var compiled = selector.Compile();
-        var collection = compiled(_instance);
+        var collection = AccessorCache<T, IEnumerable<TItem>?>.Get(selector)(_instance);
 
         if (collection is null)
         {

@@ -18,8 +18,9 @@ namespace Moongazing.OrionGuard.Core;
 /// <para>
 /// Only two selector shapes are cached: <c>o =&gt; o.Member</c>, keyed by its <see cref="MemberInfo"/> (no
 /// allocation on a hit), and pure member chains such as <c>o =&gt; o.Items.Count</c>, keyed by the full
-/// member path. Anything else (casts, method calls, indexers, captured variables) is compiled on each call,
-/// because nothing short of the full expression tree identifies it.
+/// member path, in both cases through a widening conversion if the selector reads the member at a wider
+/// type. Anything else (narrowing or numeric casts, method calls, indexers, captured variables) is compiled
+/// on each call, because nothing short of the full expression tree identifies it.
 /// </para>
 /// </remarks>
 internal static class AccessorCache<T, TProperty>
@@ -29,7 +30,7 @@ internal static class AccessorCache<T, TProperty>
 
     internal static Func<T, TProperty> Get(Expression<Func<T, TProperty>> selector)
     {
-        if (selector.Body is MemberExpression member)
+        if (Unwrap(selector.Body) is MemberExpression member)
         {
             var parameter = selector.Parameters[0];
             if (member.Expression == parameter)
@@ -45,6 +46,18 @@ internal static class AccessorCache<T, TProperty>
 
         return selector.Compile();
     }
+
+    // A selector read at a wider type than the member is declared -- o => o.Items, a List<TItem> taken as
+    // IEnumerable<TItem> -- arrives wrapped in a conversion the cache would otherwise refuse to key on. The
+    // conversion target is TProperty, already part of the key, so the member alone still identifies the
+    // accessor. Only a widening conversion qualifies: a downcast differs between (T)x and x as T, and a
+    // numeric or user-defined conversion carries semantics -- overflow checking, an operator -- that the
+    // member on its own does not capture.
+    private static Expression Unwrap(Expression body) =>
+        body is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.TypeAs, Method: null } cast
+        && cast.Operand.Type.IsAssignableTo(cast.Type)
+            ? cast.Operand
+            : body;
 }
 
 /// <summary>

@@ -49,4 +49,37 @@ public class GuardResultTests
         Assert.True(combined.IsValid);
         Assert.Null(combined.SuggestedHttpStatusCode);
     }
+
+    [Fact]
+    public void Success_ShouldCarryNoState_WhenFailuresWereProducedAroundIt()
+    {
+        var before = GuardResult.Success();
+
+        var failed = GuardResult.Failure("a", "boom").Merge(GuardResult.FailureWithStatus(409, "b", "conflict"));
+        Assert.Throws<AggregateValidationException>(failed.ThrowIfInvalid);
+        GuardResult.Combine(GuardResult.FailureWithStatus(404, "c", "missing"), before);
+
+        var after = GuardResult.Success();
+
+        Assert.True(before.IsValid);
+        Assert.True(after.IsValid);
+        Assert.Empty(before.Errors);
+        Assert.Empty(after.AllIssues);
+        Assert.Null(before.SuggestedHttpStatusCode);
+        Assert.Null(after.SuggestedHttpStatusCode);
+        Assert.Equal(string.Empty, after.GetErrorSummary());
+        Assert.Empty(after.ToErrorDictionary());
+    }
+
+    [Fact]
+    public void Failure_ShouldNotSeeLaterAdditionsToTheSourceList_WhenTheCallerKeepsMutatingIt()
+    {
+        var source = new List<ValidationError> { new("a", "first") };
+
+        var result = GuardResult.Failure(source);
+        source.Add(new ValidationError("b", "second"));
+
+        Assert.Single(result.Errors);
+    }
 }
+

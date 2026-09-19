@@ -1,4 +1,4 @@
-using System.Linq.Expressions;
+﻿using System.Linq.Expressions;
 
 namespace Moongazing.OrionGuard.Core;
 
@@ -27,8 +27,8 @@ public sealed class CrossPropertyValidator<T> where T : class
     {
         var leftName = GetName(left);
         var rightName = GetName(right);
-        var leftVal = left.Compile()(_instance);
-        var rightVal = right.Compile()(_instance);
+        var leftVal = AccessorCache<T, TProp>.Get(left)(_instance);
+        var rightVal = AccessorCache<T, TProp>.Get(right)(_instance);
 
         if (!Equals(leftVal, rightVal))
             _errors.Add(new ValidationError($"{leftName},{rightName}",
@@ -47,8 +47,8 @@ public sealed class CrossPropertyValidator<T> where T : class
     {
         var leftName = GetName(left);
         var rightName = GetName(right);
-        var leftVal = left.Compile()(_instance);
-        var rightVal = right.Compile()(_instance);
+        var leftVal = AccessorCache<T, TProp>.Get(left)(_instance);
+        var rightVal = AccessorCache<T, TProp>.Get(right)(_instance);
 
         if (Equals(leftVal, rightVal))
             _errors.Add(new ValidationError($"{leftName},{rightName}",
@@ -67,8 +67,8 @@ public sealed class CrossPropertyValidator<T> where T : class
     {
         var leftName = GetName(left);
         var rightName = GetName(right);
-        var leftVal = left.Compile()(_instance);
-        var rightVal = right.Compile()(_instance);
+        var leftVal = AccessorCache<T, TProp>.Get(left)(_instance);
+        var rightVal = AccessorCache<T, TProp>.Get(right)(_instance);
 
         if (leftVal is not null && rightVal is not null && leftVal.CompareTo(rightVal) <= 0)
             _errors.Add(new ValidationError($"{leftName},{rightName}",
@@ -86,8 +86,8 @@ public sealed class CrossPropertyValidator<T> where T : class
     {
         var leftName = GetName(left);
         var rightName = GetName(right);
-        var leftVal = left.Compile()(_instance);
-        var rightVal = right.Compile()(_instance);
+        var leftVal = AccessorCache<T, TProp>.Get(left)(_instance);
+        var rightVal = AccessorCache<T, TProp>.Get(right)(_instance);
 
         if (leftVal is not null && rightVal is not null && leftVal.CompareTo(rightVal) >= 0)
             _errors.Add(new ValidationError($"{leftName},{rightName}",
@@ -106,8 +106,8 @@ public sealed class CrossPropertyValidator<T> where T : class
     {
         var firstName = GetName(first);
         var secondName = GetName(second);
-        var firstVal = first.Compile()(_instance);
-        var secondVal = second.Compile()(_instance);
+        var firstVal = AccessorCache<T, TProp1>.Get(first)(_instance);
+        var secondVal = AccessorCache<T, TProp2>.Get(second)(_instance);
 
         var firstEmpty = firstVal is null || (firstVal is string s1 && string.IsNullOrWhiteSpace(s1));
         var secondEmpty = secondVal is null || (secondVal is string s2 && string.IsNullOrWhiteSpace(s2));

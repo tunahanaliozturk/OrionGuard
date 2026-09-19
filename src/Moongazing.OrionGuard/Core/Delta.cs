@@ -131,9 +131,9 @@ public sealed class DeltaValidator<T> where T : class
         var guard = new FluentGuard<TProperty>(value, propertyName, throwOnFirstError: false);
         configure(guard);
 
-        var result = guard.ToResult();
-        if (result.IsInvalid)
-            _errors.AddRange(result.Errors);
+        // Read the guard's failures directly rather than building a GuardResult only to unpack it.
+        if (guard.CollectedErrors is { } produced)
+            _errors.AddRange(produced);
 
         return this;
     }

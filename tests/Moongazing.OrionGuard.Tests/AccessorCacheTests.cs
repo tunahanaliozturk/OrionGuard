@@ -107,6 +107,53 @@ public class AccessorCacheTests
         Assert.True(result.IsValid);
     }
 
+    private sealed class Tag
+    {
+        public string? Name { get; set; }
+    }
+
+    private sealed class UpcastOrder
+    {
+        public List<Tag> Primary { get; set; } = new();
+        public List<Tag> Secondary { get; set; } = new();
+    }
+
+    [Fact]
+    public void Collection_ShouldKeepSelectorsApart_WhenTwoListsAreReadThroughTheSameInterface()
+    {
+        var order = new UpcastOrder
+        {
+            Primary = [new Tag { Name = "ok" }],
+            Secondary = [new Tag { Name = "" }],
+        };
+
+        var result = Validate.Nested(order)
+            .Collection(o => o.Primary, (item, _) => item.Property(t => t.Name, p => p.NotEmpty()))
+            .Collection(o => o.Secondary, (item, _) => item.Property(t => t.Name, p => p.NotEmpty()))
+            .ToResult();
+
+        var error = Assert.Single(result.Errors);
+        Assert.Equal("Secondary[0].Name", error.ParameterName);
+    }
+
+    [Fact]
+    public void Collection_ShouldReadTheCurrentValue_WhenTheListIsReadThroughTheSameInterfaceAgain()
+    {
+        var order = new UpcastOrder { Primary = [new Tag { Name = "ok" }] };
+
+        var before = ValidatePrimary(order);
+        order.Primary = [new Tag { Name = "" }];
+        var after = ValidatePrimary(order);
+
+        Assert.True(before.IsValid);
+        Assert.True(after.IsInvalid);
+
+        static GuardResult ValidatePrimary(UpcastOrder order) =>
+            Validate.Nested(order)
+                .Collection(o => o.Primary, (item, _) => item.Property(t => t.Name, p => p.NotEmpty()))
+                .ToResult();
+    }
+
     private static bool ValueChanged(Delta<Settings> delta, string key) =>
         delta.HasChanged(s => s.Values[key]);
 }

@@ -208,10 +208,10 @@ public abstract class AbstractValidator<T> : IValidator<T>
 
     private sealed class AsyncRuleEntry
     {
-        public Func<T, Core.ValidationContext, Task<Core.ValidationError?>> Predicate { get; }
+        public Func<T, Core.ValidationContext, CancellationToken, Task<Core.ValidationError?>> Predicate { get; }
         public RuleBuilder Builder { get; }
         public AsyncRuleEntry(
-            Func<T, Core.ValidationContext, Task<Core.ValidationError?>> predicate,
+            Func<T, Core.ValidationContext, CancellationToken, Task<Core.ValidationError?>> predicate,
             RuleBuilder builder)
         {
             Predicate = predicate;
@@ -227,12 +227,13 @@ public abstract class AbstractValidator<T> : IValidator<T>
         /// exception unwrapping. <see cref="OperationCanceledException"/> is the one
         /// exception: it is allowed to propagate so cooperative cancellation still works.
         /// </summary>
-        public async Task<Core.ValidationError?> InvokeAsync(T value, Core.ValidationContext ctx)
+        public async Task<Core.ValidationError?> InvokeAsync(
+            T value, Core.ValidationContext ctx, CancellationToken cancellationToken)
         {
             Core.ValidationError? raw;
             try
             {
-                raw = await Predicate(value, ctx).ConfigureAwait(false);
+                raw = await Predicate(value, ctx, cancellationToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
@@ -288,6 +289,14 @@ public abstract class AbstractValidator<T> : IValidator<T>
         public Core.ValidationError? Apply(Core.ValidationError? error)
         {
             if (error is null) return null;
+
+            // A builder with no modifier chained onto it overrides nothing, so the clone would only be an
+            // equal copy of the error the rule just produced. That is the default for every rule.
+            if (Severity == error.Severity && (ErrorCode is null || ErrorCode == error.ErrorCode))
+            {
+                return error;
+            }
+
             return error with
             {
                 Severity = Severity,
@@ -391,7 +400,7 @@ public abstract class AbstractValidator<T> : IValidator<T>
     /// </summary>
     protected Core.IRuleBuilder RuleForAsync(Func<T, Task<bool>> predicate, string message, string propertyName)
     {
-        return AddAsyncRule(async (value, _) =>
+        return AddAsyncRule(async (value, _, _) =>
             await predicate(value).ConfigureAwait(false)
                 ? null
                 : new Core.ValidationError(propertyName, message));
@@ -405,8 +414,26 @@ public abstract class AbstractValidator<T> : IValidator<T>
         string message,
         string propertyName)
     {
-        return AddAsyncRule(async (value, ctx) =>
+        return AddAsyncRule(async (value, ctx, _) =>
             await predicate(value, ctx).ConfigureAwait(false)
+                ? null
+                : new Core.ValidationError(propertyName, message));
+    }
+
+    /// <summary>
+    /// Adds an async validation rule that observes the <see cref="CancellationToken"/> passed to
+    /// <see cref="ValidateAsync(T, CancellationToken)"/>, so the I/O the rule performs is cancelled with
+    /// the request rather than running to completion after the caller has given up. The other
+    /// <c>RuleForAsync</c> overloads take a predicate with nowhere to receive the token, so it stops at
+    /// the rule boundary and only the gap between rules is cancellable.
+    /// </summary>
+    protected Core.IRuleBuilder RuleForAsync(
+        Func<T, Core.ValidationContext, CancellationToken, Task<bool>> predicate,
+        string message,
+        string propertyName)
+    {
+        return AddAsyncRule(async (value, ctx, cancellationToken) =>
+            await predicate(value, ctx, cancellationToken).ConfigureAwait(false)
                 ? null
                 : new Core.ValidationError(propertyName, message));
     }
@@ -418,7 +445,8 @@ public abstract class AbstractValidator<T> : IValidator<T>
         return builder;
     }
 
-    private RuleBuilder AddAsyncRule(Func<T, Core.ValidationContext, Task<Core.ValidationError?>> predicate)
+    private RuleBuilder AddAsyncRule(
+        Func<T, Core.ValidationContext, CancellationToken, Task<Core.ValidationError?>> predicate)
     {
         var builder = new RuleBuilder();
         GetOrCreateRuleSet(ActiveRuleSetName).Async.Add(new AsyncRuleEntry(predicate, builder));
@@ -592,7 +620,7 @@ public abstract class AbstractValidator<T> : IValidator<T>
 
             if (rule.Builder.IsParallel)
             {
-                (batch ??= new()).Add(rule.InvokeAsync(value, context));
+                (batch ??= new()).Add(rule.InvokeAsync(value, context, cancellationToken));
                 continue;
             }
 
@@ -603,7 +631,7 @@ public abstract class AbstractValidator<T> : IValidator<T>
                 batch.Clear();
             }
 
-            var error = await rule.InvokeAsync(value, context).ConfigureAwait(false);
+            var error = await rule.InvokeAsync(value, context, cancellationToken).ConfigureAwait(false);
             if (error is not null) emit(error);
         }
 

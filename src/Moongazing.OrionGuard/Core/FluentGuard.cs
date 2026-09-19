@@ -11,7 +11,9 @@ public sealed class FluentGuard<T>
 {
     private readonly T _value;
     private readonly string _parameterName;
-    private readonly List<ValidationError> _errors;
+    // Null until the first failure. A guard whose rules all pass -- the common case, and the one hit once
+    // per property by ObjectValidator -- then costs no list.
+    private List<ValidationError>? _errors;
     private readonly bool _throwOnFirstError;
     private bool _shouldValidate = true;
 
@@ -19,9 +21,14 @@ public sealed class FluentGuard<T>
     {
         _value = value;
         _parameterName = parameterName;
-        _errors = new List<ValidationError>();
         _throwOnFirstError = throwOnFirstError;
     }
+
+    /// <summary>
+    /// The failures collected so far, or <c>null</c> when every rule passed. Lets a composing validator
+    /// append them without going through a <see cref="GuardResult"/> it would immediately unpack.
+    /// </summary>
+    internal List<ValidationError>? CollectedErrors => _errors;
 
     /// <summary>
     /// Gets the validated value.
@@ -549,8 +556,8 @@ public sealed class FluentGuard<T>
         var transformed = transform(_value);
         var guard = new FluentGuard<T>(transformed, _parameterName, _throwOnFirstError);
         guard._shouldValidate = _shouldValidate;
-        foreach (var error in _errors)
-            guard._errors.Add(error);
+        if (_errors is not null)
+            guard._errors = new List<ValidationError>(_errors);
         return guard;
     }
 
@@ -563,8 +570,8 @@ public sealed class FluentGuard<T>
         {
             var guard = new FluentGuard<T>(defaultValue, _parameterName, _throwOnFirstError);
             guard._shouldValidate = _shouldValidate;
-            foreach (var error in _errors)
-                guard._errors.Add(error);
+            if (_errors is not null)
+                guard._errors = new List<ValidationError>(_errors);
             return guard;
         }
         return this;
@@ -579,7 +586,7 @@ public sealed class FluentGuard<T>
     /// </summary>
     public T Build()
     {
-        if (_errors.Count > 0 && _throwOnFirstError)
+        if (_errors is not null && _throwOnFirstError)
         {
             throw new AggregateValidationException(_errors);
         }
@@ -591,7 +598,7 @@ public sealed class FluentGuard<T>
     /// </summary>
     public GuardResult ToResult()
     {
-        return _errors.Count == 0 ? GuardResult.Success() : GuardResult.Failure(_errors);
+        return _errors is null ? GuardResult.Success() : GuardResult.Failure(_errors);
     }
 
     /// <summary>
@@ -600,8 +607,8 @@ public sealed class FluentGuard<T>
     public bool TryValidate(out T value, out IReadOnlyList<ValidationError> errors)
     {
         value = _value;
-        errors = _errors.AsReadOnly();
-        return _errors.Count == 0;
+        errors = _errors is null ? Array.Empty<ValidationError>() : _errors.AsReadOnly();
+        return _errors is null;
     }
 
     /// <summary>
@@ -616,7 +623,7 @@ public sealed class FluentGuard<T>
     private void AddError(string message, string? errorCode)
     {
         var error = new ValidationError(_parameterName, message, errorCode);
-        _errors.Add(error);
+        (_errors ??= new()).Add(error);
 
         if (_throwOnFirstError)
         {

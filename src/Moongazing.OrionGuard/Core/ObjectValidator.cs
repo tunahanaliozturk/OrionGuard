@@ -60,15 +60,46 @@ public sealed class ObjectValidator<T> where T : class
     {
         var propertyName = GetPropertyName(selector);
         var accessor = GetOrCompileAccessor(selector);
-        var value = accessor(_instance);
+        return ValidateProperty(accessor(_instance), propertyName, configure);
+    }
 
+    /// <summary>
+    /// Validates a property addressed by a plain delegate instead of an expression.
+    /// </summary>
+    /// <remarks>
+    /// The expression overload is the ergonomic one, but the C# compiler rebuilds the expression tree at
+    /// every call, which dominates the cost of validating a small DTO. A non-capturing
+    /// <c>Func&lt;T, TProperty&gt;</c> is built once and cached by the compiler in a static field, so this
+    /// overload is the allocation-free way to validate the same property on a hot path. The property name
+    /// is explicit because there is no expression to read it from.
+    /// </remarks>
+    /// <param name="selector">Reads the property from the instance.</param>
+    /// <param name="propertyName">The name reported on any <see cref="ValidationError"/>.</param>
+    /// <param name="configure">Configures the rules to run against the property value.</param>
+    public ObjectValidator<T> Property<TProperty>(
+        Func<T, TProperty> selector,
+        string propertyName,
+        Action<FluentGuard<TProperty>> configure)
+    {
+        ArgumentNullException.ThrowIfNull(selector);
+        return ValidateProperty(selector(_instance), propertyName, configure);
+    }
+
+    private ObjectValidator<T> ValidateProperty<TProperty>(
+        TProperty value,
+        string propertyName,
+        Action<FluentGuard<TProperty>> configure)
+    {
         var guard = new FluentGuard<TProperty>(value, propertyName, throwOnFirstError: false);
         configure(guard);
 
-        var result = guard.ToResult();
-        if (result.IsInvalid)
+        // Read the guard's failures directly. Building a GuardResult here only to unpack it again cost a
+        // result plus a filtered copy of its errors on every property, passing or failing; a FluentGuard
+        // only ever emits Severity.Error, so the filter never removed anything.
+        var produced = guard.CollectedErrors;
+        if (produced is not null)
         {
-            _errors.AddRange(result.Errors);
+            _errors.AddRange(produced);
 
             if (_throwOnFirstError)
             {

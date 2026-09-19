@@ -1,4 +1,4 @@
-using Moongazing.OrionGuard.Core;
+﻿using Moongazing.OrionGuard.Core;
 
 namespace Moongazing.OrionGuard.Tests;
 
@@ -296,6 +296,32 @@ public class CrossPropertyValidatorTests
             Validate.CrossProperties(form)
                 .AreEqual(u => u.Password, u => u.ConfirmPassword)
                 .ThrowIfInvalid());
+    }
+
+    #endregion
+    #region Accessor caching
+
+    [Fact]
+    public void CrossProperties_ShouldReadEachInstanceFresh_WhenSelectorsComeFromTheCache()
+    {
+        // The selectors are compiled once per member now, so a cached accessor must still read the instance
+        // it is given, and two different members must not share one.
+        var matching = new UserForm { Password = "s3cret", ConfirmPassword = "s3cret", Email = "a@b.c", Username = "a@b.c" };
+        var differing = new UserForm { Password = "s3cret", ConfirmPassword = "other", Email = "a@b.c", Username = "ada" };
+
+        var first = Validate.CrossProperties(matching)
+            .AreEqual(u => u.Password, u => u.ConfirmPassword)
+            .AreNotEqual(u => u.Email, u => u.Username)
+            .ToResult();
+        var second = Validate.CrossProperties(differing)
+            .AreEqual(u => u.Password, u => u.ConfirmPassword)
+            .AreNotEqual(u => u.Email, u => u.Username)
+            .ToResult();
+
+        Assert.Contains(first.Errors, e => e.ErrorCode == "CROSS_NOT_EQUAL");
+        Assert.DoesNotContain(first.Errors, e => e.ErrorCode == "CROSS_EQUAL");
+        Assert.Contains(second.Errors, e => e.ErrorCode == "CROSS_EQUAL");
+        Assert.DoesNotContain(second.Errors, e => e.ErrorCode == "CROSS_NOT_EQUAL");
     }
 
     #endregion

@@ -40,30 +40,49 @@ public enum Severity
 /// </remarks>
 public sealed class GuardResult
 {
-    private readonly List<ValidationError> _issues;
+    // Null while the result carries no issue at all, which is the overwhelmingly common case: a passing
+    // validation then costs no list. Never an empty list, so "no issues" is a single reference check.
+    private readonly List<ValidationError>? _issues;
 
     /// <summary>
     /// Errors that block the operation (<see cref="Severity.Error"/> only).
     /// </summary>
-    public IReadOnlyList<ValidationError> Errors =>
-        _issues.Where(e => e.Severity == Severity.Error).ToList().AsReadOnly();
+    public IReadOnlyList<ValidationError> Errors => OfSeverity(Severity.Error);
 
     /// <summary>
     /// Non-blocking advisories (<see cref="Severity.Warning"/>).
     /// </summary>
-    public IReadOnlyList<ValidationError> Warnings =>
-        _issues.Where(e => e.Severity == Severity.Warning).ToList().AsReadOnly();
+    public IReadOnlyList<ValidationError> Warnings => OfSeverity(Severity.Warning);
 
     /// <summary>
     /// Informational notices (<see cref="Severity.Info"/>).
     /// </summary>
-    public IReadOnlyList<ValidationError> Infos =>
-        _issues.Where(e => e.Severity == Severity.Info).ToList().AsReadOnly();
+    public IReadOnlyList<ValidationError> Infos => OfSeverity(Severity.Info);
 
     /// <summary>
     /// All issues regardless of severity.
     /// </summary>
-    public IReadOnlyList<ValidationError> AllIssues => _issues.AsReadOnly();
+    public IReadOnlyList<ValidationError> AllIssues =>
+        _issues is null ? Array.Empty<ValidationError>() : _issues.AsReadOnly();
+
+    private IReadOnlyList<ValidationError> OfSeverity(Severity severity)
+    {
+        if (_issues is null)
+        {
+            return Array.Empty<ValidationError>();
+        }
+
+        List<ValidationError>? matches = null;
+        foreach (var issue in _issues)
+        {
+            if (issue.Severity == severity)
+            {
+                (matches ??= new()).Add(issue);
+            }
+        }
+
+        return matches is null ? Array.Empty<ValidationError>() : matches.AsReadOnly();
+    }
 
     public bool IsValid
     {
@@ -85,6 +104,7 @@ public sealed class GuardResult
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         get
         {
+            if (_issues is null) return false;
             foreach (var issue in _issues)
                 if (issue.Severity == Severity.Warning) return true;
             return false;
@@ -94,6 +114,7 @@ public sealed class GuardResult
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private bool HasErrorSeverity()
     {
+        if (_issues is null) return false;
         foreach (var issue in _issues)
             if (issue.Severity == Severity.Error) return true;
         return false;
@@ -107,18 +128,22 @@ public sealed class GuardResult
 
     private GuardResult()
     {
-        _issues = new List<ValidationError>();
     }
 
     private GuardResult(IEnumerable<ValidationError> issues)
     {
-        _issues = issues.ToList();
+        var copy = issues.ToList();
+        _issues = copy.Count == 0 ? null : copy;
     }
+
+    // A success carries no state to leak: it holds no issues, and the only way to set
+    // SuggestedHttpStatusCode is a constructor this type keeps private. So every caller can share one.
+    private static readonly GuardResult SuccessResult = new();
 
     /// <summary>
     /// Creates a successful validation result.
     /// </summary>
-    public static GuardResult Success() => new();
+    public static GuardResult Success() => SuccessResult;
 
     /// <summary>
     /// Creates a failed validation result with a single error.
@@ -152,7 +177,7 @@ public sealed class GuardResult
         int? statusCode = null;
         foreach (var result in results)
         {
-            total += result._issues.Count;
+            total += result._issues?.Count ?? 0;
             statusCode ??= result.SuggestedHttpStatusCode;
         }
 
@@ -160,7 +185,8 @@ public sealed class GuardResult
 
         var all = new List<ValidationError>(total);
         foreach (var result in results)
-            all.AddRange(result._issues);
+            if (result._issues is not null)
+                all.AddRange(result._issues);
 
         return new GuardResult(all) { SuggestedHttpStatusCode = statusCode };
     }
@@ -187,18 +213,22 @@ public sealed class GuardResult
     /// Returns a formatted summary of error messages (warnings/infos excluded by default).
     /// </summary>
     public string GetErrorSummary(string separator = "; ")
-        => string.Join(separator, _issues
-            .Where(e => e.Severity == Severity.Error)
-            .Select(e => e.Message));
+        => _issues is null
+            ? string.Empty
+            : string.Join(separator, _issues
+                .Where(e => e.Severity == Severity.Error)
+                .Select(e => e.Message));
 
     /// <summary>
     /// Converts errors into a dictionary format suitable for API responses. Only
     /// <see cref="Severity.Error"/> entries are included (backward-compatible).
     /// </summary>
     public Dictionary<string, string[]> ToErrorDictionary()
-        => _issues.Where(e => e.Severity == Severity.Error)
-                  .GroupBy(e => e.ParameterName)
-                  .ToDictionary(g => g.Key, g => g.Select(e => e.Message).ToArray());
+        => _issues is null
+            ? new Dictionary<string, string[]>()
+            : _issues.Where(e => e.Severity == Severity.Error)
+                     .GroupBy(e => e.ParameterName)
+                     .ToDictionary(g => g.Key, g => g.Select(e => e.Message).ToArray());
 }
 
 /// <summary>
@@ -221,9 +251,16 @@ public sealed class AggregateValidationException : Exception
     public IReadOnlyList<ValidationError> Errors { get; }
 
     public AggregateValidationException(IEnumerable<ValidationError> errors)
-        : base($"Validation failed with {errors.Count()} error(s).")
+        : this(errors.ToList())
     {
-        Errors = errors.ToList().AsReadOnly();
+    }
+
+    // Materialize once: the message needs the count and the property needs the items, and a lazy
+    // sequence would otherwise be enumerated twice -- re-running whatever produced it.
+    private AggregateValidationException(List<ValidationError> errors)
+        : base($"Validation failed with {errors.Count} error(s).")
+    {
+        Errors = errors.AsReadOnly();
     }
 
     public override string ToString()

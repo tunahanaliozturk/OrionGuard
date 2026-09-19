@@ -242,6 +242,30 @@ public class FluentGuardTests
         Assert.Equal("original", result);
     }
 
+    [Fact]
+    public void Transform_ShouldCarryOverEarlierErrors_WhenRulesAlreadyFailed()
+    {
+        var result = Ensure.Accumulate("ab")
+            .MinLength(5)
+            .Transform(v => v.ToUpperInvariant())
+            .MaxLength(1)
+            .ToResult();
+
+        Assert.Equal(2, result.Errors.Count);
+    }
+
+    [Fact]
+    public void Default_ShouldCarryOverEarlierErrors_WhenRulesAlreadyFailed()
+    {
+        var result = Ensure.Accumulate<string?>(null)
+            .NotNull()
+            .Default("fallback")
+            .MinLength(20)
+            .ToResult();
+
+        Assert.Equal(2, result.Errors.Count);
+    }
+
     #endregion
 
     #region Result Pattern / Error Accumulation
