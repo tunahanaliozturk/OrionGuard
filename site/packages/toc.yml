@@ -1,0 +1,44 @@
+- name: Overview
+  href: index.md
+- name: OrionGuard
+  href: orionguard.md
+- name: Web and transports
+  items:
+    - name: OrionGuard.AspNetCore
+      href: aspnetcore.md
+    - name: OrionGuard.MediatR
+      href: mediatr.md
+    - name: OrionGuard.Blazor
+      href: blazor.md
+    - name: OrionGuard.Grpc
+      href: grpc.md
+    - name: OrionGuard.SignalR
+      href: signalr.md
+    - name: OrionGuard.Hangfire
+      href: hangfire.md
+- name: Contracts and build-time
+  items:
+    - name: OrionGuard.Generators
+      href: generators.md
+    - name: OrionGuard.OpenApi
+      href: openapi.md
+    - name: OrionGuard.Swagger
+      href: swagger.md
+    - name: OrionGuard.Migration
+      href: migration.md
+- name: Domain events and outbox
+  items:
+    - name: OrionGuard.EntityFrameworkCore
+      href: entityframeworkcore.md
+    - name: OrionGuard.Outbox.PostgresNotify
+      href: outbox-postgresnotify.md
+    - name: OrionGuard.Outbox.SqlServerBroker
+      href: outbox-sqlserverbroker.md
+    - name: OrionGuard.Outbox.Dashboard
+      href: outbox-dashboard.md
+    - name: OrionGuard.Locks.Redis
+      href: locks-redis.md
+    - name: OrionGuard.OpenTelemetry
+      href: opentelemetry.md
+    - name: OrionGuard.Testing
+      href: testing.md
