@@ -1,0 +1,76 @@
+name: Feature request
+description: Ask for something OrionGuard cannot do yet.
+labels: [ "enhancement" ]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The bar here is "does it make the package clearer, faster, or safer without expanding the
+        public surface needlessly". A request that names the real workload behind it is far more
+        likely to land than one that names only the API shape it wants.
+
+        Check [docs/ROADMAP.md](https://github.com/tunahanaliozturk/OrionGuard/blob/master/docs/ROADMAP.md)
+        first: the item may already be planned, in which case comment there instead.
+
+  - type: dropdown
+    id: package
+    attributes:
+      label: Package
+      description: Where the feature would live.
+      options:
+        - OrionGuard
+        - OrionGuard.AspNetCore
+        - OrionGuard.MediatR
+        - OrionGuard.Generators
+        - OrionGuard.Swagger
+        - OrionGuard.OpenApi
+        - OrionGuard.OpenTelemetry
+        - OrionGuard.Blazor
+        - OrionGuard.Grpc
+        - OrionGuard.SignalR
+        - OrionGuard.Hangfire
+        - OrionGuard.MassTransit
+        - OrionGuard.EntityFrameworkCore
+        - OrionGuard.Locks.Redis
+        - OrionGuard.Outbox.Dashboard
+        - OrionGuard.Outbox.PostgresNotify
+        - OrionGuard.Outbox.SqlServerBroker
+        - OrionGuard.Testing
+        - OrionGuard.Migration
+        - OrionGuard.Templates
+        - A new package
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: The workload you are trying to serve, and what it costs you today. Describe the situation, not the solution.
+    validations:
+      required: true
+
+  - type: textarea
+    id: workaround
+    attributes:
+      label: What you do today instead
+      description: The workaround you are living with, or the other library you reach for, and why it is not good enough.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed API
+      description: If you have a shape in mind, show the call site as you would want to write it. Optional; the problem matters more.
+      render: csharp
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: Contribution
+      options:
+        - label: I am willing to send the pull request for this.
+          required: false

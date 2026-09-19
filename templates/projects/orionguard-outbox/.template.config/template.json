@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json.schemastore.org/template",
+  "author": "Tunahan Ali Ozturk",
+  "classifications": [ "Web", "WebAPI", "Validation", "OrionGuard", "DDD" ],
+  "identity": "OrionGuard.Templates.Outbox.CSharp",
+  "groupIdentity": "OrionGuard.Templates.Outbox",
+  "name": "OrionGuard minimal API with the EF Core outbox",
+  "shortName": "orionguard-outbox",
+  "description": "The OrionGuard minimal API plus EF Core: an aggregate raises a domain event, SaveChanges writes it to the transactional outbox in the same transaction, and the dispatcher hosted service delivers it.",
+  "tags": {
+    "language": "C#",
+    "type": "project"
+  },
+  "sourceName": "Company.Outbox",
+  "defaultName": "OrionGuardOutbox",
+  "preferNameDirectory": true,
+  "symbols": {
+    "database": {
+      "type": "parameter",
+      "datatype": "choice",
+      "defaultValue": "sqlite",
+      "description": "The EF Core provider the outbox and the aggregate are stored with.",
+      "choices": [
+        { "choice": "sqlite", "description": "SQLite. Runs with no server, so the generated project starts as-is." },
+        { "choice": "sqlserver", "description": "SQL Server." },
+        { "choice": "postgres", "description": "PostgreSQL via Npgsql." }
+      ]
+    }
+  },
+  "primaryOutputs": [
+    { "path": "Company.Outbox.csproj" }
+  ]
+}

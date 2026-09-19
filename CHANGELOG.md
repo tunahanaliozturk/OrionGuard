@@ -72,6 +72,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `DisableValidationHealthCheck`) and, with `EnableOutboxArchivalHealthCheck`, the outbox archival health check in
   services that call `UseOutboxArchival()`. A second call registers nothing new. The package depends on no Aspire,
   ASP.NET Core, or EF Core package.
+- **New package: `OrionGuard.Templates`.** A `dotnet new` template pack, installed with
+  `dotnet new install OrionGuard.Templates`. `orionguard-webapi` scaffolds a minimal API with
+  `AddOrionGuardAspNetCore()`, a registered validator, `UseOrionGuardValidation()` for RFC 9457
+  ProblemDetails, `.WithValidation<T>()` on the endpoint and `AddOrionGuardCheck()` on `/health`.
+  `orionguard-outbox` adds EF Core: an `AggregateRoot<Guid>` that raises a domain event, the outbox and
+  lock tables mapped in `OnModelCreating`, `AddOrionGuardEfCore<T>(o => o.UseOutbox())` and the dispatcher
+  hosted service it registers; its one option, `--database`, picks `sqlite` (the default, so the generated
+  project runs with no server), `sqlserver` or `postgres`. The pack lives in `templates/` and is
+  deliberately outside `Moongazing.OrionGuard.sln`, so it is packed on its own with
+  `dotnet pack templates/Moongazing.OrionGuard.Templates.csproj`.
+- Contributor on-ramp: `CONTRIBUTING.md` rewritten against the current build (all three TFMs, repo
+  layout, the style rules the code actually follows, how to run the benchmarks, how a PR is reviewed and
+  merged), GitHub issue forms and a pull request template under `.github/`, and
+  [docs/good-first-issues.md](docs/good-first-issues.md) listing twelve concrete small tasks that exist
+  in the codebase today.
 
 ### Changed
 

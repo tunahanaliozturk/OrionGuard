@@ -1,0 +1,14 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Good first issues
+    url: https://github.com/tunahanaliozturk/OrionGuard/blob/master/docs/good-first-issues.md
+    about: Concrete, small tasks that exist in the codebase today, with the files and the check for each.
+  - name: Roadmap
+    url: https://github.com/tunahanaliozturk/OrionGuard/blob/master/docs/ROADMAP.md
+    about: What is already planned through v7.0.0. Comment on a roadmap item rather than opening a duplicate request.
+  - name: Usage question
+    url: https://github.com/tunahanaliozturk/OrionGuard/discussions
+    about: "\"How do I ...\" belongs in Discussions. Read the package's NuGet readme first; it documents the real behaviour."
+  - name: Security vulnerability
+    url: https://github.com/tunahanaliozturk/OrionGuard/blob/master/CONTRIBUTING.md#reporting-bugs
+    about: Do not file a public issue. Contact the maintainer directly.

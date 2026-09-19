@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json.schemastore.org/template",
+  "author": "Tunahan Ali Ozturk",
+  "classifications": [ "Web", "WebAPI", "Validation", "OrionGuard" ],
+  "identity": "OrionGuard.Templates.WebApi.CSharp",
+  "groupIdentity": "OrionGuard.Templates.WebApi",
+  "name": "OrionGuard minimal API",
+  "shortName": "orionguard-webapi",
+  "description": "A minimal API wired with OrionGuard: an endpoint filter that validates the request body, RFC 9457 ProblemDetails responses, and the OrionGuard health check.",
+  "tags": {
+    "language": "C#",
+    "type": "project"
+  },
+  "sourceName": "Company.WebApi",
+  "defaultName": "OrionGuardApi",
+  "preferNameDirectory": true,
+  "primaryOutputs": [
+    { "path": "Company.WebApi.csproj" }
+  ]
+}

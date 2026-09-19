@@ -1,0 +1,100 @@
+name: Bug report
+description: Something in an OrionGuard package does not behave the way its documentation says.
+labels: [ "bug" ]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please fill in the package, the version, the target framework and a minimal repro. Without
+        those four the first reply is always a request for them, which costs both of us a round trip.
+
+        If the bug has security implications, do not file it here. Contact the maintainer directly at
+        the address in the package NuGet metadata.
+
+  - type: dropdown
+    id: package
+    attributes:
+      label: Package
+      description: The package the bug is in. Pick the one whose code misbehaves, not the one you happened to call.
+      options:
+        - OrionGuard
+        - OrionGuard.AspNetCore
+        - OrionGuard.MediatR
+        - OrionGuard.Generators
+        - OrionGuard.Swagger
+        - OrionGuard.OpenApi
+        - OrionGuard.OpenTelemetry
+        - OrionGuard.Blazor
+        - OrionGuard.Grpc
+        - OrionGuard.SignalR
+        - OrionGuard.Hangfire
+        - OrionGuard.MassTransit
+        - OrionGuard.EntityFrameworkCore
+        - OrionGuard.Locks.Redis
+        - OrionGuard.Outbox.Dashboard
+        - OrionGuard.Outbox.PostgresNotify
+        - OrionGuard.Outbox.SqlServerBroker
+        - OrionGuard.Testing
+        - OrionGuard.Migration
+        - OrionGuard.Templates
+        - Not sure
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Package version
+      description: The exact version from your PackageReference, for example 6.7.0. "latest" is not a version.
+      placeholder: "6.7.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: tfm
+    attributes:
+      label: Target framework
+      options:
+        - net8.0
+        - net9.0
+        - net10.0
+        - Other (say which in the repro)
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Minimal reproduction
+      description: >
+        The smallest code that shows the problem: ideally one file, one method, under 50 lines,
+        including the DI registrations. Paste code, not a screenshot. A link to a repo is welcome as
+        well as, not instead of, the snippet.
+      render: csharp
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+      description: What the documentation or the XML docs led you to expect, and where they say it.
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened instead
+      description: The actual behaviour. Include the full exception and stack trace if one is thrown.
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Output of `dotnet --info`, plus the OS, and the database provider and version when the outbox or EF Core integration is involved.
+      render: text
+    validations:
+      required: false
