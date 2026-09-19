@@ -34,6 +34,8 @@ Service Broker has to be on for the database. `ALTER DATABASE` cannot run inside
 ALTER DATABASE [app] SET ENABLE_BROKER WITH ROLLBACK IMMEDIATE;
 ```
 
+Skip this statement on Azure SQL Managed Instance: Service Broker is [on by default for every new database there and cannot be turned off](https://learn.microsoft.com/azure/azure-sql/managed-instance/transact-sql-tsql-differences-sql-server#service-broker), and both `ENABLE_BROKER` and `DISABLE_BROKER` are unsupported `ALTER DATABASE` options.
+
 Then create the broker objects and the trigger, for example from a migration:
 
 ```csharp
@@ -78,7 +80,7 @@ A missing connection string or an invalid value makes the hosted service throw `
 ## What this does not do
 
 - **It is an optimization, not a delivery mechanism.** A wake-up carries no rows: the dispatcher still takes its lock and reads the table, so across replicas only the lock holder dispatches. Correctness rests on the outbox table, which is why `PollingInterval` still bounds the worst case.
-- **It needs Service Broker, which not every SQL Server offering has.** Azure SQL Database does not support Service Broker; Azure SQL Managed Instance and a full SQL Server do. On a database without it, use polling or [OrionGuard.Outbox.PostgresNotify](https://www.nuget.org/packages/OrionGuard.Outbox.PostgresNotify)'s PostgreSQL equivalent — or leave the dispatcher polling, which is a supported configuration, not a fallback hack.
+- **It needs Service Broker, which Azure SQL Database does not have.** Microsoft's [feature comparison](https://learn.microsoft.com/azure/azure-sql/database/features-comparison) lists Service Broker as **No** for Azure SQL Database and **Yes** for Azure SQL Managed Instance; a full SQL Server has it too. On Azure SQL Database this package cannot be used at all — leave the dispatcher polling, which is a supported configuration and not a fallback hack.
 - **One outbox table per database.** The trigger name is fixed and only created when missing, so a second outbox table cannot get its own trigger, and running `Create` again does not update an existing one — drop it first if you change the setup.
 - **`AFTER INSERT` only.** A row updated back into the unprocessed state, such as a dashboard replay, fires nothing and waits for the next poll.
 - **No schema qualification.** The table is resolved in the default schema of the user that runs the SQL.
