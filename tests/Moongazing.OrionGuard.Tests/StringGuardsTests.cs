@@ -107,9 +107,25 @@ public class StringGuardsTests
     [InlineData("\U0001F600abc")]
     [InlineData("hello")]
     [InlineData("")]
+    [InlineData("❤️‍")]                    // a joiner with nothing after it is an incomplete sequence
+    [InlineData("‍\U0001F600")]            // and one with nothing before it
+    [InlineData("️")]                      // a variation selector on its own
     public void AgainstNonEmojiCharacters_ShouldThrow_WhenValueHasANonEmojiCharacter(string value)
     {
         Assert.Throws<ArgumentException>(() => value.AgainstNonEmojiCharacters("v"));
+    }
+
+    [Fact]
+    public void AgainstNonEmojiCharacters_ShouldThrow_WhenValueIsAnUnpairedSurrogate()
+    {
+        // Built here rather than in [InlineData]: xUnit serializes theory data, and an unpaired surrogate
+        // comes back as U+FFFD, which is an Other Symbol and would pass the guard for the wrong reason.
+        var high = new string('\uD83D', 1);
+        var low = new string('\uDE00', 1);
+
+        Assert.Throws<ArgumentException>(() => high.AgainstNonEmojiCharacters("v"));
+        Assert.Throws<ArgumentException>(() => low.AgainstNonEmojiCharacters("v"));
+        Assert.Null(Record.Exception(() => (high + low).AgainstNonEmojiCharacters("v")));
     }
 
     [Theory]

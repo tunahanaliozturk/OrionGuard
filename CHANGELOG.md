@@ -345,6 +345,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `GeneratedRegexPatterns.Emoji()` pattern, so any value that merely contained an emoji passed (`"abc😀"`).
   The whole value must now be emoji; joiners (ZWJ, variation selectors) and keycaps are accepted, so
   `❤️`, `👨‍👩‍👧` and `1️⃣` still pass. `Emoji()` itself is unchanged and documented as a "contains" pattern.
+  A sequence must also be complete: a value that ends in a zero-width joiner, or that carries an unpaired
+  surrogate, is rejected rather than accepted as emoji.
 - **The SQL denylist matches keywords at word boundaries.** `AgainstSqlInjection` and `AgainstInjection`
   matched keywords as substrings, so ordinary words containing one were rejected: "Walter" (ALTER),
   "executive" (EXEC), "reunion" (UNION), "selection", "updated", "deleted", "enclosed", "raindrops",
@@ -470,9 +472,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `X-OrionGuard-Dashboard` header with any non-empty value and answer 400 with
   `error: "missing-mutation-header"` without it; a custom header forces a preflight, which a cross-site page
   cannot pass unless your CORS policy allows that origin and header. The read endpoints are unaffected.
-  `MutationHeaderName` renames the header (a CORS-safelisted name, or one the browser sends itself, is
-  rejected when the dashboard is mapped) and `RequireMutationHeader = false` turns the check off, for hosts
-  where no caller authenticates with a cookie. Existing callers must send the header.
+  `MutationHeaderName` renames the header - it must start with `X-`, which is checked when the dashboard is
+  mapped, because every other kind of name is either CORS-safelisted or attached by the browser itself -
+  and `RequireMutationHeader = false` turns the check off, for hosts where no caller authenticates with a
+  cookie. Existing callers must send the header.
 - **The outbox setup SQL helpers validate every name.** `SqlServerBrokerSetupSql.Create` / `Drop` and
   `PostgresNotifyTriggerSql.Create` / `Drop` spliced their name parameters into DDL: identifiers inside
   `EXEC('...')` were bracket-escaped but their single quotes were not doubled for the `EXEC` literal, so

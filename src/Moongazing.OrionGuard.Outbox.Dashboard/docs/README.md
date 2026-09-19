@@ -1,4 +1,4 @@
-# OrionGuard.Outbox.Dashboard
+﻿# OrionGuard.Outbox.Dashboard
 
 Operator endpoints for the outbox in `OrionGuard.EntityFrameworkCore`, part of [OrionGuard](https://github.com/tunahanaliozturk/OrionGuard). It maps an ASP.NET Core route group that lists failed and dead-lettered outbox rows as JSON and lets an operator replay or discard a row. There is no HTML UI.
 
@@ -92,7 +92,7 @@ await fetch(`/_orion/outbox/${id}/discard`, {
 });
 ```
 
-- `MutationHeaderName` changes the header name. It must be a custom header: CORS-safelisted headers (`Accept`, `Accept-Language`, `Content-Language`, `Content-Type`, `Range`) and headers the browser sends itself (`Cookie`, `Origin`, `Referer`, `Host`, `Sec-*`, `Proxy-*`, ...) make `MapOutboxDashboard` throw `InvalidOperationException`.
+- `MutationHeaderName` changes the header name. It must start with `X-`; any other name makes `MapOutboxDashboard` throw `InvalidOperationException`. The check only works with a header a cross-site page has to ask for, and that rules out both the CORS-safelisted names (`Accept`, `Accept-Language`, `Content-Language`, `Content-Type`, `Range`) and the ones the browser attaches by itself (`Cookie`, `Origin`, `Referer`, `DNT`, `Upgrade-Insecure-Requests`, `Sec-*`, the client hints, ...), a set that keeps growing - while no browser adds an `X-` request header on its own.
 - The protection holds only while your CORS policy does not allow credentialed requests with this header from origins you do not trust. A policy that combines `AllowCredentials()` with `AllowAnyHeader()` for such origins, or reflects any origin, re-opens the endpoints to them.
 - `RequireMutationHeader = false` turns the check off. Do that only when no caller authenticates with a cookie, for example when every caller sends a bearer token.
 

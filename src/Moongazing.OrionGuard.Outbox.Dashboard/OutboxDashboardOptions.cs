@@ -1,4 +1,4 @@
-namespace Moongazing.OrionGuard.Outbox.Dashboard;
+﻿namespace Moongazing.OrionGuard.Outbox.Dashboard;
 
 /// <summary>
 /// Configures the read-only outbox dashboard surface registered by
@@ -77,10 +77,11 @@ public sealed class OutboxDashboardOptions
 
     /// <summary>
     /// Name of the header required by <see cref="RequireMutationHeader"/>. Default
-    /// <c>X-OrionGuard-Dashboard</c>. It must be a custom header: CORS-safelisted headers
-    /// (<c>Accept</c>, <c>Content-Type</c>, ...) and headers the browser adds itself (<c>Cookie</c>,
-    /// <c>Origin</c>, <c>Sec-*</c>, ...) are rejected when the dashboard is mapped, because a cross-site
-    /// page gets them onto a request without a preflight.
+    /// <c>X-OrionGuard-Dashboard</c>. It must start with <c>X-</c>, which is checked when the dashboard is
+    /// mapped. The check only works with a header a cross-site page has to set itself, because that is what
+    /// forces the CORS preflight; browsers attach a growing set of the others (<c>Cookie</c>, <c>Origin</c>,
+    /// <c>DNT</c>, <c>Upgrade-Insecure-Requests</c>, <c>Sec-*</c>, the client hints) without being asked, and
+    /// no browser adds an <c>X-</c> request header on its own.
     /// </summary>
     public string MutationHeaderName { get; set; } = "X-OrionGuard-Dashboard";
 

@@ -776,23 +776,36 @@ public sealed class OutboxDashboardConfigurationTests
         Assert.Throws<InvalidOperationException>(() => Build(o => o.ErrorTruncationLength = -1));
     }
 
-    // A cross-site page gets these onto a request without a CORS preflight, so requiring one would not stop forgery.
+    // Anything without the X- prefix: either a cross-site page can set it without a preflight, or the browser
+    // attaches it by itself, and in both cases requiring it would stop nothing.
     [Theory]
     [InlineData("")]
     [InlineData(" ")]
+    [InlineData("X-")]
     [InlineData("Content-Type")]
     [InlineData("accept")]
     [InlineData("Cookie")]
     [InlineData("Origin")]
     [InlineData("Sec-Fetch-Site")]
     [InlineData("DNT")]
+    [InlineData("Upgrade-Insecure-Requests")]
+    [InlineData("Save-Data")]
     [InlineData("Via")]
     [InlineData("TE")]
     [InlineData("Proxy-Authorization")]
     [InlineData("Access-Control-Request-Method")]
+    [InlineData("OrionGuard-Dashboard")]
     public void MapOutboxDashboard_throws_on_a_mutation_header_that_does_not_force_a_preflight(string headerName)
     {
         Assert.Throws<InvalidOperationException>(() => Build(o => o.MutationHeaderName = headerName));
+    }
+
+    [Theory]
+    [InlineData("X-OrionGuard-Dashboard")]
+    [InlineData("x-csrf-token")]
+    public void MapOutboxDashboard_accepts_a_mutation_header_that_forces_a_preflight(string headerName)
+    {
+        Assert.Null(Record.Exception(() => Build(o => o.MutationHeaderName = headerName).Dispose()));
     }
 
     [Fact]

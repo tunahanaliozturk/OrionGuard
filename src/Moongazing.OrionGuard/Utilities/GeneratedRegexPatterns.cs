@@ -61,14 +61,22 @@ public static partial class GeneratedRegexPatterns
     public static partial Regex Emoji();
 
     /// <summary>
-    /// Anchored form of <see cref="Emoji"/>: the whole value must be emoji. An emoji character (an Other
-    /// Symbol such as ❤, or a surrogate pair, which is how every emoji above U+FFFF is stored) may be
-    /// followed by the joiners real emoji are built from - zero-width joiner, variation selector 15/16 -
-    /// and a keycap (<c>1️⃣</c>) is a digit, <c>#</c> or <c>*</c> plus the combining enclosing keycap.
-    /// Each alternative starts with a different character, so matching stays linear.
+    /// Anchored form of <see cref="Emoji"/>: the whole value must be emoji, and every sequence in it must be
+    /// complete. One unit is a keycap (<c>1️⃣</c>: a digit, <c>#</c> or <c>*</c> plus the combining enclosing
+    /// keycap) or an emoji character - an Other Symbol such as ❤, or a well-formed surrogate pair, which is
+    /// how every emoji above U+FFFF is stored - with an optional variation selector. A zero-width joiner
+    /// counts only when another unit follows it, so a value ending in one is rejected, and a lone surrogate
+    /// is not a unit at all. Each alternative starts with a different character, so matching stays linear.
     /// </summary>
-    [GeneratedRegex(@"^(?:[\p{So}\p{Cs}][‍︎️]*|[0-9#*]️?⃣)+\z", RegexOptions.None, DefaultTimeoutMs)]
+    [GeneratedRegex(
+        "^(?:" + EmojiUnit + "(?:\\u200D" + EmojiUnit + ")*)+\\z",
+        RegexOptions.None,
+        DefaultTimeoutMs)]
     internal static partial Regex EmojiOnly();
+
+    // A surrogate is only an emoji as a complete high/low pair; \p{Cs} alone also matches half of one.
+    private const string EmojiUnit =
+        "(?:[0-9#*]\\uFE0F?\\u20E3|(?:[\\uD800-\\uDBFF][\\uDC00-\\uDFFF]|\\p{So})[\\uFE0E\\uFE0F]?)";
 
     [GeneratedRegex(@"^[A-Z0-9]+\z", RegexOptions.None, DefaultTimeoutMs)]
     public static partial Regex UppercaseAlphanumeric();

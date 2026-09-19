@@ -1,4 +1,4 @@
-namespace Moongazing.OrionGuard.Outbox.Dashboard;
+﻿namespace Moongazing.OrionGuard.Outbox.Dashboard;
 
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
@@ -16,18 +16,13 @@ using Moongazing.OrionGuard.EntityFrameworkCore.Outbox;
 /// </summary>
 public static class OutboxDashboardEndpointRouteBuilderExtensions
 {
-    // The CORS-safelisted request headers, which a cross-site page may set itself without a preflight, and
-    // the Fetch standard's forbidden request headers, which the browser controls and can attach on its own
-    // (DNT, for one). Neither kind can serve as the mutation header, because a cross-site request can carry
-    // it without the host's CORS policy ever being consulted.
-    private static readonly HashSet<string> HeadersSentWithoutPreflight = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "Accept", "Accept-Language", "Content-Language", "Content-Type", "Range",
-        "Accept-Charset", "Accept-Encoding", "Access-Control-Request-Headers", "Access-Control-Request-Method",
-        "Connection", "Content-Length", "Cookie", "Cookie2", "Date", "DNT", "Expect", "Host", "Keep-Alive",
-        "Origin", "Permissions-Policy", "Priority", "Referer", "Set-Cookie", "TE", "Trailer",
-        "Transfer-Encoding", "Upgrade", "Via", "User-Agent",
-    };
+    // The mutation header has to be one a cross-site page can put on a request only by asking for it, which
+    // makes the browser preflight the request. Listing the header names that fail that test does not work:
+    // the CORS-safelisted ones are fixed, but the set the browser attaches by itself keeps growing (DNT,
+    // Upgrade-Insecure-Requests, Save-Data, Sec-*, the client hints), so a list is always one name behind.
+    // An "X-" prefix is the other side of the same rule and it is closed: no browser adds an X- request
+    // header on its own, and no X- name is CORS-safelisted.
+    private const string RequiredMutationHeaderPrefix = "X-";
 
     /// <summary>
     /// Map the dashboard endpoints (failed-message listings and, when
@@ -442,15 +437,14 @@ public static class OutboxDashboardEndpointRouteBuilderExtensions
         if (options.RequireMutationHeader && !IsPreflightedHeader(options.MutationHeaderName))
         {
             throw new InvalidOperationException(
-                "OutboxDashboardOptions.MutationHeaderName must be a custom header name such as 'X-OrionGuard-Dashboard'. " +
-                "A CORS-safelisted header or one the browser sends on its own does not stop cross-site requests.");
+                "OutboxDashboardOptions.MutationHeaderName must start with 'X-', for example 'X-OrionGuard-Dashboard'. " +
+                "Only a header a cross-site page has to set itself forces the CORS preflight this check relies on, " +
+                "and browsers attach a growing set of the others (DNT, Upgrade-Insecure-Requests, Sec-*, client hints) on their own.");
         }
     }
 
-    // A header only forces a CORS preflight if the page has to set it itself and it is not CORS-safelisted.
     private static bool IsPreflightedHeader(string? name) =>
         !string.IsNullOrWhiteSpace(name)
-        && !HeadersSentWithoutPreflight.Contains(name)
-        && !name.StartsWith("Sec-", StringComparison.OrdinalIgnoreCase)
-        && !name.StartsWith("Proxy-", StringComparison.OrdinalIgnoreCase);
+        && name.StartsWith(RequiredMutationHeaderPrefix, StringComparison.OrdinalIgnoreCase)
+        && name.Length > RequiredMutationHeaderPrefix.Length;
 }
