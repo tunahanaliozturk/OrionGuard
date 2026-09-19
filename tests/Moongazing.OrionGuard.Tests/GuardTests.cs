@@ -9,7 +9,7 @@ namespace Moongazing.OrionGuard.Tests
         public void AgainstNull_ShouldThrowNullValueException_WhenValueIsNull()
         {
             // Arrange
-            object testObject = null;
+            object? testObject = null;
 
             // Act & Assert
             Assert.Throws<NullValueException>(() => Guard.AgainstNull(testObject, nameof(testObject)));
