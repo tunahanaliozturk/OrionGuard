@@ -1,4 +1,4 @@
-namespace Moongazing.OrionGuard.DynamicRules;
+﻿namespace Moongazing.OrionGuard.DynamicRules;
 
 /// <summary>
 /// Represents a single validation rule defined in configuration.
@@ -22,8 +22,15 @@ public sealed class DynamicRule
 
     /// <summary>
     /// Parameters for the rule (e.g., Min/Max for Range, Pattern for Regex, Values for In/NotIn).
+    /// A null assignment, which "Parameters": null in the JSON is, leaves it empty.
     /// </summary>
-    public Dictionary<string, object> Parameters { get; set; } = new();
+    public Dictionary<string, object> Parameters
+    {
+        get => parameters;
+        set => parameters = value ?? new();
+    }
+
+    private Dictionary<string, object> parameters = new();
 
     /// <summary>Condition for when this rule should apply (property name that must be truthy).</summary>
     public string? WhenProperty { get; set; }
