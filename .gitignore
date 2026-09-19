@@ -370,6 +370,6 @@ FodyWeavers.xsd
 *.db-wal
 
 # graphify (local knowledge graph + Claude Code integration)
-graphify-out/
-CLAUDE.md
-.graphifyignore
+/graphify-out/
+/CLAUDE.md
+/.graphifyignore
