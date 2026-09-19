@@ -54,6 +54,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   coverlet 10.0.1, BenchmarkDotNet 0.15.8.
 
 ### Fixed
+- **`DynamicValidator` survives the JSON a rule editor produces.** `"Rules": null` or `"Parameters": null`
+  overwrote the collection initializers and `Validate` threw `NullReferenceException`; a null assignment now
+  leaves the collection empty. An invalid regex in a `Regex` / `Pattern` rule escaped `Validate` as
+  `ArgumentException`, taking every other rule in the set with it; it is now reported as a failure of that one
+  property, saying the rule's pattern is not a valid regular expression.
 
 - `OrionGuard.SignalR`: `OrionGuardHubFilter` threw `AmbiguousMatchException` for every hub call whose argument
   had a registered validator, because it looked up `Validate` by name and `IValidator<T>` has two overloads. It

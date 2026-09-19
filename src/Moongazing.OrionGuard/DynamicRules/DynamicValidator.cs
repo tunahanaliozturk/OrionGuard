@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Globalization;
 using System.Reflection;
 using System.Text.Json;
@@ -254,10 +254,20 @@ public sealed class DynamicValidator
         if (string.IsNullOrEmpty(pattern))
             return null;
 
-        if (!IsMatchWithinTimeout(sv, pattern))
+        try
         {
+            if (!IsMatchWithinTimeout(sv, pattern))
+            {
+                return CreateError(rule, propertyName,
+                    $"{propertyName} does not match the required pattern.");
+            }
+        }
+        catch (ArgumentException)
+        {
+            // The pattern comes from configuration, so a typo in it is data, not a coding error. Reporting it
+            // as a failure of this property keeps one bad rule from taking down the whole Validate call.
             return CreateError(rule, propertyName,
-                $"{propertyName} does not match the required pattern.");
+                $"{propertyName} could not be checked: the rule's pattern is not a valid regular expression.");
         }
 
         return null;
