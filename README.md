@@ -153,6 +153,7 @@ if (result.IsInvalid)
 | `OrionGuard.Generators` | `dotnet add package OrionGuard.Generators` | Compile-time source generator |
 | `OrionGuard.Swagger` | `dotnet add package OrionGuard.Swagger` | OpenAPI schema generation (validator to OpenAPI) |
 | `OrionGuard.OpenApi` | `dotnet add package OrionGuard.OpenApi` | OpenAPI-first validators (OpenAPI to validator) |
+| `OrionGuard.SchemaExport` | `dotnet add package OrionGuard.SchemaExport` | JSON Schema + TypeScript interfaces from your models |
 | `OrionGuard.OpenTelemetry` | `dotnet add package OrionGuard.OpenTelemetry` | Metrics & tracing |
 | `OrionGuard.Blazor` | `dotnet add package OrionGuard.Blazor` | EditForm validation |
 | `OrionGuard.Grpc` | `dotnet add package OrionGuard.Grpc` | Server interceptor |
