@@ -566,15 +566,19 @@ var msg = ValidationMessages.Get("NotNull", "Email");
 
 ## Benchmarks
 
-See [benchmarks.md](benchmarks.md) for the full BenchmarkDotNet run, environment, and per-scenario interpretation (null checks, email validation, generated vs. cached regex, object validation, security guards, domain primitives). Headline numbers from the last measured run on an Intel Core i7-7820HQ (Kaby Lake), .NET 10.0.5, BenchmarkDotNet 0.14.0:
+See [benchmarks.md](benchmarks.md) for the full BenchmarkDotNet run, environment, fairness rules and per-scenario interpretation. OrionGuard vs **FluentValidation 12.1.1**, same rules and same inputs, .NET 10, BenchmarkDotNet 0.15.8 `--job short`, Intel Core Ultra 7 255H:
 
-- `FastGuard.NotNullOrEmpty` (span-based): sub-nanosecond on the happy path, zero allocations.
-- `Guard.AgainstInvalidEmail`: ~74 ns, zero allocations. `FastGuard.Email` span-based variant: ~12 ns.
-- Generated regex patterns: 2-3x faster and zero-alloc compared to cached `Regex` instances.
-- Security guards (`AgainstSqlInjection`, `AgainstXss`) are O(N) on input length with FrozenSet lookups; sub-50 ns on short strings.
-- `record` value objects: ~6 ns equality; class-based `ValueObject` is about 17x slower due to enumerating equality components.
+| Scenario | FluentValidation | OrionGuard | |
+|----------|------------------|------------|---|
+| 5-rule DTO, valid | 178 ns / 632 B | 112 ns / 64 B (`AbstractValidator`), 65 ns / 96 B (`[GenerateValidator]`) | OrionGuard 1.6x - 2.8x |
+| 5-rule DTO, all 5 rules failing | 3,131 ns / 9,656 B | 326 ns / 1,040 B | OrionGuard 9.6x (FluentValidation formats messages, OrionGuard interpolates) |
+| Same DTO via inline `Validate.For` | 178 ns / 632 B | 1,584 ns / 3,832 B | **FluentValidation 8.9x** |
+| Nested object + 10-item collection | 3.3 us / 9.5 KB | 1,083 us / 119 KB (`Validate.Nested`) | **FluentValidation 335x** |
+| Fail fast on the first error | 480 ns (`CascadeMode.Stop`, returns) | 1,905 ns (`ForStrict`, throws) | **FluentValidation 4.0x** |
+| Construct validator + validate once | 2,697 ns / 11.3 KB | 539 ns (`AbstractValidator`), 1,900 ns (`FluentStyleValidator`) | OrionGuard 1.4x - 5.0x |
+| One async rule, valid | 381 ns / 704 B | 159 ns / 232 B | OrionGuard 2.4x |
 
-Reproduce with `dotnet run -c Release --project benchmarks/Moongazing.OrionGuard.Benchmarks`.
+The two OrionGuard losses are expression-tree costs, not design trade-offs, and are itemized in [benchmarks.md](benchmarks.md#what-this-comparison-says-about-orionguard). Reproduce with `dotnet run -c Release --project benchmarks/Moongazing.OrionGuard.Benchmarks` (add `-- --filter '*Comparison*' --job short` for the comparison suite only).
 
 ---
 
