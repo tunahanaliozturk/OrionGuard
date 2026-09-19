@@ -99,54 +99,66 @@ public static class DynamicRulesRunner
         }
         catch (Exception ex)
         {
-            // A rule the engine cannot evaluate at all (an invalid regex pattern, a null
-            // Parameters object) throws out of Validate instead of producing an error.
+            // A rule the engine cannot evaluate at all leaves Validate as an exception instead of
+            // producing an error, so the page reports it rather than tearing down the component.
             return new RulesOutcome(null, $"Validate: {Describe(ex)}", warnings);
         }
     }
 
     /// <summary>
     /// Rules that the engine will quietly ignore: an unknown rule type, or a property name that
-    /// does not exist on <see cref="PlaygroundInput"/> (the lookup is case-sensitive).
+    /// does not exist on <see cref="PlaygroundInput"/> (the lookup is case-sensitive). This pass is
+    /// advisory, so it never throws: an unexpected shape here must not replace the validation
+    /// result with an unhandled exception in the Blazor event handler.
     /// </summary>
     private static List<string> Warnings(string rulesJson)
     {
         var warnings = new List<string>();
 
-        DynamicRuleSet? ruleSet;
         try
         {
-            ruleSet = JsonSerializer.Deserialize<DynamicRuleSet>(rulesJson, RuleSetOptions);
-        }
-        catch (JsonException)
-        {
-            return warnings;
-        }
-
-        if (ruleSet?.Rules is null)
-        {
-            return warnings;
-        }
-
-        for (var i = 0; i < ruleSet.Rules.Count; i++)
-        {
-            var rule = ruleSet.Rules[i];
-            var label = $"Rule {i + 1}";
-
-            if (!KnownRuleTypes.Contains(rule.RuleType))
+            var ruleSet = JsonSerializer.Deserialize<DynamicRuleSet>(rulesJson, RuleSetOptions);
+            if (ruleSet?.Rules is null)
             {
-                warnings.Add($"{label}: rule type '{rule.RuleType}' is not one the engine knows, so the rule is skipped.");
+                return warnings;
             }
 
-            if (Property(rule.PropertyName) is null)
+            for (var i = 0; i < ruleSet.Rules.Count; i++)
             {
-                warnings.Add($"{label}: '{rule.PropertyName}' is not a property of the input model, so the rule is skipped.{Hint(rule.PropertyName)}");
-            }
+                var rule = ruleSet.Rules[i];
+                var label = $"Rule {i + 1}";
 
-            if (!string.IsNullOrEmpty(rule.WhenProperty) && Property(rule.WhenProperty) is null)
-            {
-                warnings.Add($"{label}: the condition property '{rule.WhenProperty}' does not exist, so the condition is ignored and the rule always runs.{Hint(rule.WhenProperty)}");
+                // A JSON null in the rules array deserializes to a null element.
+                if (rule is null)
+                {
+                    warnings.Add($"{label}: the entry is null, so it carries nothing to validate.");
+                    continue;
+                }
+
+                // Every string on DynamicRule is assignable to null from JSON, whatever its initializer says.
+                var ruleType = rule.RuleType ?? string.Empty;
+                var propertyName = rule.PropertyName ?? string.Empty;
+
+                if (!KnownRuleTypes.Contains(ruleType))
+                {
+                    warnings.Add($"{label}: rule type '{ruleType}' is not one the engine knows, so the rule is skipped.");
+                }
+
+                if (Property(propertyName) is null)
+                {
+                    warnings.Add($"{label}: '{propertyName}' is not a property of the input model, so the rule is skipped.{Hint(propertyName)}");
+                }
+
+                if (!string.IsNullOrEmpty(rule.WhenProperty) && Property(rule.WhenProperty) is null)
+                {
+                    warnings.Add($"{label}: the condition property '{rule.WhenProperty}' does not exist, so the condition is ignored and the rule always runs.{Hint(rule.WhenProperty)}");
+                }
             }
+        }
+        catch (Exception)
+        {
+            // The rules already parsed once, for FromJson. Anything unexpected here belongs to the
+            // inspection alone, and the validation result below is still worth showing.
         }
 
         return warnings;

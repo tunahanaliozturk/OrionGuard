@@ -5,11 +5,23 @@
       "src": [
         {
           "src": "../src",
-          "files": [ "*/*.csproj" ],
-          "exclude": [
-            "Moongazing.OrionGuard.Generators/**",
-            "Moongazing.OrionGuard.OpenApi/**",
-            "Moongazing.OrionGuard.Migration/**"
+          "files": [
+            "Moongazing.OrionGuard/Moongazing.OrionGuard.csproj",
+            "Moongazing.OrionGuard.AspNetCore/Moongazing.OrionGuard.AspNetCore.csproj",
+            "Moongazing.OrionGuard.Blazor/Moongazing.OrionGuard.Blazor.csproj",
+            "Moongazing.OrionGuard.EntityFrameworkCore/Moongazing.OrionGuard.EntityFrameworkCore.csproj",
+            "Moongazing.OrionGuard.Grpc/Moongazing.OrionGuard.Grpc.csproj",
+            "Moongazing.OrionGuard.Hangfire/Moongazing.OrionGuard.Hangfire.csproj",
+            "Moongazing.OrionGuard.Locks.Redis/Moongazing.OrionGuard.Locks.Redis.csproj",
+            "Moongazing.OrionGuard.MassTransit/Moongazing.OrionGuard.MassTransit.csproj",
+            "Moongazing.OrionGuard.MediatR/Moongazing.OrionGuard.MediatR.csproj",
+            "Moongazing.OrionGuard.OpenTelemetry/Moongazing.OrionGuard.OpenTelemetry.csproj",
+            "Moongazing.OrionGuard.Outbox.Dashboard/Moongazing.OrionGuard.Outbox.Dashboard.csproj",
+            "Moongazing.OrionGuard.Outbox.PostgresNotify/Moongazing.OrionGuard.Outbox.PostgresNotify.csproj",
+            "Moongazing.OrionGuard.Outbox.SqlServerBroker/Moongazing.OrionGuard.Outbox.SqlServerBroker.csproj",
+            "Moongazing.OrionGuard.SignalR/Moongazing.OrionGuard.SignalR.csproj",
+            "Moongazing.OrionGuard.Swagger/Moongazing.OrionGuard.Swagger.csproj",
+            "Moongazing.OrionGuard.Testing/Moongazing.OrionGuard.Testing.csproj"
           ]
         }
       ],

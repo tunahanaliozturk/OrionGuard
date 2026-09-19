@@ -6,7 +6,9 @@ framework, the remarks say so.
 
 Not included: `OrionGuard.Generators` and `OrionGuard.OpenApi`, which are Roslyn components that emit
 code into your project rather than offering a runtime API, and `OrionGuard.Migration`, which is a
-command-line tool. Their pages are under [Packages](../packages/index.md).
+command-line tool. Their pages are under [Packages](../packages/index.md). Packages still in
+development are not here either; they are listed on
+[In development for 7.0.0](../docs/coming-in-7.md).
 
 ## Core
 
@@ -27,6 +29,7 @@ command-line tool. Their pages are under [Packages](../packages/index.md).
 
 - [Moongazing.OrionGuard.AspNetCore](xref:Moongazing.OrionGuard.AspNetCore)
 - [Moongazing.OrionGuard.MediatR](xref:Moongazing.OrionGuard.MediatR)
+- [Moongazing.OrionGuard.MassTransit](xref:Moongazing.OrionGuard.MassTransit)
 - [Moongazing.OrionGuard.Blazor](xref:Moongazing.OrionGuard.Blazor)
 - [Moongazing.OrionGuard.Grpc](xref:Moongazing.OrionGuard.Grpc)
 - [Moongazing.OrionGuard.SignalR](xref:Moongazing.OrionGuard.SignalR)

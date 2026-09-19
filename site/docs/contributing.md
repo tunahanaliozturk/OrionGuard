@@ -19,9 +19,13 @@ The site lives in `site/` in the repository and is built with DocFX, pinned in a
 manifest. `site/README.md` has the commands to build and preview it, including the browser
 playground.
 
-Two rules save most of the review time:
+Three rules save most of the review time:
 
 - A package page includes that package's `src/<project>/docs/README.md`. Edit the README, not the
   page, so NuGet and the site cannot disagree.
 - Every C# snippet in the guides is expected to compile against the current source. If you change a
   snippet, compile it.
+- A new package under `src/` reaches the API reference only when it is added to the project list in
+  `site/docfx.json`. Add it together with its package page, and take it off
+  [In development for 7.0.0](coming-in-7.md) in the same change, so the site never half-documents a
+  package.

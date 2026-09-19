@@ -87,9 +87,13 @@ root, so the playground's links back to the documentation (`../`) only resolve i
 - **Guides** under `docs/` are written for the site. Their C# snippets are expected to compile
   against the current `src/` projects; verify a snippet you change by pasting it into a scratch
   project that references those projects.
-- **API pages** come from `dotnet docfx metadata`, which reads the `net10.0` build of every runtime
-  package. `OrionGuard.Generators`, `OrionGuard.OpenApi` and `OrionGuard.Migration` are excluded in
-  `docfx.json`: the first two are Roslyn components and the third is a CLI tool.
+- **API pages** come from `dotnet docfx metadata`, which reads the `net10.0` build of the projects
+  `docfx.json` lists by name under `metadata.src.files`. That list is an allowlist, not a glob: a new
+  package under `src/` publishes no API pages until someone adds it there, which keeps the API
+  reference and the pages in step. `OrionGuard.Generators` and `OrionGuard.OpenApi` (Roslyn
+  components) and `OrionGuard.Migration` (a CLI tool) stay off it for good; a package still in
+  development stays off it until it has a package page and leaves
+  [docs/coming-in-7.md](docs/coming-in-7.md).
 - The DocFX version is pinned in `dotnet-tools.json`. Changing it is a deliberate act; rerun the
   build and check the output before committing a bump.
 

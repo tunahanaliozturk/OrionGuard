@@ -19,6 +19,7 @@ All runtime packages target `net8.0`, `net9.0` and `net10.0`. The two Roslyn com
 | --- | --- |
 | [OrionGuard.AspNetCore](aspnetcore.md) | RFC 9457 ProblemDetails, a Minimal API endpoint filter, `[ValidateRequest]` for MVC, options validation |
 | [OrionGuard.MediatR](mediatr.md) | A pipeline behavior that validates requests, and a MediatR-backed domain-event dispatcher |
+| [OrionGuard.MassTransit](masstransit.md) | A consume filter that validates messages before the consumer runs |
 | [OrionGuard.Blazor](blazor.md) | `EditForm` validation components |
 | [OrionGuard.Grpc](grpc.md) | A server interceptor that validates incoming requests |
 | [OrionGuard.SignalR](signalr.md) | A hub filter that validates hub method arguments |

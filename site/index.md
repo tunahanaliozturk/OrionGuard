@@ -5,8 +5,9 @@ validators collect every error into a `GuardResult`, and entity, aggregate and b
 primitives raise domain events. The core package targets `net8.0`, `net9.0` and `net10.0` and has one
 dependency, `Microsoft.Extensions.DependencyInjection.Abstractions`.
 
-The optional packages wire the same validators into ASP.NET Core, MediatR, Blazor, gRPC, SignalR,
-Hangfire, EF Core and OpenTelemetry, or run them at compile time through a source generator.
+The optional packages wire the same validators into ASP.NET Core, MediatR, MassTransit, Blazor,
+gRPC, SignalR, Hangfire, EF Core and OpenTelemetry, or run them at compile time through a source
+generator.
 
 ## Quick start (30 seconds)
 
