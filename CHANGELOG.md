@@ -15,6 +15,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   SignalR, gRPC, MVC, and Hangfire integrations now share it.
 - `OrionGuard.MediatR`: `StreamValidationBehavior<TRequest, TResponse>`, an `IStreamPipelineBehavior<,>` that
   validates stream requests.
+- **New package `OrionGuard.MassTransit`.** `cfg.UseOrionGuardValidation(context)` adds
+  `OrionGuardConsumeFilter<TMessage>` as a scoped consume filter, on the bus or on one receive endpoint. It runs
+  every `IValidator<TMessage>` registered for the consumed type from the consume scope, and throws
+  `MessageValidationException` (all errors in `Errors`) before the consumer runs, so the message goes through
+  MassTransit's retry and error pipeline to the `_error` queue. Add `r.Ignore<MessageValidationException>()` to
+  the retry policy, because a validation failure fails the same way on every retry. Built against MassTransit
+  **8.5.10**, the last Apache-2.0 line; MassTransit 9 requires a commercial license.
 
 ### Changed
 

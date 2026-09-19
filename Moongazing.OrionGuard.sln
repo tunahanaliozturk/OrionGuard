@@ -85,6 +85,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Moongazing.OrionGuard.Signa
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Moongazing.OrionGuard.Grpc.Tests", "tests\Moongazing.OrionGuard.Grpc.Tests\Moongazing.OrionGuard.Grpc.Tests.csproj", "{10F209C4-20AB-4335-A499-78B3CEBC5BE8}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Moongazing.OrionGuard.MassTransit", "src\Moongazing.OrionGuard.MassTransit\Moongazing.OrionGuard.MassTransit.csproj", "{A493530E-CD6B-46FF-84E9-9B2F906326FB}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Moongazing.OrionGuard.MassTransit.Tests", "tests\Moongazing.OrionGuard.MassTransit.Tests\Moongazing.OrionGuard.MassTransit.Tests.csproj", "{FAE4CED5-935F-4E6D-817B-45072F9CDAC2}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -503,6 +507,30 @@ Global
 		{10F209C4-20AB-4335-A499-78B3CEBC5BE8}.Release|x64.Build.0 = Release|Any CPU
 		{10F209C4-20AB-4335-A499-78B3CEBC5BE8}.Release|x86.ActiveCfg = Release|Any CPU
 		{10F209C4-20AB-4335-A499-78B3CEBC5BE8}.Release|x86.Build.0 = Release|Any CPU
+		{A493530E-CD6B-46FF-84E9-9B2F906326FB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A493530E-CD6B-46FF-84E9-9B2F906326FB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A493530E-CD6B-46FF-84E9-9B2F906326FB}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{A493530E-CD6B-46FF-84E9-9B2F906326FB}.Debug|x64.Build.0 = Debug|Any CPU
+		{A493530E-CD6B-46FF-84E9-9B2F906326FB}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{A493530E-CD6B-46FF-84E9-9B2F906326FB}.Debug|x86.Build.0 = Debug|Any CPU
+		{A493530E-CD6B-46FF-84E9-9B2F906326FB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A493530E-CD6B-46FF-84E9-9B2F906326FB}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A493530E-CD6B-46FF-84E9-9B2F906326FB}.Release|x64.ActiveCfg = Release|Any CPU
+		{A493530E-CD6B-46FF-84E9-9B2F906326FB}.Release|x64.Build.0 = Release|Any CPU
+		{A493530E-CD6B-46FF-84E9-9B2F906326FB}.Release|x86.ActiveCfg = Release|Any CPU
+		{A493530E-CD6B-46FF-84E9-9B2F906326FB}.Release|x86.Build.0 = Release|Any CPU
+		{FAE4CED5-935F-4E6D-817B-45072F9CDAC2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FAE4CED5-935F-4E6D-817B-45072F9CDAC2}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FAE4CED5-935F-4E6D-817B-45072F9CDAC2}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{FAE4CED5-935F-4E6D-817B-45072F9CDAC2}.Debug|x64.Build.0 = Debug|Any CPU
+		{FAE4CED5-935F-4E6D-817B-45072F9CDAC2}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{FAE4CED5-935F-4E6D-817B-45072F9CDAC2}.Debug|x86.Build.0 = Debug|Any CPU
+		{FAE4CED5-935F-4E6D-817B-45072F9CDAC2}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FAE4CED5-935F-4E6D-817B-45072F9CDAC2}.Release|Any CPU.Build.0 = Release|Any CPU
+		{FAE4CED5-935F-4E6D-817B-45072F9CDAC2}.Release|x64.ActiveCfg = Release|Any CPU
+		{FAE4CED5-935F-4E6D-817B-45072F9CDAC2}.Release|x64.Build.0 = Release|Any CPU
+		{FAE4CED5-935F-4E6D-817B-45072F9CDAC2}.Release|x86.ActiveCfg = Release|Any CPU
+		{FAE4CED5-935F-4E6D-817B-45072F9CDAC2}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -542,5 +570,7 @@ Global
 		{F4880624-39E9-4D79-837F-9E8B904445A5} = {A26C0EB7-E4A7-4335-8423-E8AEE9EF1738}
 		{77583982-4316-470B-9EA9-0F69523D0B5C} = {A26C0EB7-E4A7-4335-8423-E8AEE9EF1738}
 		{10F209C4-20AB-4335-A499-78B3CEBC5BE8} = {A26C0EB7-E4A7-4335-8423-E8AEE9EF1738}
+		{A493530E-CD6B-46FF-84E9-9B2F906326FB} = {397A784D-16D0-4DC2-8609-3EE0EF18998F}
+		{FAE4CED5-935F-4E6D-817B-45072F9CDAC2} = {A26C0EB7-E4A7-4335-8423-E8AEE9EF1738}
 	EndGlobalSection
 EndGlobal

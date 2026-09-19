@@ -196,6 +196,7 @@ public static class DomainEventSetup
 | `OrionGuard.Grpc` | Server interceptor that validates incoming requests |
 | `OrionGuard.SignalR` | Hub filter that validates hub method arguments |
 | `OrionGuard.Hangfire` | Validates background job arguments at enqueue time |
+| `OrionGuard.MassTransit` | Consume filter that validates each message before it reaches the consumer (MassTransit 8.x) |
 | `OrionGuard.Swagger` | Writes OrionGuard attribute constraints into Swashbuckle OpenAPI schemas |
 | `OrionGuard.OpenApi` | Source generator that builds an OrionGuard validator from an OpenAPI 3 schema |
 | `OrionGuard.OpenTelemetry` | Metrics and tracing for validation and domain-event dispatch |

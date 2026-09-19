@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!--
+      CS1591 (missing XML doc) and NU1900 ("could not read advisory data from a source") are suppressed,
+      matching every other shipped OrionGuard package. The vulnerability-severity diagnostics
+      (NU1901-NU1904) are not suppressed, so advisories surface at build time.
+    -->
+    <NoWarn>CS1591;NU1900</NoWarn>
+    <PackageId>OrionGuard.MassTransit</PackageId>
+    <Version>6.7.0</Version>
+    <Authors>Tunahan Ali Ozturk</Authors>
+    <Description>MassTransit integration for OrionGuard validation library. Provides a scoped consume filter that validates every consumed message with its registered validators, so an invalid message faults before it reaches the consumer.</Description>
+    <PackageTags>guard;validation;masstransit;messaging;consume-filter;middleware</PackageTags>
+    <PackageReadmeFile>docs/README.md</PackageReadmeFile>
+    <PackageIcon>docs/logo.png</PackageIcon>
+    <RepositoryUrl>https://github.com/tunahanaliozturk/OrionGuard</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageProjectUrl>https://github.com/tunahanaliozturk/OrionGuard</PackageProjectUrl>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+  </PropertyGroup>
+  <ItemGroup>
+    <!--
+      Pinned to MassTransit 8.x on purpose. 8.5.10 is the latest Apache-2.0 release; MassTransit v9 moved
+      to a commercial license, so referencing it would force that license on every consumer of this
+      package. Consumers can still resolve any later 8.x release.
+    -->
+    <PackageReference Include="MassTransit" Version="[8.5.10,9.0.0)" />
+    <ProjectReference Include="..\Moongazing.OrionGuard\Moongazing.OrionGuard.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="docs\README.md" Pack="true" PackagePath="docs/" />
+    <None Include="docs\logo.png" Pack="true" PackagePath="docs/" />
+  </ItemGroup>
+</Project>
