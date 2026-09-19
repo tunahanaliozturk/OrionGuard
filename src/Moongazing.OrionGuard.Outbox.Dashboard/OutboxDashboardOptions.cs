@@ -1,4 +1,4 @@
-namespace Moongazing.OrionGuard.Outbox.Dashboard;
+﻿namespace Moongazing.OrionGuard.Outbox.Dashboard;
 
 /// <summary>
 /// Configures the read-only outbox dashboard surface registered by
@@ -63,6 +63,27 @@ public sealed class OutboxDashboardOptions
     /// dashboard should remain strictly read-only (e.g., audit-only mounts).
     /// </summary>
     public bool EnableMutations { get; set; } = true;
+
+    /// <summary>
+    /// Require the <see cref="MutationHeaderName"/> header, with any non-empty value, on
+    /// <c>POST /{id}/replay</c> and <c>POST /{id}/discard</c>; a request without it gets 400.
+    /// Default <see langword="true"/>. The endpoints take no body, so without this check a page on another
+    /// origin could send them with the operator's cookies as a cross-origin request the browser does not
+    /// preflight. A custom header forces the preflight, which fails unless the host's CORS policy allows
+    /// that origin and header. Set <see langword="false"/> only when every caller authenticates with a
+    /// header (for example a bearer token) rather than a cookie.
+    /// </summary>
+    public bool RequireMutationHeader { get; set; } = true;
+
+    /// <summary>
+    /// Name of the header required by <see cref="RequireMutationHeader"/>. Default
+    /// <c>X-OrionGuard-Dashboard</c>. It must start with <c>X-</c>, which is checked when the dashboard is
+    /// mapped. The check only works with a header a cross-site page has to set itself, because that is what
+    /// forces the CORS preflight; browsers attach a growing set of the others (<c>Cookie</c>, <c>Origin</c>,
+    /// <c>DNT</c>, <c>Upgrade-Insecure-Requests</c>, <c>Sec-*</c>, the client hints) without being asked, and
+    /// no browser adds an <c>X-</c> request header on its own.
+    /// </summary>
+    public string MutationHeaderName { get; set; } = "X-OrionGuard-Dashboard";
 
     /// <summary>
     /// Optional audit hook invoked after every successful replay / discard. The dashboard

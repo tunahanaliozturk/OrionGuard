@@ -52,8 +52,31 @@ public static partial class GeneratedRegexPatterns
     [GeneratedRegex(@"^\P{C}+\z", RegexOptions.None, DefaultTimeoutMs)]
     public static partial Regex Unicode();
 
+    /// <summary>
+    /// Matches a run of emoji characters <b>anywhere</b> in the input: this pattern is unanchored, so
+    /// <c>IsMatch</c> answers "contains an emoji", not "is only emoji". <see cref="EmojiOnly"/> is the
+    /// anchored form.
+    /// </summary>
     [GeneratedRegex(@"[\p{So}\p{Cs}]+", RegexOptions.None, DefaultTimeoutMs)]
     public static partial Regex Emoji();
+
+    /// <summary>
+    /// Anchored form of <see cref="Emoji"/>: the whole value must be emoji, and every sequence in it must be
+    /// complete. One unit is a keycap (<c>1️⃣</c>: a digit, <c>#</c> or <c>*</c> plus the combining enclosing
+    /// keycap) or an emoji character - an Other Symbol such as ❤, or a well-formed surrogate pair, which is
+    /// how every emoji above U+FFFF is stored - with an optional variation selector. A zero-width joiner
+    /// counts only when another unit follows it, so a value ending in one is rejected, and a lone surrogate
+    /// is not a unit at all. Each alternative starts with a different character, so matching stays linear.
+    /// </summary>
+    [GeneratedRegex(
+        "^(?:" + EmojiUnit + "(?:\\u200D" + EmojiUnit + ")*)+\\z",
+        RegexOptions.None,
+        DefaultTimeoutMs)]
+    internal static partial Regex EmojiOnly();
+
+    // A surrogate is only an emoji as a complete high/low pair; \p{Cs} alone also matches half of one.
+    private const string EmojiUnit =
+        "(?:[0-9#*]\\uFE0F?\\u20E3|(?:[\\uD800-\\uDBFF][\\uDC00-\\uDFFF]|\\p{So})[\\uFE0E\\uFE0F]?)";
 
     [GeneratedRegex(@"^[A-Z0-9]+\z", RegexOptions.None, DefaultTimeoutMs)]
     public static partial Regex UppercaseAlphanumeric();
@@ -88,7 +111,11 @@ public static partial class GeneratedRegexPatterns
     [GeneratedRegex(@"^4[0-9]{12}(?:[0-9]{3})?\z", RegexOptions.None, DefaultTimeoutMs)]
     public static partial Regex VisaCard();
 
-    [GeneratedRegex(@"^5[1-5][0-9]{14}\z", RegexOptions.None, DefaultTimeoutMs)]
+    /// <summary>
+    /// Mastercard PANs: the original <c>51</c>-<c>55</c> range and the <c>2221</c>-<c>2720</c> range
+    /// Mastercard added in 2017, both 16 digits.
+    /// </summary>
+    [GeneratedRegex(@"^(?:5[1-5][0-9]{2}|222[1-9]|22[3-9][0-9]|2[3-6][0-9]{2}|27[01][0-9]|2720)[0-9]{12}\z", RegexOptions.None, DefaultTimeoutMs)]
     public static partial Regex MasterCard();
 
     [GeneratedRegex(@"^[A-Z]{2}[0-9]{2}[A-Z0-9]+\z", RegexOptions.None, DefaultTimeoutMs)]

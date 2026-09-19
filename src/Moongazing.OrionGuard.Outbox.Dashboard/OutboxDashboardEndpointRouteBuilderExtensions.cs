@@ -1,4 +1,4 @@
-namespace Moongazing.OrionGuard.Outbox.Dashboard;
+﻿namespace Moongazing.OrionGuard.Outbox.Dashboard;
 
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Primitives;
 using Moongazing.OrionGuard.EntityFrameworkCore.Outbox;
 
 /// <summary>
@@ -15,6 +16,14 @@ using Moongazing.OrionGuard.EntityFrameworkCore.Outbox;
 /// </summary>
 public static class OutboxDashboardEndpointRouteBuilderExtensions
 {
+    // The mutation header has to be one a cross-site page can put on a request only by asking for it, which
+    // makes the browser preflight the request. Listing the header names that fail that test does not work:
+    // the CORS-safelisted ones are fixed, but the set the browser attaches by itself keeps growing (DNT,
+    // Upgrade-Insecure-Requests, Save-Data, Sec-*, the client hints), so a list is always one name behind.
+    // An "X-" prefix is the other side of the same rule and it is closed: no browser adds an X- request
+    // header on its own, and no X- name is CORS-safelisted.
+    private const string RequiredMutationHeaderPrefix = "X-";
+
     /// <summary>
     /// Map the dashboard endpoints (failed-message listings and, when
     /// <see cref="OutboxDashboardOptions.EnableMutations"/> is on, replay / discard). The
@@ -23,7 +32,9 @@ public static class OutboxDashboardEndpointRouteBuilderExtensions
     /// requires the host's default policy (an authenticated user). Pass an explicit
     /// <see cref="OutboxDashboardOptions.AuthorizationPolicyName"/> to require a named
     /// policy, or set <see cref="OutboxDashboardOptions.AllowAnonymous"/> = <c>true</c>
-    /// to opt out entirely (NOT recommended for production).
+    /// to opt out entirely (NOT recommended for production). Replay and discard also require the
+    /// <see cref="OutboxDashboardOptions.MutationHeaderName"/> header unless
+    /// <see cref="OutboxDashboardOptions.RequireMutationHeader"/> is <see langword="false"/>.
     /// </summary>
     /// <typeparam name="TDbContext">The consumer's <see cref="DbContext"/> that owns the outbox <see cref="DbSet{TEntity}"/>.</typeparam>
     /// <param name="endpoints">The endpoint route builder.</param>
@@ -83,8 +94,14 @@ public static class OutboxDashboardEndpointRouteBuilderExtensions
             group.RequireAuthorization();
         }
 
-        group.MapGet("/failed", async (TDbContext db, HttpContext http, int? page, int? size, string? sort) =>
+        // The handlers resolve TDbContext from RequestServices instead of taking it as a parameter: ASP.NET
+        // Core's RouteHandlerAnalyzer throws a NullReferenceException (AD0001) on a handler parameter whose type
+        // is a generic type parameter, which switches off every ASP0xxx route-handler check for this project
+        // (https://github.com/dotnet/aspnetcore/issues/56831; still reproduces with the net8.0/net9.0 analyzers).
+        // Parameter binding resolved the same service from the same place, so behaviour is unchanged.
+        group.MapGet("/failed", async (HttpContext http, int? page, int? size, string? sort) =>
         {
+            var db = http.RequestServices.GetRequiredService<TDbContext>();
             var pageNumber = page is null or < 1 ? 1 : page.Value;
             var pageSize = ResolvePageSize(size, options);
             // In long arithmetic: a huge page number overflowed int into a negative OFFSET. A page past the end
@@ -142,8 +159,9 @@ public static class OutboxDashboardEndpointRouteBuilderExtensions
             });
         });
 
-        group.MapGet("/failed/cursor", async (TDbContext db, HttpContext http, string? cursor, int? size, string? sort) =>
+        group.MapGet("/failed/cursor", async (HttpContext http, string? cursor, int? size, string? sort) =>
         {
+            var db = http.RequestServices.GetRequiredService<TDbContext>();
             var pageSize = ResolvePageSize(size, options);
             var threshold = options.FailedRetryThreshold;
             var truncation = options.ErrorTruncationLength;
@@ -249,9 +267,10 @@ public static class OutboxDashboardEndpointRouteBuilderExtensions
             // finishes between a separate read and write would otherwise be re-queued and delivered
             // again. The dispatcher's own row updates are conditional the same way, so an in-flight
             // dispatch cannot undo a replay either.
-            group.MapPost("/{id:guid}/replay",
-                async (TDbContext db, HttpContext http, Guid id) =>
+            var replay = group.MapPost("/{id:guid}/replay",
+                async (HttpContext http, Guid id) =>
                 {
+                    var db = http.RequestServices.GetRequiredService<TDbContext>();
                     // Cleanly-processed rows (processed, no error) are not replayable: clearing their
                     // ProcessedOnUtc would re-deliver an event whose handlers already ran. Failed and
                     // dead-lettered rows (Error set) are - that's the whole point.
@@ -295,9 +314,10 @@ public static class OutboxDashboardEndpointRouteBuilderExtensions
             // can still see what failed. Returns 200 on success, 404 if the id is unknown.
             // Conditional on the row still being unprocessed, like replay, so it never overwrites a
             // dispatch that completed in the meantime.
-            group.MapPost("/{id:guid}/discard",
-                async (TDbContext db, HttpContext http, Guid id) =>
+            var discard = group.MapPost("/{id:guid}/discard",
+                async (HttpContext http, Guid id) =>
                 {
+                    var db = http.RequestServices.GetRequiredService<TDbContext>();
                     var discardedOnUtc = DateTime.UtcNow;
                     var discarded = await db.Set<OutboxMessage>()
                         .Where(m => m.Id == id && m.ProcessedOnUtc == null)
@@ -327,9 +347,37 @@ public static class OutboxDashboardEndpointRouteBuilderExtensions
                     }
                     return Results.Ok(new { id, action = "discard" });
                 });
+
+            // Cross-site request forgery: replay and discard take no body, so a page on another origin can send
+            // them as a "simple" cross-origin POST that the browser does not preflight, carrying the operator's
+            // cookies. Requiring a custom header turns the request into a preflighted one, which the browser only
+            // sends if the host's CORS policy explicitly allows that origin and header.
+            if (options.RequireMutationHeader)
+            {
+                var headerName = options.MutationHeaderName;
+                replay.AddEndpointFilter((context, next) => RequireHeaderAsync(context, next, headerName));
+                discard.AddEndpointFilter((context, next) => RequireHeaderAsync(context, next, headerName));
+            }
         }
 
         return group;
+    }
+
+    private static ValueTask<object?> RequireHeaderAsync(
+        EndpointFilterInvocationContext context,
+        EndpointFilterDelegate next,
+        string headerName)
+    {
+        if (!StringValues.IsNullOrEmpty(context.HttpContext.Request.Headers[headerName]))
+        {
+            return next(context);
+        }
+
+        return ValueTask.FromResult<object?>(Results.BadRequest(new
+        {
+            error = "missing-mutation-header",
+            message = $"Replay and discard requests must carry the '{headerName}' header.",
+        }));
     }
 
     private static int ResolvePageSize(int? requested, OutboxDashboardOptions options)
@@ -386,5 +434,17 @@ public static class OutboxDashboardEndpointRouteBuilderExtensions
         {
             throw new InvalidOperationException("OutboxDashboardOptions.ErrorTruncationLength must be non-negative.");
         }
+        if (options.RequireMutationHeader && !IsPreflightedHeader(options.MutationHeaderName))
+        {
+            throw new InvalidOperationException(
+                "OutboxDashboardOptions.MutationHeaderName must start with 'X-', for example 'X-OrionGuard-Dashboard'. " +
+                "Only a header a cross-site page has to set itself forces the CORS preflight this check relies on, " +
+                "and browsers attach a growing set of the others (DNT, Upgrade-Insecure-Requests, Sec-*, client hints) on their own.");
+        }
     }
+
+    private static bool IsPreflightedHeader(string? name) =>
+        !string.IsNullOrWhiteSpace(name)
+        && name.StartsWith(RequiredMutationHeaderPrefix, StringComparison.OrdinalIgnoreCase)
+        && name.Length > RequiredMutationHeaderPrefix.Length;
 }

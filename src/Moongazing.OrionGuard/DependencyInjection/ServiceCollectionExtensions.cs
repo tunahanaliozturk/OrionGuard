@@ -14,8 +14,8 @@ public static class ServiceCollectionExtensions
     /// </summary>
     public static IServiceCollection AddOrionGuard(this IServiceCollection services)
     {
-        // Kept for the AspNetCore health check, which reports the registered IExceptionFactory. Guards
-        // never resolve it (see IExceptionFactory).
+        // Guards never resolve IExceptionFactory (see its remarks); the registration stays until the obsolete
+        // interface is removed so code that still resolves it gets the same instance as before.
 #pragma warning disable CS0618
         services.TryAddSingleton<IExceptionFactory>(DefaultExceptionFactory.Instance);
 #pragma warning restore CS0618

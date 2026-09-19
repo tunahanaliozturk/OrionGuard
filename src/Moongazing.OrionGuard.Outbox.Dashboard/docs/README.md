@@ -1,4 +1,4 @@
-# OrionGuard.Outbox.Dashboard
+﻿# OrionGuard.Outbox.Dashboard
 
 Operator endpoints for the outbox in `OrionGuard.EntityFrameworkCore`, part of [OrionGuard](https://github.com/tunahanaliozturk/OrionGuard). It maps an ASP.NET Core route group that lists failed and dead-lettered outbox rows as JSON and lets an operator replay or discard a row. There is no HTML UI.
 
@@ -49,8 +49,8 @@ Routes are relative to `RoutePrefix` (default `/_orion/outbox`):
 | --- | --- | --- | --- |
 | GET | `/failed` | `page`, `size`, `sort` | Offset page of failed rows |
 | GET | `/failed/cursor` | `cursor`, `size`, `sort` | Keyset page of failed rows |
-| POST | `/{id:guid}/replay` | | Re-queue a failed or dead-lettered row |
-| POST | `/{id:guid}/discard` | | Mark an unprocessed row as processed without dispatching it |
+| POST | `/{id:guid}/replay` | | Re-queue a failed or dead-lettered row (needs the mutation header) |
+| POST | `/{id:guid}/discard` | | Mark an unprocessed row as processed without dispatching it (needs the mutation header) |
 
 - `page` defaults to 1. `size` defaults to `DefaultPageSize` (25) and is clamped to `MaxPageSize` (100). Values below 1 fall back to the defaults. A page past the last one, however large, returns an empty `items`.
 - `sort` is `OldestFirst` (by `OccurredOnUtc`, the default), `NewestFirst`, or `MostRetries` (by `RetryCount` descending, then `OccurredOnUtc`), matched case-insensitively. Anything else falls back to `DefaultSort`.
@@ -71,7 +71,30 @@ A row is listed when `Error` is set and `RetryCount >= FailedRetryThreshold` (de
 - **Replay** sets `RetryCount` to 0 and clears `Error` and `ProcessedOnUtc`, so the dispatcher picks the row up on its next poll and runs every handler again. It returns 200 `{ id, action }`, 404 for an unknown id, and 409 with `error: "already-processed-success"` for a row that was processed without an error, including one the dispatcher finished while the request was running.
 - **Discard** stamps `ProcessedOnUtc` and keeps `Error` and `RetryCount`. It works on any unprocessed row, not only failed ones. It returns 200 `{ id, action }`, 200 with `note: "already processed"` if the row was already processed (by the dispatcher, meanwhile or earlier, or by a previous discard), and 404 for an unknown id. With `OutboxArchivalOptions.PreserveDeadLetters` on, a discarded row that has an `Error` is never archived.
 - Both are a single conditional `UPDATE` (`ExecuteUpdate`) on the row's current state, and the dispatcher updates rows the same way, so a replay or discard is never undone by a dispatch that was in flight, and a dispatch that finished first is never overwritten. They therefore need a relational EF Core provider; the EF Core InMemory provider can serve the read endpoints only.
-- `OnMutation` (`Func<OutboxMutationEvent, Task>`) runs after each successful replay or discard is saved, with `Action` (`"replay"` or `"discard"`), `OutboxMessageId`, `HttpContext`, and `OccurredAtUtc`. It does not run for a 404, a 409, or an already-processed discard. If it throws, the request fails but the change stays saved.
+- `OnMutation` (`Func<OutboxMutationEvent, Task>`) runs after each successful replay or discard is saved, with `Action` (`"replay"` or `"discard"`), `OutboxMessageId`, `HttpContext`, and `OccurredAtUtc`. It does not run for a 404, a 409, an already-processed discard, or a request rejected for a missing mutation header. If it throws, the request fails but the change stays saved.
+
+## Cross-site request forgery
+
+Replay and discard take no body, so without a further check a page on another origin could call them with `fetch(url, { method: "POST", credentials: "include" })`: the browser sends that as a simple cross-origin request, without a CORS preflight, and attaches the operator's cookies. The dashboard therefore requires a custom request header on both endpoints, `X-OrionGuard-Dashboard` by default, with any non-empty value. A request without it gets 400 with `error: "missing-mutation-header"` and changes nothing. A page can only add a custom header to a cross-origin request after a CORS preflight, which fails unless the host's CORS policy allows that origin and header, so a cross-site page cannot send it. The read endpoints do not need the header.
+
+```bash
+curl -X POST "https://ops.example.com/_orion/outbox/3f2b8a52-5d1c-4c1e-9f0e-2a7c0e1d4b6a/replay" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "X-OrionGuard-Dashboard: 1"
+```
+
+From a same-origin operator page:
+
+```js
+await fetch(`/_orion/outbox/${id}/discard`, {
+  method: "POST",
+  headers: { "X-OrionGuard-Dashboard": "1" },
+});
+```
+
+- `MutationHeaderName` changes the header name. It must start with `X-`; any other name makes `MapOutboxDashboard` throw `InvalidOperationException`. The check only works with a header a cross-site page has to ask for, and that rules out both the CORS-safelisted names (`Accept`, `Accept-Language`, `Content-Language`, `Content-Type`, `Range`) and the ones the browser attaches by itself (`Cookie`, `Origin`, `Referer`, `DNT`, `Upgrade-Insecure-Requests`, `Sec-*`, the client hints, ...), a set that keeps growing - while no browser adds an `X-` request header on its own.
+- The protection holds only while your CORS policy does not allow credentialed requests with this header from origins you do not trust. A policy that combines `AllowCredentials()` with `AllowAnyHeader()` for such origins, or reflects any origin, re-opens the endpoints to them.
+- `RequireMutationHeader = false` turns the check off. Do that only when no caller authenticates with a cookie, for example when every caller sends a bearer token.
 
 ## Options
 
@@ -85,10 +108,12 @@ A row is listed when `Error` is set and `RetryCount >= FailedRetryThreshold` (de
 | `ErrorTruncationLength` | 1024 |
 | `DefaultSort` | `OutboxFailedListingSort.OldestFirst` |
 | `EnableMutations` | `true` |
+| `RequireMutationHeader` | `true` |
+| `MutationHeaderName` | `X-OrionGuard-Dashboard` |
 | `OnMutation` | `null` |
 | `SecurityHeaders` | `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `Cache-Control: no-store` |
 
-`MapOutboxDashboard` throws `InvalidOperationException` for an empty `RoutePrefix`, a page size or `FailedRetryThreshold` below 1, or a negative `ErrorTruncationLength`.
+`MapOutboxDashboard` throws `InvalidOperationException` for an empty `RoutePrefix`, a page size or `FailedRetryThreshold` below 1, a negative `ErrorTruncationLength`, or, while `RequireMutationHeader` is on, a `MutationHeaderName` that is empty or not a custom header.
 
 ## Security headers
 

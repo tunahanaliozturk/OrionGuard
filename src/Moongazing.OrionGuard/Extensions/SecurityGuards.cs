@@ -23,8 +23,8 @@ namespace Moongazing.OrionGuard.Extensions;
 /// listed token is rejected. Use them to turn away obviously hostile input early and to flag it in logs.
 /// The defence is always in the sink: parameterized queries for SQL, contextual output encoding for HTML,
 /// attributes, JavaScript and URLs, <see cref="ProcessStartInfo.ArgumentList"/> without a shell for
-/// processes, RFC 4515 / RFC 4514 escaping for LDAP filters and distinguished names, and an XML reader with
-/// DTD processing prohibited for XML.
+/// processes, <see cref="Utilities.LdapEncoding"/> (RFC 4515 / RFC 4514) for LDAP filters and distinguished
+/// names, and an XML reader with DTD processing prohibited for XML.
 /// </para>
 /// <para>
 /// <b>Structural guards.</b> <see cref="AgainstOpenRedirect"/>, <see cref="AgainstPathTraversal"/> and
@@ -45,19 +45,11 @@ public static partial class SecurityGuards
 {
     #region Pattern Definitions
 
-    // "GRANT" and "OPEN" are not listed as bare words: they rejected ordinary names and text ("Grant Smith",
-    // "open"). A GRANT statement always names its grantee with TO, which SqlStructure matches; the OPEN*
-    // rowset functions that reach other servers are listed by name, and a bare OPEN only opens a cursor that
-    // needs DECLARE ... CURSOR, which is still listed.
-    private static readonly string[] SqlKeywordList =
+    // Comment and operator sequences. They are matched as substrings, because they are punctuation and a
+    // word boundary means nothing next to them. The SQL keywords themselves live in SqlKeyword().
+    private static readonly string[] SqlTokenList =
     [
-        "SELECT", "INSERT", "UPDATE", "DELETE", "DROP", "ALTER", "CREATE",
-        "EXEC", "EXECUTE", "UNION", "TRUNCATE", "REVOKE",
-        "xp_", "sp_", "INFORMATION_SCHEMA", "sysobjects", "syscolumns",
-        "--", ";--", "/*", "*/", "@@", "WAITFOR", "DELAY", "BENCHMARK",
-        "CHAR(", "NCHAR(", "VARCHAR(", "CAST(", "CONVERT(", "CONCAT(",
-        "DECLARE", "CURSOR", "FETCH", "CLOSE", "DEALLOCATE",
-        "OPENROWSET", "OPENQUERY", "OPENDATASOURCE", "OPENXML"
+        "--", "/*", "*/", "@@"
     ];
 
     private static readonly string[] XssPatternList =
@@ -111,8 +103,8 @@ public static partial class SecurityGuards
     ];
 
 #if NET9_0_OR_GREATER
-    private static readonly SearchValues<string> SqlKeywords =
-        SearchValues.Create(SqlKeywordList, StringComparison.OrdinalIgnoreCase);
+    private static readonly SearchValues<string> SqlTokens =
+        SearchValues.Create(SqlTokenList, StringComparison.OrdinalIgnoreCase);
 
     private static readonly SearchValues<string> XssPatterns =
         SearchValues.Create(XssPatternList, StringComparison.OrdinalIgnoreCase);
@@ -123,8 +115,8 @@ public static partial class SecurityGuards
     private static readonly SearchValues<string> CommandInjectionPatterns =
         SearchValues.Create(CommandInjectionPatternList, StringComparison.OrdinalIgnoreCase);
 #else
-    private static readonly FrozenSet<string> SqlKeywords =
-        SqlKeywordList.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
+    private static readonly FrozenSet<string> SqlTokens =
+        SqlTokenList.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
 
     private static readonly FrozenSet<string> XssPatterns =
         XssPatternList.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
@@ -161,6 +153,20 @@ public static partial class SecurityGuards
     [GeneratedRegex(@"'\s*=\s*'|\bGRANT\b(?:(?!\bGRANT\b)[^;])*?\bTO\b", RegexOptions.IgnoreCase, 1000)]
     private static partial Regex SqlStructure();
 
+    /// <summary>
+    /// SQL keywords, matched at word boundaries. As plain substrings they rejected ordinary words that
+    /// merely contain one ("Walter" has ALTER, "executive" has EXEC, "reunion" has UNION, "selection",
+    /// "updated", "deleted", "enclosed"). The <c>xp_</c>/<c>sp_</c> procedure prefixes need a boundary only
+    /// before them, and the string functions are matched with their opening parenthesis, so "podcast(" and
+    /// "research(" are not CAST( and CHAR(.
+    /// </summary>
+    [GeneratedRegex(
+        @"\b(?:SELECT|INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|EXEC|EXECUTE|UNION|TRUNCATE|REVOKE|WAITFOR|DELAY|BENCHMARK|DECLARE|CURSOR|FETCH|CLOSE|DEALLOCATE|INFORMATION_SCHEMA|sysobjects|syscolumns|OPENROWSET|OPENQUERY|OPENDATASOURCE|OPENXML)\b" +
+        @"|\b(?:xp|sp)_" +
+        @"|\b(?:N?CHAR|N?VARCHAR|CAST|CONVERT|CONCAT)\(",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, 1000)]
+    private static partial Regex SqlKeyword();
+
     #endregion
 
     #region Public API
@@ -171,7 +177,9 @@ public static partial class SecurityGuards
     /// </summary>
     /// <remarks>
     /// This is a denylist, not a defence against SQL injection. It misses payloads written in forms it does
-    /// not list, and it rejects ordinary text that contains a listed word ("select", "update", "delete").
+    /// not list, and it rejects ordinary text that uses a listed word ("select a plan", "please update your
+    /// address"). Keywords match at word boundaries, so a word that merely contains one ("Walter",
+    /// "executive", "reunion", "selection") passes.
     /// The defence is parameterized queries (ADO.NET parameters, EF Core, Dapper parameters); never build SQL
     /// by concatenating input, whether or not it passed this guard.
     /// </remarks>
@@ -310,8 +318,10 @@ public static partial class SecurityGuards
     /// </summary>
     /// <remarks>
     /// This is a denylist aimed at search filters, not a defence against LDAP injection, and it does not cover
-    /// distinguished names: <c>jdoe,ou=Admins</c> passes. The defence is escaping: RFC 4515 escaping for values
-    /// placed in a filter and RFC 4514 escaping for values placed in a DN.
+    /// distinguished names: <c>jdoe,ou=Admins</c> passes. The defence is escaping, at the sink:
+    /// <see cref="Utilities.LdapEncoding.EscapeFilterValue(string)"/> (RFC 4515) for a value placed in a
+    /// filter and <see cref="Utilities.LdapEncoding.EscapeDistinguishedNameValue(string)"/> (RFC 4514) for a
+    /// value placed in a DN.
     /// </remarks>
     /// <exception cref="ArgumentException">An LDAP filter metacharacter was found.</exception>
     public static void AgainstLdapInjection(this string? value, string parameterName)
@@ -467,7 +477,7 @@ public static partial class SecurityGuards
     #region Internal matching
 
     private static bool ContainsSql(string value) =>
-        ContainsAnyPattern(value, SqlKeywords) || SqlStructure().IsMatch(value);
+        ContainsAnyPattern(value, SqlTokens) || SqlKeyword().IsMatch(value) || SqlStructure().IsMatch(value);
 
     private static bool ContainsXss(string value)
     {

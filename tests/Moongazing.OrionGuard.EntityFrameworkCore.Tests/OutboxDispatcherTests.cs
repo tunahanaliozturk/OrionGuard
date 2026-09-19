@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Moongazing.OrionGuard.DependencyInjection;
 using Moongazing.OrionGuard.Domain.Events;
 using Moongazing.OrionGuard.EntityFrameworkCore.Outbox;
@@ -383,6 +384,95 @@ public class OutboxDispatcherTests
         Assert.NotNull(row.Error);
         Assert.StartsWith("TYPE_NOT_FOUND:", row.Error);
         Assert.Contains("AQN fallback is disabled", row.Error);
+    }
+
+    private static int FallbackWarnings(ListLogger<OutboxDispatcherHostedService> logger) =>
+        logger.Entries.Count(e => e.Level == LogLevel.Warning
+            && e.Message.Contains("AllowAssemblyQualifiedNameFallback", StringComparison.Ordinal));
+
+    [Fact]
+    public async Task ProcessBatch_AqnFallbackResolvesRows_LogsTheSecurityWarningOnce()
+    {
+        var dispatcher = new InMemoryDomainEventDispatcher();
+        await using var sp = BuildSp(dispatcher);
+        await using var scope = sp.CreateAsyncScope();
+        var ctx = scope.ServiceProvider.GetRequiredService<TestDbContext>();
+        await ctx.Database.OpenConnectionAsync();
+        await ctx.Database.EnsureCreatedAsync();
+
+        await SeedOutboxRowAsync(ctx, new OrderShipped(Guid.NewGuid()));
+        await SeedOutboxRowAsync(ctx, new OrderShipped(Guid.NewGuid()));
+
+        var logger = new ListLogger<OutboxDispatcherHostedService>();
+        var worker = new OutboxDispatcherHostedService(
+            sp.GetRequiredService<OutboxOptions>(),
+            sp.GetRequiredService<IServiceScopeFactory>(),
+            logger: logger);
+
+        await worker.ProcessBatchAsync(default);
+        await SeedOutboxRowAsync(ctx, new OrderShipped(Guid.NewGuid()));
+        await worker.ProcessBatchAsync(default);
+
+        Assert.Equal(3, dispatcher.Captured.Count);
+        Assert.Equal(1, FallbackWarnings(logger));
+        Assert.Contains(logger.Entries, e => e.Message.Contains(typeof(OrderShipped).AssemblyQualifiedName!, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task ProcessBatch_RegistryResolvesLogicalName_DoesNotLogTheFallbackWarning()
+    {
+        var dispatcher = new InMemoryDomainEventDispatcher();
+        await using var sp = BuildSp(dispatcher);
+        await using var scope = sp.CreateAsyncScope();
+        var ctx = scope.ServiceProvider.GetRequiredService<TestDbContext>();
+        await ctx.Database.OpenConnectionAsync();
+        await ctx.Database.EnsureCreatedAsync();
+
+        var evt = new OrderShipped(Guid.NewGuid());
+        ctx.OutboxMessages.Add(new OutboxMessage
+        {
+            EventType = "order.shipped",
+            Payload = JsonSerializer.Serialize(evt, evt.GetType()),
+            OccurredOnUtc = evt.OccurredOnUtc,
+        });
+        await ctx.SaveChangesAsync();
+
+        var logger = new ListLogger<OutboxDispatcherHostedService>();
+        var worker = new OutboxDispatcherHostedService(
+            sp.GetRequiredService<OutboxOptions>(),
+            sp.GetRequiredService<IServiceScopeFactory>(),
+            typeMap: new OutboxTypeMapRegistry().Map<OrderShipped>("order.shipped"),
+            logger: logger);
+
+        await worker.ProcessBatchAsync(default);
+
+        Assert.Single(dispatcher.Captured);
+        Assert.Equal(0, FallbackWarnings(logger));
+    }
+
+    [Fact]
+    public async Task ProcessBatch_AqnFallbackDisabled_DoesNotLogTheFallbackWarning()
+    {
+        var dispatcher = new InMemoryDomainEventDispatcher();
+        await using var sp = BuildSp(dispatcher);
+        await using var scope = sp.CreateAsyncScope();
+        var ctx = scope.ServiceProvider.GetRequiredService<TestDbContext>();
+        await ctx.Database.OpenConnectionAsync();
+        await ctx.Database.EnsureCreatedAsync();
+
+        await SeedOutboxRowAsync(ctx, new OrderShipped(Guid.NewGuid()));
+
+        var logger = new ListLogger<OutboxDispatcherHostedService>();
+        var worker = new OutboxDispatcherHostedService(
+            sp.GetRequiredService<OutboxOptions>(),
+            sp.GetRequiredService<IServiceScopeFactory>(),
+            typeMapOptions: new OutboxTypeMapOptions { AllowAssemblyQualifiedNameFallback = false },
+            logger: logger);
+
+        await worker.ProcessBatchAsync(default);
+
+        Assert.Empty(dispatcher.Captured);
+        Assert.Equal(0, FallbackWarnings(logger));
     }
 
     [Fact]

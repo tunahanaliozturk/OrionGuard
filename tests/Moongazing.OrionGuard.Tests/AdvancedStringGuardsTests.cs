@@ -83,4 +83,32 @@ public class AdvancedStringGuardsTests
     }
 
     #endregion
+
+    #region AgainstInvalidMasterCard
+
+    // Every number below passes the Luhn check, so only the range decides.
+    [Theory]
+    [InlineData("5555555555554444")]  // 51-55, the original range
+    [InlineData("5105105105105100")]
+    [InlineData("2221000000000009")]  // 2221-2720, the range Mastercard added in 2017
+    [InlineData("2223003122003222")]
+    [InlineData("2720000000000005")]
+    [InlineData("2720 0000 0000 0005")]
+    [InlineData("2720-0000-0000-0005")]
+    public void AgainstInvalidMasterCard_ShouldNotThrow_WhenNumberIsInAMastercardRange(string value)
+    {
+        Assert.Null(Record.Exception(() => value.AgainstInvalidMasterCard("card")));
+    }
+
+    [Theory]
+    [InlineData("2220000000000000")]  // just below the 2-series range
+    [InlineData("2721000000000004")]  // just above it
+    [InlineData("4111111111111111")]  // Visa
+    [InlineData("5555555555554443")]  // right range, fails Luhn
+    public void AgainstInvalidMasterCard_ShouldThrow_WhenNumberIsOutsideTheRangesOrFailsLuhn(string value)
+    {
+        Assert.Throws<ArgumentException>(() => value.AgainstInvalidMasterCard("card"));
+    }
+
+    #endregion
 }

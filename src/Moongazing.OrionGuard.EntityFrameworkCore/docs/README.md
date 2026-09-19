@@ -141,6 +141,12 @@ builder.Services.AddOrionGuardEfCore<AppDbContext>(o => o
 
 `OutboxTypeMapRegistry.Map<TEvent>` throws on a name or type that is already mapped to something else. `AllowAssemblyQualifiedNameFallback` defaults to `true`, which keeps rows written before the mapping readable.
 
+The fallback is a security trade-off. With it on, the event type comes from the row, so anyone who can write to the outbox table (a leaked connection string, another service sharing the database, an injection elsewhere) can have any loadable `IDomainEvent` type deserialized from a payload of their choosing and dispatched to its handlers. Types that do not implement `IDomainEvent` are rejected before deserialization, which rules out general deserialization gadgets but not forged events. The worker logs a warning the first time it resolves a row through the fallback. To turn it off:
+
+1. Map every event type with `UseOutboxTypeMap`; new rows then store the logical name.
+2. Wait until no unprocessed row still stores an assembly-qualified name (or rewrite those rows' `EventType` to the logical names).
+3. Set `AllowAssemblyQualifiedNameFallback = false`, as in the example above. A row that still names an unmapped type is then dead-lettered with `TYPE_NOT_FOUND` instead of being resolved.
+
 ## Push wake-up
 
 The worker waits on an `IOutboxWakeSignal`. The default `NullOutboxWakeSignal` only polls. In Outbox mode `SaveChanges` and `SaveChangesAsync` call `SignalAsync` after the save (a synchronous save does not wait for a signal that completes asynchronously), so registering `ChannelOutboxWakeSignal` wakes a dispatcher in the same process immediately. For cross-process wake-ups use [OrionGuard.Outbox.PostgresNotify](https://www.nuget.org/packages/OrionGuard.Outbox.PostgresNotify) or [OrionGuard.Outbox.SqlServerBroker](https://www.nuget.org/packages/OrionGuard.Outbox.SqlServerBroker). `PollingInterval` stays the upper bound either way.

@@ -1,6 +1,5 @@
-using Microsoft.Extensions.DependencyInjection;
+using System.Reflection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
-using Moongazing.OrionGuard.Core;
 using Moongazing.OrionGuard.DependencyInjection;
 
 namespace Moongazing.OrionGuard.AspNetCore.HealthChecks;
@@ -9,8 +8,15 @@ namespace Moongazing.OrionGuard.AspNetCore.HealthChecks;
 /// Health check that verifies OrionGuard validation infrastructure is properly configured.
 /// Checks that ValidatorFactory is registered and can resolve validators.
 /// </summary>
+/// <remarks>
+/// A healthy result carries <c>ValidatorFactory</c> (the registered factory's type name) and <c>Version</c>
+/// (the informational version of the OrionGuard core assembly loaded in the process).
+/// </remarks>
 public sealed class OrionGuardHealthCheck : IHealthCheck
 {
+    // Read from the loaded core assembly rather than written as a literal, which went stale with every release.
+    private static readonly string CoreVersion = ReadVersion(typeof(IValidatorFactory).Assembly);
+
     private readonly IServiceProvider _serviceProvider;
 
     public OrionGuardHealthCheck(IServiceProvider serviceProvider)
@@ -30,20 +36,10 @@ public sealed class OrionGuardHealthCheck : IHealthCheck
                     "OrionGuard ValidatorFactory is not registered. Call services.AddOrionGuard() in startup."));
             }
 
-            // Check if ExceptionFactory is available — prefer DI registration, fall back to static provider
-            var exceptionFactory = _serviceProvider.GetService<IExceptionFactory>() ?? ExceptionFactoryProvider.Current;
-            if (exceptionFactory is null)
-            {
-                return Task.FromResult(HealthCheckResult.Degraded(
-                    "OrionGuard ExceptionFactory is not configured."));
-            }
-
             var data = new Dictionary<string, object>
             {
                 ["ValidatorFactory"] = factory.GetType().Name,
-                ["ExceptionFactory"] = exceptionFactory.GetType().Name,
-                ["SupportedLanguages"] = 14,
-                ["Version"] = "6.0.0"
+                ["Version"] = CoreVersion,
             };
 
             return Task.FromResult(HealthCheckResult.Healthy("OrionGuard validation infrastructure is healthy.", data));
@@ -53,4 +49,9 @@ public sealed class OrionGuardHealthCheck : IHealthCheck
             return Task.FromResult(HealthCheckResult.Unhealthy("OrionGuard health check failed.", ex));
         }
     }
+
+    private static string ReadVersion(Assembly assembly) =>
+        assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
+        ?? assembly.GetName().Version?.ToString()
+        ?? "unknown";
 }

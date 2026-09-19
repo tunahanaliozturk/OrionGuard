@@ -273,9 +273,14 @@ public static class StringGuards
             throw new ArgumentException($"{parameterName} must be a valid URL.", parameterName);
         }
     }
+    /// <summary>
+    /// Throws unless every character of <paramref name="value"/> is part of an emoji. Emoji built from a
+    /// joiner or a variation selector (👨‍👩‍👧, ❤️) and keycaps (1️⃣) are accepted; an empty string is not.
+    /// </summary>
     public static void AgainstNonEmojiCharacters(this string value, string parameterName)
     {
-        if (!Utilities.GeneratedRegexPatterns.Emoji().IsMatch(value))
+        // Emoji() is unanchored: it only says the value CONTAINS an emoji, so "abc😀" used to pass.
+        if (!Utilities.GeneratedRegexPatterns.EmojiOnly().IsMatch(value))
         {
             throw new ArgumentException($"{parameterName} must only contain emoji characters.", parameterName);
         }

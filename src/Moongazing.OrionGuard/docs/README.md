@@ -49,7 +49,7 @@ public static class Registration
   - Business: monetary amount, currency code, SKU, coupon code, discount, status transitions, business hours, date ranges.
   - Rate limits: `AgainstRateLimitExceeded`, `AgainstSlidingWindowExceeded`, `AgainstDailyQuotaExceeded`, and more.
 - Validation messages in 14 languages: English, Turkish, German, French, Spanish, Portuguese, Arabic, Japanese, Chinese, Korean, Russian, Dutch, Polish, Italian. Set the culture per request with `ValidationMessages.SetCultureForCurrentScope`.
-- Exceptions: `Guard` and `Ensure` throw `GuardException` or one of its subclasses (`NullValueException`, `OutOfRangeException`, ...), and most extension guards throw `ArgumentException`. To use your own exception types, catch these at your boundary and rethrow. `IExceptionFactory` is never called by the guards; `AddOrionGuardExceptionFactory<TFactory>()`, `ExceptionFactoryProvider.Configure` and `DefaultExceptionFactory` are obsolete and will be removed in v7.
+- Exceptions: `Guard` and `Ensure` throw `GuardException` or one of its subclasses (`NullValueException`, `OutOfRangeException`, ...), and most extension guards throw `ArgumentException`. To use your own exception types, catch these at your boundary and rethrow. `IExceptionFactory` is never called by the guards; it, `AddOrionGuardExceptionFactory<TFactory>()`, `ExceptionFactoryProvider` and `DefaultExceptionFactory` are obsolete and will be removed in v7.
 - Regex patterns use `[GeneratedRegex]` source generation, so nothing is compiled at runtime.
 
 ### Object validation

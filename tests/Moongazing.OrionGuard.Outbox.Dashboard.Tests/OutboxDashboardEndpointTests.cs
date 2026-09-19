@@ -1,4 +1,4 @@
-namespace Moongazing.OrionGuard.Outbox.Dashboard.Tests;
+﻿namespace Moongazing.OrionGuard.Outbox.Dashboard.Tests;
 
 using System.Data.Common;
 using System.Net;
@@ -52,6 +52,8 @@ public sealed class OutboxDashboardEndpointTests : IAsyncLifetime
             await scope.ServiceProvider.GetRequiredService<TestDbContext>().Database.EnsureCreatedAsync();
         }
         client = host.GetTestClient();
+        // Replay and discard require the mutation header by default; OutboxDashboardMutationHeaderTests covers it.
+        client.DefaultRequestHeaders.Add("X-OrionGuard-Dashboard", "1");
     }
 
     public async Task DisposeAsync()
@@ -581,6 +583,7 @@ public sealed class OutboxDashboardMutationHookTests : IAsyncLifetime
             await scope.ServiceProvider.GetRequiredService<MutHookCtx>().Database.EnsureCreatedAsync();
         }
         client = host.GetTestClient();
+        client.DefaultRequestHeaders.Add("X-OrionGuard-Dashboard", "1");
     }
 
     public async Task DisposeAsync()
@@ -771,6 +774,50 @@ public sealed class OutboxDashboardConfigurationTests
         Assert.Throws<InvalidOperationException>(() => Build(o => o.DefaultPageSize = 0));
         Assert.Throws<InvalidOperationException>(() => Build(o => o.FailedRetryThreshold = 0));
         Assert.Throws<InvalidOperationException>(() => Build(o => o.ErrorTruncationLength = -1));
+    }
+
+    // Anything without the X- prefix: either a cross-site page can set it without a preflight, or the browser
+    // attaches it by itself, and in both cases requiring it would stop nothing.
+    [Theory]
+    [InlineData("")]
+    [InlineData(" ")]
+    [InlineData("X-")]
+    [InlineData("Content-Type")]
+    [InlineData("accept")]
+    [InlineData("Cookie")]
+    [InlineData("Origin")]
+    [InlineData("Sec-Fetch-Site")]
+    [InlineData("DNT")]
+    [InlineData("Upgrade-Insecure-Requests")]
+    [InlineData("Save-Data")]
+    [InlineData("Via")]
+    [InlineData("TE")]
+    [InlineData("Proxy-Authorization")]
+    [InlineData("Access-Control-Request-Method")]
+    [InlineData("OrionGuard-Dashboard")]
+    public void MapOutboxDashboard_throws_on_a_mutation_header_that_does_not_force_a_preflight(string headerName)
+    {
+        Assert.Throws<InvalidOperationException>(() => Build(o => o.MutationHeaderName = headerName));
+    }
+
+    [Theory]
+    [InlineData("X-OrionGuard-Dashboard")]
+    [InlineData("x-csrf-token")]
+    public void MapOutboxDashboard_accepts_a_mutation_header_that_forces_a_preflight(string headerName)
+    {
+        Assert.Null(Record.Exception(() => Build(o => o.MutationHeaderName = headerName).Dispose()));
+    }
+
+    [Fact]
+    public void MapOutboxDashboard_ignores_the_mutation_header_name_when_the_header_is_not_required()
+    {
+        var exception = Record.Exception(() => Build(o =>
+        {
+            o.RequireMutationHeader = false;
+            o.MutationHeaderName = "Cookie";
+        }).Dispose());
+
+        Assert.Null(exception);
     }
 
     private static IHost Build(Action<OutboxDashboardOptions> configure) =>

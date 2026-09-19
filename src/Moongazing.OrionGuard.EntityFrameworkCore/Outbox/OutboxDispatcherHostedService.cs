@@ -53,6 +53,8 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
     // Null and NullOutboxRowFailureObserver both mean 'no observer', so the dispatcher skips the call entirely.
     private readonly IOutboxRowFailureObserver? rowFailureObserver;
     private readonly TimeProvider timeProvider;
+    // 1 once the assembly-qualified-name fallback warning has been logged; set with Interlocked.
+    private int assemblyQualifiedNameFallbackWarned;
 
     /// <summary>Initializes a new worker.</summary>
     /// <param name="options">Outbox dispatch configuration.</param>
@@ -339,9 +341,17 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
         {
             type = resolved;
         }
+        else if (typeMapOptions.AllowAssemblyQualifiedNameFallback)
+        {
+            type = Type.GetType(row.EventType);
+            if (type is not null)
+            {
+                WarnOnFirstAssemblyQualifiedNameFallback(row.EventType);
+            }
+        }
         else
         {
-            type = typeMapOptions.AllowAssemblyQualifiedNameFallback ? Type.GetType(row.EventType) : null;
+            type = null;
         }
 
         if (type is null)
@@ -358,6 +368,25 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
         return @event is null
             ? $"DESERIALIZE_FAILED: payload for '{row.EventType}' deserialized to null or wrong type."
             : null;
+    }
+
+    // The fallback stays on by default because rows written without a type map carry assembly-qualified names,
+    // but it lets whoever can write outbox rows pick the event type that is deserialized and dispatched. Say so
+    // once, the first time the dispatcher actually relies on it, rather than on every row.
+    private void WarnOnFirstAssemblyQualifiedNameFallback(string eventType)
+    {
+        if (Interlocked.Exchange(ref assemblyQualifiedNameFallbackWarned, 1) != 0)
+        {
+            return;
+        }
+
+        logger?.LogWarning(
+            "Outbox event type '{EventType}' was resolved by its assembly-qualified name because " +
+            "OutboxTypeMapOptions.AllowAssemblyQualifiedNameFallback is enabled. With the fallback on, anyone who can " +
+            "write outbox rows can have any loadable IDomainEvent type deserialized and dispatched. Map every event " +
+            "type with UseOutboxTypeMap and set AllowAssemblyQualifiedNameFallback = false once no unmapped rows " +
+            "remain. This warning is logged once.",
+            eventType);
     }
 
     private async Task DeadLetterAsync(DbContext db, OutboxMessage row, string reason, CancellationToken cancellationToken)

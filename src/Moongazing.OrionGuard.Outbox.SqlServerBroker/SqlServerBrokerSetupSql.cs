@@ -1,3 +1,5 @@
+using System.Buffers;
+
 namespace Moongazing.OrionGuard.Outbox.SqlServerBroker;
 
 /// <summary>
@@ -7,8 +9,19 @@ namespace Moongazing.OrionGuard.Outbox.SqlServerBroker;
 /// database migration or one-time setup script; this package does NOT auto-install the
 /// schema to avoid surprise changes.
 /// </summary>
+/// <remarks>
+/// Every name must be a plain identifier: 1 to 128 ASCII letters, digits or underscores, not starting
+/// with a digit. Anything else, including a schema-qualified <c>schema.table</c>, throws
+/// <see cref="ArgumentException"/>, because the names are spliced into DDL and into the string that
+/// <c>EXEC</c> runs.
+/// </remarks>
 public static class SqlServerBrokerSetupSql
 {
+    private const int MaxNameLength = 128;
+
+    private static readonly SearchValues<char> IdentifierChars =
+        SearchValues.Create("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_");
+
     /// <summary>
     /// Idempotent SQL that creates the Service Broker objects (or returns silently if they
     /// already exist) and binds the AFTER INSERT trigger to the outbox table. Substitute
@@ -16,6 +29,7 @@ public static class SqlServerBrokerSetupSql
     /// Service Broker MUST be enabled on the target database; run
     /// <c>ALTER DATABASE [&lt;db&gt;] SET ENABLE_BROKER WITH ROLLBACK IMMEDIATE;</c> once.
     /// </summary>
+    /// <exception cref="ArgumentException">A name is empty or not a plain identifier.</exception>
     public static string Create(
         string tableName = "OrionGuard_Outbox",
         string queueName = "OrionGuardOutboxQueue",
@@ -23,12 +37,14 @@ public static class SqlServerBrokerSetupSql
         string contractName = "OrionGuardOutboxContract",
         string messageTypeName = "OrionGuardOutboxRowInserted")
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(tableName);
-        ArgumentException.ThrowIfNullOrWhiteSpace(queueName);
-        ArgumentException.ThrowIfNullOrWhiteSpace(serviceName);
-        ArgumentException.ThrowIfNullOrWhiteSpace(contractName);
-        ArgumentException.ThrowIfNullOrWhiteSpace(messageTypeName);
+        ValidateName(tableName, nameof(tableName));
+        ValidateName(queueName, nameof(queueName));
+        ValidateName(serviceName, nameof(serviceName));
+        ValidateName(contractName, nameof(contractName));
+        ValidateName(messageTypeName, nameof(messageTypeName));
 
+        // The names are plain identifiers by now, so the escapes below change nothing today. They stay as
+        // defence in depth: the SQL remains well-formed even if the validation is ever relaxed.
         var tableQ = EscapeIdentifier(tableName);
         var queueQ = EscapeIdentifier(queueName);
         var serviceQ = EscapeIdentifier(serviceName);
@@ -39,10 +55,13 @@ public static class SqlServerBrokerSetupSql
         var queueLit = EscapeLiteral(queueName);
         var serviceLit = EscapeLiteral(serviceName);
 
-        // Inside EXEC('...') the inner trigger body is itself a SQL string literal, so every
-        // single quote in the inner SQL doubles for EXEC. For the SEND TO SERVICE '<name>'
-        // literal, the name's single quotes go through two layers of escape: the inner
-        // literal (' -> '') and the EXEC string (' -> ''), producing four quotes total.
+        // Inside EXEC('...') the trigger body is itself a string literal, so everything spliced into it goes
+        // through a second escape for that literal (' -> ''): a bracketed identifier is bracket-escaped for the
+        // inner SQL and then quote-doubled, and the SEND TO SERVICE '<name>' literal is quote-doubled twice.
+        var tableInExec = EscapeLiteral(tableQ);
+        var serviceInExec = EscapeLiteral(serviceQ);
+        var contractInExec = EscapeLiteral(contractIdQ);
+        var messageInExec = EscapeLiteral(messageIdQ);
         var serviceLiteralForExec = EscapeLiteral(EscapeLiteral(serviceName));
 
         return $@"
@@ -61,19 +80,19 @@ IF NOT EXISTS (SELECT 1 FROM sys.services WHERE name = N'{serviceLit}')
 IF NOT EXISTS (SELECT 1 FROM sys.triggers WHERE name = N'orionguard_outbox_broker_notify')
 EXEC ('
 CREATE TRIGGER [orionguard_outbox_broker_notify]
-ON [{tableQ}]
+ON [{tableInExec}]
 AFTER INSERT
 AS
 BEGIN
     SET NOCOUNT ON;
     DECLARE @h UNIQUEIDENTIFIER;
     BEGIN DIALOG CONVERSATION @h
-        FROM SERVICE [{serviceQ}]
+        FROM SERVICE [{serviceInExec}]
         TO SERVICE ''{serviceLiteralForExec}''
-        ON CONTRACT [{contractIdQ}]
+        ON CONTRACT [{contractInExec}]
         WITH ENCRYPTION = OFF;
     SEND ON CONVERSATION @h
-        MESSAGE TYPE [{messageIdQ}] (N''row'');
+        MESSAGE TYPE [{messageInExec}] (N''row'');
     END CONVERSATION @h;
 END;
 ');
@@ -81,6 +100,7 @@ END;
     }
 
     /// <summary>SQL that tears down the trigger and Service Broker objects created by <see cref="Create"/>.</summary>
+    /// <exception cref="ArgumentException">A name is empty or not a plain identifier.</exception>
     public static string Drop(
         string tableName = "OrionGuard_Outbox",
         string queueName = "OrionGuardOutboxQueue",
@@ -88,11 +108,12 @@ END;
         string contractName = "OrionGuardOutboxContract",
         string messageTypeName = "OrionGuardOutboxRowInserted")
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(tableName);
-        ArgumentException.ThrowIfNullOrWhiteSpace(queueName);
-        ArgumentException.ThrowIfNullOrWhiteSpace(serviceName);
-        ArgumentException.ThrowIfNullOrWhiteSpace(contractName);
-        ArgumentException.ThrowIfNullOrWhiteSpace(messageTypeName);
+        // tableName is not part of the teardown SQL; it is validated so Create and Drop accept the same names.
+        ValidateName(tableName, nameof(tableName));
+        ValidateName(queueName, nameof(queueName));
+        ValidateName(serviceName, nameof(serviceName));
+        ValidateName(contractName, nameof(contractName));
+        ValidateName(messageTypeName, nameof(messageTypeName));
 
         var queueQ = EscapeIdentifier(queueName);
         var serviceQ = EscapeIdentifier(serviceName);
@@ -117,6 +138,19 @@ IF EXISTS (SELECT 1 FROM sys.service_contracts WHERE name = N'{EscapeLiteral(con
 IF EXISTS (SELECT 1 FROM sys.service_message_types WHERE name = N'{EscapeLiteral(messageTypeName)}')
     DROP MESSAGE TYPE [{messageIdQ}];
 ";
+    }
+
+    // Allow-list rather than escaping alone: a name ends up both inside brackets and inside the string EXEC
+    // runs, and one missed escape layer there once let a name break out. Plain identifiers need neither.
+    private static void ValidateName(string value, string parameterName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(value, parameterName);
+        if (value.Length > MaxNameLength || char.IsAsciiDigit(value[0]) || value.AsSpan().ContainsAnyExcept(IdentifierChars))
+        {
+            throw new ArgumentException(
+                $"{parameterName} must be a plain SQL identifier: 1 to {MaxNameLength} ASCII letters, digits or underscores, not starting with a digit.",
+                parameterName);
+        }
     }
 
     // SQL Server bracketed-identifier escape: double the close bracket.

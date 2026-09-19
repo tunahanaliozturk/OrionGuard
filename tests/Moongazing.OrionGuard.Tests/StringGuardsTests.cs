@@ -98,4 +98,48 @@ public class StringGuardsTests
     }
 
     #endregion
+
+    #region AgainstNonEmojiCharacters
+
+    [Theory]
+    [InlineData("abc\U0001F600")]        // the emoji pattern was unanchored, so any emoji anywhere passed
+    [InlineData("\U0001F600 ")]
+    [InlineData("\U0001F600abc")]
+    [InlineData("hello")]
+    [InlineData("")]
+    [InlineData("❤️‍")]                    // a joiner with nothing after it is an incomplete sequence
+    [InlineData("‍\U0001F600")]            // and one with nothing before it
+    [InlineData("️")]                      // a variation selector on its own
+    public void AgainstNonEmojiCharacters_ShouldThrow_WhenValueHasANonEmojiCharacter(string value)
+    {
+        Assert.Throws<ArgumentException>(() => value.AgainstNonEmojiCharacters("v"));
+    }
+
+    [Fact]
+    public void AgainstNonEmojiCharacters_ShouldThrow_WhenValueIsAnUnpairedSurrogate()
+    {
+        // Built here rather than in [InlineData]: xUnit serializes theory data, and an unpaired surrogate
+        // comes back as U+FFFD, which is an Other Symbol and would pass the guard for the wrong reason.
+        var high = new string('\uD83D', 1);
+        var low = new string('\uDE00', 1);
+
+        Assert.Throws<ArgumentException>(() => high.AgainstNonEmojiCharacters("v"));
+        Assert.Throws<ArgumentException>(() => low.AgainstNonEmojiCharacters("v"));
+        Assert.Null(Record.Exception(() => (high + low).AgainstNonEmojiCharacters("v")));
+    }
+
+    [Theory]
+    [InlineData("\U0001F600")]                                   // grinning face
+    [InlineData("\U0001F600\U0001F602")]                         // two emoji
+    [InlineData("❤️")]                                 // red heart + variation selector 16
+    [InlineData("\U0001F468‍\U0001F469‍\U0001F467")]   // family, joined with ZWJ
+    [InlineData("\U0001F469\U0001F3FD")]                         // emoji + skin tone modifier
+    [InlineData("1️⃣")]                                // keycap
+    [InlineData("©")]                                       // copyright sign (Other Symbol)
+    public void AgainstNonEmojiCharacters_ShouldNotThrow_WhenValueIsOnlyEmoji(string value)
+    {
+        Assert.Null(Record.Exception(() => value.AgainstNonEmojiCharacters("v")));
+    }
+
+    #endregion
 }
