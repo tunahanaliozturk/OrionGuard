@@ -57,7 +57,8 @@ public sealed class OrionGuardMvcFilter : IAsyncActionFilter
             if (result is { IsInvalid: true })
             {
                 var options = services.GetService<OrionGuardAspNetCoreOptions>();
-                var statusCode = options?.DefaultStatusCode ?? 422;
+                // A validator that returns FailureWithStatus (e.g. 409) knows better than the global default.
+                var statusCode = result.SuggestedHttpStatusCode ?? options?.DefaultStatusCode ?? 422;
 
                 if (options is null || options.UseProblemDetails)
                 {

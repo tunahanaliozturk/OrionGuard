@@ -3,9 +3,11 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Moongazing.OrionGuard.AspNetCore.Attributes;
 using Moongazing.OrionGuard.AspNetCore.Extensions;
@@ -151,5 +153,62 @@ public sealed class ValidateRequestAttributeTests
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal(1, counter.Calls);
+    }
+
+    [Fact]
+    public async Task Invalid_body_uses_the_status_the_validator_suggests_over_DefaultStatusCode()
+    {
+        using var host = await StartAsync(configureServices: UseOnlyConflictValidator);
+
+        var response = await PostAsync(host, "/orders", new MvcOrderRequest("DUPLICATE", 1));
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal(409, body.RootElement.GetProperty("status").GetInt32());
+    }
+
+    [Fact]
+    public async Task Endpoint_filter_uses_the_status_the_validator_suggests_over_DefaultStatusCode()
+    {
+        using var host = await new HostBuilder()
+            .ConfigureWebHost(web =>
+            {
+                web.UseTestServer();
+                web.ConfigureServices(services =>
+                {
+                    services.AddRouting();
+                    services.AddOrionGuardAspNetCore();
+                    UseOnlyConflictValidator(services);
+                });
+                web.Configure(app =>
+                {
+                    app.UseRouting();
+                    app.UseEndpoints(endpoints => endpoints
+                        .MapPost("/minimal-orders", (MvcOrderRequest request) => Results.Ok(request))
+                        .WithValidation<MvcOrderRequest>());
+                });
+            })
+            .StartAsync();
+
+        var response = await PostAsync(host, "/minimal-orders", new MvcOrderRequest("DUPLICATE", 1));
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+    }
+
+    private static void UseOnlyConflictValidator(IServiceCollection services)
+    {
+        services.RemoveAll<IValidator<MvcOrderRequest>>();
+        services.AddValidator<MvcOrderRequest, DuplicateCodeValidator>();
+    }
+
+    private sealed class DuplicateCodeValidator : IValidator<MvcOrderRequest>
+    {
+        public GuardResult Validate(MvcOrderRequest value) =>
+            value.Code == "DUPLICATE"
+                ? GuardResult.FailureWithStatus(409, nameof(MvcOrderRequest.Code), "Order code already exists.")
+                : GuardResult.Success();
+
+        public Task<GuardResult> ValidateAsync(MvcOrderRequest value, CancellationToken cancellationToken = default) =>
+            Task.FromResult(Validate(value));
     }
 }
