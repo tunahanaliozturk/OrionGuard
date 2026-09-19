@@ -270,6 +270,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   dispatched again on the next start. The stamp is no longer cancelled by shutdown; the database command
   timeout and the host's shutdown timeout still bound it.
   The rest of the batch is left for the next start: once shutdown is requested, no further row is dispatched.
+- **`OrionGuard.Generators`: `[Range]` bounds compile on every machine and match the property type.** Bounds were
+  printed with the build machine's culture, so on a comma-decimal machine such as `tr-TR`,
+  `[Range(0.5, 99.9)]` emitted `Ratio < 0,5` and the project did not compile. Bounds are now culture-invariant, and a
+  fractional bound is typed to the property: `decimal` properties compare against `decimal` literals (a bare
+  `double` did not compile, CS0019), `float` properties against `float` literals (compared as `double`,
+  `[Range(0, 0.1)]` rejected `0.1f`), and a bound outside `decimal`'s range, such as `double.MaxValue`, compares
+  as `double`.
+- **`OrionGuard.Generators`: same-named types in different namespaces no longer break generation.** Both generators
+  named their output files after the simple type name, so `Orders.CreateRequest` and `Users.CreateRequest` (or two
+  `CustomerId` ids) collided (CS8785) and the generator dropped every file it produced, for every type. Output files
+  are now named after the fully-qualified type name.
+- **`OrionGuard.Generators`: `[GenerateValidator]` handles more target shapes.** Records (`record`, `record class`,
+  `record struct`) were skipped. Properties inherited from base classes were not validated; they are now, and an
+  override without attributes keeps the rules of the property it overrides, so inherited properties can report
+  errors they used to accept. A nested type produced CS0246 and an `internal` type CS0051; the validator now names
+  the type fully qualified and is `internal` unless the type and every enclosing type are public. Static, indexer and
+  write-only properties are skipped instead of producing code that does not compile.
+- **`OrionGuard.Generators`: `[GenerateValidator]` reads only OrionGuard attributes and reports the ones it cannot
+  translate.** Attributes were matched by simple name, so `System.ComponentModel.DataAnnotations.RangeAttribute` was
+  enforced as an OrionGuard range; matching is now by full name. A `ValidationAttribute` subclass the generator does
+  not translate, including your own, used to be ignored silently and now raises the new warning **OG0002**.
+- **`OrionGuard.Generators`: a regex timeout in a generated validator is a validation error.** `[Email]` and
+  `[Regex]` checks that exceed the one-second match timeout add the `EMAIL` or `REGEX` error instead of throwing
+  `RegexMatchTimeoutException`, as the core package's result-returning APIs do.
+- **`OrionGuard.Generators`: generated code is cached across unrelated edits.** The pipeline models compared by
+  reference, so every keystroke anywhere in the project regenerated every validator and strongly-typed id. They now
+  compare by value and an unrelated edit reuses the cached output.
+- **`OrionGuard.Generators` (deprecated `[StronglyTypedId]`): generated ids work as documented.** On `default(TId)`
+  of a `string` id, `==`, `Equals`, `GetHashCode` and `ToString` threw `NullReferenceException`; they now handle the
+  null value, and `ToString()` returns an empty string. The generated `TypeConverter` was never attached; the struct
+  now carries `[TypeConverter]` (unless you applied your own), so model binding finds it. The generated JSON
+  converter is still not attached, so the default `System.Text.Json` output (`{"Value":"abc"}`) does not change
+  under existing API clients; note that this default shape does not deserialize back into the id. Register
+  `<TypeName>JsonConverter` in `JsonSerializerOptions.Converters` for a working bare-value round trip. An id in the global namespace
+  generated `namespace <global namespace>` and did not compile.
+- **`OrionGuard.OpenApi`: `float` members compare as `float`.** A `float` member equal to the schema's `maximum`,
+  `minimum` or an `enum` value failed (`0.1f` against `maximum: 0.1` reported `MAXIMUM`) because the bound was
+  compared as `double`.
+- **`OrionGuard.OpenApi`: a deeply nested document no longer crashes the build.** The bundled JSON parser recursed
+  without a limit, so an additional file nesting about 100,000 arrays overflowed the stack and took down the compiler
+  server and the IDE. Nesting deeper than 256 levels now reports OG1002.
+- **`OrionGuard.OpenApi`: `pattern` and `format` checks are timeout-bounded and anchored.** They called the static
+  `Regex.IsMatch`, which has no timeout, so a backtracking `pattern` could pin a request thread on hostile input
+  (ReDoS). They now go through `RegexCache` (one-second timeout), and a match that times out adds the `PATTERN` or
+  `FORMAT` error. The `uuid`, `date`, `date-time`, `uri`, `hostname` and `ipv4` patterns ended in `$`, which also
+  matches before a trailing newline, and used `\d`, which matches any Unicode digit; they now end in `\z` and use
+  `[0-9]`, so `"2026-01-01\n"` and Arabic-Indic digits are rejected.
 
 ### Deprecated
 
@@ -292,9 +339,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and pattern checks called the static `Regex.IsMatch`, which has no timeout, so a catastrophic-backtracking
   pattern could pin a request thread on hostile input (ReDoS). They now use `RegexCache` or the source-generated
   `GeneratedRegexPatterns.Email()`, both bounded at 1 second, instead of hanging. Validators generated by
-  `OrionGuard.Generators` pick this up on the next build. In the core package a match that times out is reported
-  as a validation failure (see "A regex timeout is a validation failure" below); generated validators still throw
-  `RegexMatchTimeoutException`.
+  `OrionGuard.Generators` pick this up on the next build. A match that times out is reported as a validation
+  failure, in the core package (see "A regex timeout is a validation failure" below) and in generated validators
+  (see Fixed).
 - `Testcontainers.Redis` 4.0.0 → 4.15.0 in the Redis lock tests drops the transitive `SSH.NET` 2023.0.0
   ([GHSA-mggc-4xg6-vcxf](https://github.com/advisories/GHSA-mggc-4xg6-vcxf),
   [GHSA-q939-rpr3-3284](https://github.com/advisories/GHSA-q939-rpr3-3284), High). Test only.

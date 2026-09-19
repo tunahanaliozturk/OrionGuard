@@ -16,6 +16,9 @@ namespace Moongazing.OrionGuard.Generators.StronglyTypedIds
     [Generator(LanguageNames.CSharp)]
     public sealed class StronglyTypedIdGenerator : IIncrementalGenerator
     {
+
+        private const string TypeConverterAttributeFullName = "System.ComponentModel.TypeConverterAttribute";
+
         public void Initialize(IncrementalGeneratorInitializationContext context)
         {
             context.RegisterPostInitializationOutput(ctx =>
@@ -43,34 +46,36 @@ namespace Moongazing.OrionGuard.Generators.StronglyTypedIds
                 if (target is null) return;
 
                 spc.AddSource(
-                    $"{target.TypeName}.StronglyTypedId.g.cs",
+                    target.HintName + ".StronglyTypedId.g.cs",
                     SourceText.From(
-                        StronglyTypedIdEmitter.EmitPartial(target.Namespace, target.TypeName, target.ValueType),
+                        StronglyTypedIdEmitter.EmitPartial(
+                            target.Namespace, target.TypeName, target.ValueType,
+                            emitTypeConverterAttribute: !target.HasTypeConverterAttribute),
                         Encoding.UTF8));
 
                 if (efCoreAvailable)
                 {
                     spc.AddSource(
-                        EfCoreConverterEmitter.HintName(target.TypeName),
+                        EfCoreConverterEmitter.HintName(target.HintName),
                         SourceText.From(
                             EfCoreConverterEmitter.Emit(target.Namespace, target.TypeName, target.ValueType),
                             Encoding.UTF8));
                 }
 
                 spc.AddSource(
-                    JsonConverterEmitter.HintName(target.TypeName),
+                    JsonConverterEmitter.HintName(target.HintName),
                     SourceText.From(
                         JsonConverterEmitter.Emit(target.Namespace, target.TypeName, target.ValueType),
                         Encoding.UTF8));
 
                 spc.AddSource(
-                    TypeConverterEmitter.HintName(target.TypeName),
+                    TypeConverterEmitter.HintName(target.HintName),
                     SourceText.From(
                         TypeConverterEmitter.Emit(target.Namespace, target.TypeName, target.ValueType),
                         Encoding.UTF8));
 
                 spc.AddSource(
-                    ParsableEmitter.HintName(target.TypeName),
+                    ParsableEmitter.HintName(target.HintName),
                     SourceText.From(
                         ParsableEmitter.Emit(target.Namespace, target.TypeName, target.ValueType),
                         Encoding.UTF8));
@@ -92,24 +97,46 @@ namespace Moongazing.OrionGuard.Generators.StronglyTypedIds
 
             if (!SupportedValueTypeMap.TryParse(fqName, out var mapped)) return null;
 
+            // A user who already wired a converter by hand keeps it: emitting a second
+            // [JsonConverter] or [TypeConverter] would fail the build with CS0579.
+            var attributeNames = symbol.GetAttributes()
+                .Select(a => a.AttributeClass?.ToDisplayString())
+                .ToArray();
+
             return new StronglyTypedIdTarget(
-                symbol.ContainingNamespace.ToDisplayString(),
+                symbol.ContainingNamespace.IsGlobalNamespace ? null : symbol.ContainingNamespace.ToDisplayString(),
                 symbol.Name,
-                mapped);
+                HintNames.ForType(symbol),
+                mapped,
+                attributeNames.Contains(TypeConverterAttributeFullName));
         }
 
-        private sealed class StronglyTypedIdTarget
+        /// <summary>
+        /// Value-equal (a record over strings, bools and an enum), so an unrelated edit leaves the
+        /// generated sources cached instead of regenerating them.
+        /// </summary>
+        private sealed record StronglyTypedIdTarget
         {
-            public StronglyTypedIdTarget(string @namespace, string typeName, SupportedValueType valueType)
+            public StronglyTypedIdTarget(
+                string? @namespace,
+                string typeName,
+                string hintName,
+                SupportedValueType valueType,
+                bool hasTypeConverterAttribute)
             {
                 Namespace = @namespace;
                 TypeName = typeName;
+                HintName = hintName;
                 ValueType = valueType;
+                HasTypeConverterAttribute = hasTypeConverterAttribute;
             }
 
-            public string Namespace { get; }
+            /// <summary>The containing namespace, or <c>null</c> for the global namespace.</summary>
+            public string? Namespace { get; }
             public string TypeName { get; }
+            public string HintName { get; }
             public SupportedValueType ValueType { get; }
+            public bool HasTypeConverterAttribute { get; }
         }
     }
 }

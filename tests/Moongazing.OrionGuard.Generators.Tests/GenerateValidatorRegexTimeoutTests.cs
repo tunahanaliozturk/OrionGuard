@@ -48,9 +48,36 @@ public class GenerateValidatorRegexTimeoutTests
             Environment.NewLine,
             updatedCompilation.SyntaxTrees.Skip(1).Select(t => t.ToString()));
 
-        Assert.Contains("Moongazing.OrionGuard.Utilities.GeneratedRegexPatterns.Email().IsMatch(instance.Email)", generated);
-        Assert.Contains("Moongazing.OrionGuard.Core.RegexCache.GetOrCreate(@\"^[A-Z]{2}\"\"?$\").IsMatch(instance.CountryCode)", generated);
+        Assert.Contains("MatchesWithinTimeout(Moongazing.OrionGuard.Utilities.GeneratedRegexPatterns.Email(), instance.Email)", generated);
+        Assert.Contains("MatchesWithinTimeout(Moongazing.OrionGuard.Core.RegexCache.GetOrCreate(@\"^[A-Z]{2}\"\"?$\"), instance.CountryCode)", generated);
         Assert.DoesNotContain("Regex.IsMatch(", generated);
         Assert.Empty(updatedCompilation.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error));
+    }
+
+    [Fact]
+    public void GeneratedValidator_ShouldReportAValidationError_WhenAPatternMatchTimesOut()
+    {
+        // A nested quantifier backtracks exponentially on a near-miss; RegexCache stops it after one
+        // second, and the generated validator used to let that RegexMatchTimeoutException escape.
+        const string source = """
+            using Moongazing.OrionGuard.Attributes;
+            using Moongazing.OrionGuard.Generators;
+
+            namespace App
+            {
+                [GenerateValidator]
+                public sealed class Slug
+                {
+                    [Regex("^(a|aa)+$")] public string? Value { get; set; }
+                }
+            }
+            """;
+
+        var assembly = GeneratorTestHarness.Compile(source, new OrionGuardGenerator());
+
+        var hostile = GeneratorTestHarness.New(assembly, "App.Slug", ("Value", new string('a', 64) + "!"));
+        var result = GeneratorTestHarness.Validate(assembly, "App.SlugValidator", hostile);
+
+        Assert.Contains(result.Errors, e => e.ParameterName == "Value" && e.ErrorCode == "REGEX");
     }
 }

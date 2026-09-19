@@ -59,15 +59,17 @@ Which checks are emitted depends on the C# property type, not on the schema's `t
 | --- | --- | --- |
 | `required` | Reference type or `Nullable<T>` | Not null (`REQUIRED`). Value-type properties have no check. |
 | `minLength` / `maxLength` | `string` | Length bounds (`MIN_LENGTH` / `MAX_LENGTH`) |
-| `pattern` | `string` | `Regex.IsMatch` (`PATTERN`) |
-| `format` | `string` | `email`, `uuid`, `date-time`, `date`, `uri`, `hostname`, `ipv4` by regular expression (`FORMAT`). Other formats are ignored. |
+| `pattern` | `string` | Regular-expression match (`PATTERN`) |
+| `format` | `string` | `email`, `uuid`, `date-time`, `date`, `uri`, `hostname`, `ipv4` by regular expression (`FORMAT`). The patterns anchor at the true end of the value, so a trailing newline fails, and accept ASCII digits only. Other formats are ignored. |
 | `enum` | `string` or numeric | Allowed values; strings compare ordinally (`ENUM`) |
-| `minimum` / `maximum` | Numeric | Range (`MINIMUM` / `MAXIMUM`). Integral and `decimal` properties compare as `decimal`, `float` and `double` as `double`. |
+| `minimum` / `maximum` | Numeric | Range (`MINIMUM` / `MAXIMUM`). Integral and `decimal` properties compare as `decimal`, `float` as `float`, and `double` as `double`. Numeric `enum` values compare the same way. |
 | `exclusiveMinimum` / `exclusiveMaximum` | Numeric | Boolean form (OpenAPI 3.0) and numeric form (3.1) |
 | `minItems` / `maxItems` | Array or `IEnumerable` | Item count (`MIN_ITEMS` / `MAX_ITEMS`) |
 | `$ref` | Any | Same-document references (`#/...`) are resolved for the root pointer and for each property |
 
 A null property skips every check except `required`. A null instance returns a single `NULL` error. Errors are keyed by the schema's property name.
+
+`pattern` and `format` checks run through the core package's `RegexCache`, with a one-second match timeout. A match that times out, for example a backtracking `pattern` on hostile input, counts as a mismatch and adds the `PATTERN` or `FORMAT` error; the validator does not hang or throw.
 
 ## Not supported
 
@@ -84,7 +86,7 @@ Problems in the document or the target are reported as diagnostics. The generato
 | Id | Severity | Meaning |
 | --- | --- | --- |
 | `OG1001` | Error | The named document is not among the additional files. |
-| `OG1002` | Error | The document could not be parsed as JSON (YAML is not supported). |
+| `OG1002` | Error | The document could not be parsed as JSON (YAML is not supported), or nests objects and arrays more than 256 levels deep. |
 | `OG1003` | Error | The JSON pointer did not resolve to a schema. |
 | `OG1004` | Error | A `$ref` could not be resolved, or is part of a cycle. |
 | `OG1005` | Warning | The target is not a `partial` class; nothing was generated. |
