@@ -163,7 +163,9 @@ public sealed class RegexAttribute : ValidationAttribute
     {
         if (value is string s)
         {
-            return System.Text.RegularExpressions.Regex.IsMatch(s, Pattern);
+            // RegexCache applies a match timeout; the static Regex.IsMatch would backtrack on
+            // attacker-controlled input without limit.
+            return Core.RegexCache.GetOrCreate(Pattern).IsMatch(s);
         }
         return value is null;
     }

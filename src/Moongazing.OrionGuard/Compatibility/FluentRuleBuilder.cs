@@ -1,5 +1,4 @@
 using System.Linq.Expressions;
-using System.Text.RegularExpressions;
 using Moongazing.OrionGuard.Core;
 using Moongazing.OrionGuard.Utilities;
 
@@ -147,7 +146,7 @@ public sealed class FluentRuleBuilder<T, TProperty>
         _rules.Add(instance =>
         {
             var value = _accessor(instance);
-            if (value is string s && !string.IsNullOrWhiteSpace(s) && !Regex.IsMatch(s, pattern))
+            if (value is string s && !string.IsNullOrWhiteSpace(s) && !RegexCache.GetOrCreate(pattern).IsMatch(s))
             {
                 return new ValidationError(_propertyName, $"'{_propertyName}' is not in the correct format.", "PATTERN");
             }

@@ -735,7 +735,7 @@ public sealed class PropertyValidator<T>
     {
         _rules.Add(value =>
         {
-            if (value is string str && !System.Text.RegularExpressions.Regex.IsMatch(str, @"^[^@\s]+@[^@\s]+\.[^@\s]+$"))
+            if (value is string str && !Utilities.GeneratedRegexPatterns.Email().IsMatch(str))
             {
                 return new Core.ValidationError(_propertyName, message ?? $"{_propertyName} must be a valid email.");
             }

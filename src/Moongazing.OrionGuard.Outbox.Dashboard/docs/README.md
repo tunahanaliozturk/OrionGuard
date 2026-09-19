@@ -33,8 +33,11 @@ app.MapOutboxDashboard<AppDbContext>(o => o.AuthorizationPolicyName = "OutboxOps
 The dashboard can replay and discard rows, and it shows event types and error text, so decide explicitly how it is protected:
 
 - `AuthorizationPolicyName` set: the group calls `RequireAuthorization(policyName)`.
-- Neither option set (the default): the group adds no authorization metadata, so your `AuthorizationOptions.FallbackPolicy` applies. **Without a fallback policy, every endpoint, including replay and discard, is anonymous.**
-- `AllowAnonymous = true`: the group calls `AllowAnonymous()`.
+- Neither option set (the default), and the host has an `AuthorizationOptions.FallbackPolicy`: the group adds no authorization metadata, so the fallback policy applies. (Calling `RequireAuthorization()` here would replace a stricter fallback with the default policy.)
+- Neither option set, and the host has no fallback policy: the group calls `RequireAuthorization()`, so the host's default policy applies, which requires an authenticated user. The dashboard is never anonymous unless you opt out.
+- `AllowAnonymous = true`: the group calls `AllowAnonymous()`. Not recommended outside local development.
+
+Because the group can carry authorization metadata, call `app.UseAuthentication()` and `app.UseAuthorization()` before mapping it.
 
 `MapOutboxDashboard` returns the `RouteGroupBuilder`, so you can add more conventions, for example `.RequireHost(...)`. Set `EnableMutations = false` to map only the read endpoints.
 
