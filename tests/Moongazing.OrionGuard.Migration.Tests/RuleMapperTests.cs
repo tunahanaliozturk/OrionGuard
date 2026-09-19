@@ -54,6 +54,10 @@ public sealed class RuleMapperTests
     [Theory]
     [InlineData("x => x.Min", "x => x.Max")]
     [InlineData("x => x.Exact")]
+    // A method group is the Func<T, int> overload, and duplicating a call would evaluate it twice.
+    [InlineData("GetLimit")]
+    [InlineData("GetLimit()")]
+    [InlineData("Limits.Exact")]
     public void Map_LengthWithLambdaBounds_IsReported(params string[] arguments)
     {
         // Length(Func<T, int>, Func<T, int>) and Length(Func<T, int>) would not compile against Length(int, int).

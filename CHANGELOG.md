@@ -254,7 +254,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     placeholders such as `{PropertyName}`, and the compatibility builder prints them as written.
   - These overloads are now reported, because the rewritten code did not compile: `Must`, `When` and `Unless`
     with a two- or three-parameter lambda, and `Length` with `Func<T, int>` bounds.
-  - FluentValidation's exact-length rule `Length(n)` is now migrated to `Length(n, n)`. It used to be reported
+  - FluentValidation's exact-length rule `Length(n)` is now migrated to `Length(n, n)` when `n` is a numeric
+    literal (any other argument would be evaluated twice, and a method group is the `Func<T, int>` overload). It used to be reported
     as an unknown rule.
   - `ExactLength(n)` is not a FluentValidation rule, so it is now reported instead of rewritten.
 

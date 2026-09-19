@@ -52,7 +52,10 @@ public static class RuleMapper
             "MaximumLength" when argCount == 1 => RuleMapping.Supported("MaximumLength"),
 
             // FluentValidation's exact-length rule is Length(n), which is exactly the inclusive range [n, n].
-            "Length" when argCount == 1 && !IsLambda(args[0]) =>
+            // Only a numeric literal is duplicated: an arbitrary expression (Length(GetLimit())) would be
+            // evaluated twice, and a method group (Length(GetLimit)) is a Func<T, int> overload that cannot
+            // bind to Length(int, int). Anything else is reported.
+            "Length" when argCount == 1 && IsNumericLiteral(args[0]) =>
                 RuleMapping.Supported("Length", ArgumentTransform.DuplicateSingleArgument),
 
             // Numeric comparison. The compatibility builder compares against a constant IComparable
@@ -167,6 +170,9 @@ public static class RuleMapper
     /// </summary>
     private static bool IsLambda(ArgumentSyntax argument) =>
         argument.Expression is LambdaExpressionSyntax;
+
+    private static bool IsNumericLiteral(ArgumentSyntax argument) =>
+        argument.Expression.IsKind(SyntaxKind.NumericLiteralExpression);
 
     /// <summary>
     /// True for <c>x =&gt; ...</c> or <c>(x) =&gt; ...</c>. FluentValidation's <c>Must</c>, <c>When</c> and

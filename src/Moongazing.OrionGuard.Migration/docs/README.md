@@ -84,7 +84,7 @@ validator per rule:
 | `Equal(value)` | `Equal(value)` |
 | `NotEqual(value)` | `NotEqual(value)` |
 | `Length(min, max)` | `Length(min, max)` |
-| `Length(n)` (exact length) | `Length(n, n)` |
+| `Length(n)` (exact length, `n` a numeric literal) | `Length(n, n)` |
 | `MinimumLength(n)` | `MinimumLength(n)` |
 | `MaximumLength(n)` | `MaximumLength(n)` |
 | `GreaterThan(value)` | `GreaterThan(value)` |

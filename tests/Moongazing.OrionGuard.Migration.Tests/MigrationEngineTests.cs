@@ -349,14 +349,24 @@ public sealed class MigrationEngineTests
     }
 
     [Fact]
-    public void Migrate_ExactLengthRuleWithNonTrivialArgument_DuplicatesExpressionCorrectly()
+    public void Migrate_ExactLengthRuleWithNonLiteralArgument_IsReportedInsteadOfDuplicated()
     {
-        // Length(expr) -> Length(expr, expr) must clone the WHOLE argument expression, not just
-        // a trivial literal, into a fresh node for the second argument.
+        // Duplicating an expression into Length(expr, expr) evaluates it twice (a getter or a call can
+        // return different values or repeat side effects), so only a numeric literal is rewritten.
         var result = MigrationEngine.Migrate(
             Path, Wrap("        RuleFor(x => x.Code).Length(MaxLength + 1);"));
 
-        Assert.Contains("Length(MaxLength + 1, MaxLength + 1)", result.MigratedText, StringComparison.Ordinal);
+        Assert.DoesNotContain("Length(MaxLength + 1, MaxLength + 1)", result.MigratedText, StringComparison.Ordinal);
+        Assert.True(result.HasUnmigrated);
+    }
+
+    [Fact]
+    public void Migrate_ExactLengthRuleWithNumericLiteral_BecomesAnInclusiveRange()
+    {
+        var result = MigrationEngine.Migrate(
+            Path, Wrap("        RuleFor(x => x.Code).Length(8);"));
+
+        Assert.Contains("Length(8, 8)", result.MigratedText, StringComparison.Ordinal);
         Assert.False(result.HasUnmigrated);
     }
 
