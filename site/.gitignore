@@ -1,0 +1,10 @@
+# The package pages are documentation, not a NuGet packages folder: undo the repository-wide
+# "**/[Pp]ackages/*" rule for this directory only.
+!packages/*
+
+# DocFX output
+_site/
+
+# Generated API metadata (api/index.md is written by hand and stays in the repository)
+api/*.yml
+api/.manifest

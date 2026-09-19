@@ -1,0 +1,208 @@
+@using System.Reflection
+@using Moongazing.OrionGuard.DynamicRules
+
+<article class="page">
+    <header class="page-header">
+        <h1>OrionGuard playground</h1>
+        <p>
+            Everything below runs in your browser on .NET WebAssembly, against
+            <code>OrionGuard @libraryVersion</code>. Nothing is sent to a server.
+        </p>
+        <nav><a href="../">Documentation</a> · <a href="../docs/getting-started.html">Getting started</a> · <a href="../docs/security-guards.html">Security guards</a></nav>
+    </header>
+
+    <section aria-labelledby="rules-heading">
+        <h2 id="rules-heading">Rules from JSON</h2>
+        <p>
+            <code>DynamicValidator.FromJson(rules)</code> builds a validator at run time;
+            <code>Validate(input)</code> returns a <code>GuardResult</code> with every rule that failed.
+            Edit either box to re-run.
+        </p>
+
+        <div class="samples">
+            @foreach (var sample in Samples.RuleSamples)
+            {
+                <button type="button" class="chip" @onclick="() => LoadSample(sample)">@sample.Title</button>
+            }
+        </div>
+        <p class="note">@sampleNote</p>
+
+        <div class="split">
+            <label>
+                <span>Rules JSON</span>
+                <textarea rows="18" spellcheck="false" @bind="rulesJson" @bind:event="oninput" @bind:after="RunRules"></textarea>
+            </label>
+            <label>
+                <span>Input JSON</span>
+                <textarea rows="18" spellcheck="false" @bind="inputJson" @bind:event="oninput" @bind:after="RunRules"></textarea>
+            </label>
+        </div>
+
+        <p class="note">
+            The input is deserialized into a fixed C# class, because the validator reads properties by
+            reflection: @string.Join(", ", DynamicRulesRunner.ModelProperties).
+        </p>
+
+        @if (rules.Error is not null)
+        {
+            <p class="banner failed" role="status">@rules.Error</p>
+        }
+        else if (rules.Result is not null)
+        {
+            <p class="banner @(rules.Result.IsValid ? "passed" : "failed")" role="status">
+                @(rules.Result.IsValid
+                    ? "GuardResult.IsValid is true: every rule passed."
+                    : $"GuardResult.IsInvalid is true: {rules.Result.Errors.Count} error(s).")
+            </p>
+
+            @if (rules.Result.Errors.Count > 0)
+            {
+                <table>
+                    <thead>
+                        <tr><th>Property</th><th>Message</th><th>Error code</th><th>Severity</th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var error in rules.Result.Errors)
+                        {
+                            <tr>
+                                <td><code>@error.ParameterName</code></td>
+                                <td>@error.Message</td>
+                                <td><code>@(error.ErrorCode ?? "—")</code></td>
+                                <td>@error.Severity</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        }
+
+        @if (rules.Warnings.Count > 0)
+        {
+            <div class="warnings">
+                <p><strong>Rules the engine ignores</strong> (the playground reports these; OrionGuard skips them silently):</p>
+                <ul>
+                    @foreach (var warning in rules.Warnings)
+                    {
+                        <li>@warning</li>
+                    }
+                </ul>
+            </div>
+        }
+    </section>
+
+    <section aria-labelledby="guards-heading">
+        <h2 id="guards-heading">Guards</h2>
+        <p>
+            One value, every guard below. A guard that rejects the value throws; the message shown is
+            the exception message your application would see.
+        </p>
+
+        <div class="split">
+            <label>
+                <span>Value</span>
+                <input type="text" spellcheck="false" @bind="guardInput" @bind:event="oninput" @bind:after="RunGuards" />
+            </label>
+            <label>
+                <span>Allowed redirect domains (comma separated)</span>
+                <input type="text" spellcheck="false" @bind="allowedDomains" @bind:event="oninput" @bind:after="RunGuards" />
+            </label>
+        </div>
+
+        <div class="samples">
+            @foreach (var sample in Samples.GuardSamples)
+            {
+                <button type="button" class="chip" @onclick="() => LoadGuardSample(sample)">@sample</button>
+            }
+        </div>
+
+        <table>
+            <thead>
+                <tr><th>Guard</th><th>Call</th><th>Result</th><th>Message</th></tr>
+            </thead>
+            <tbody>
+                @foreach (var outcome in guards)
+                {
+                    <tr>
+                        <td>@outcome.Check.Name</td>
+                        <td><code>@outcome.Check.Call</code></td>
+                        <td class="@VerdictClass(outcome.Verdict)">@VerdictText(outcome.Verdict)</td>
+                        <td>@(outcome.Message is null ? "" : $"{outcome.ExceptionType}: {outcome.Message}")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+
+        <p class="note">
+            The SQL and XSS guards are denylists. They miss payloads they do not list, and they reject
+            ordinary text that contains a listed word — try <em>Please update my delivery address</em>.
+            Parameterized queries and output encoding are the defence;
+            <a href="../docs/security-guards.html">the security guards page</a> says what each guard does
+            and does not promise.
+        </p>
+        <p class="note">
+            One browser limit: <code>AgainstPathTraversal</code> applies NFKC normalization before it looks
+            for traversal sequences, and .NET on WebAssembly does not implement that normalization. A
+            non-ASCII value — try <em>．．／secret.txt</em> — therefore reports
+            <em>unavailable in the browser</em> above. On a server or desktop runtime the same call rejects
+            that value.
+        </p>
+    </section>
+</article>
+
+@code {
+    private static readonly string libraryVersion =
+        typeof(DynamicValidator).Assembly
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
+            .Split('+')[0]
+        ?? typeof(DynamicValidator).Assembly.GetName().Version?.ToString()
+        ?? "";
+
+    private string rulesJson = Samples.RuleSamples[0].Rules;
+    private string inputJson = Samples.RuleSamples[0].Input;
+    private string sampleNote = Samples.RuleSamples[0].Note;
+    private RulesOutcome rules = RulesOutcome.Failed("");
+
+    private string guardInput = Samples.GuardSamples[0];
+    private string allowedDomains = "example.com";
+    private List<GuardOutcome> guards = [];
+
+    protected override void OnInitialized()
+    {
+        RunRules();
+        RunGuards();
+    }
+
+    private void RunRules() => rules = DynamicRulesRunner.Run(rulesJson, inputJson);
+
+    private void RunGuards() => guards = GuardRunner.RunAll(
+        guardInput,
+        allowedDomains.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+
+    private void LoadSample(Samples.RuleSample sample)
+    {
+        rulesJson = sample.Rules;
+        inputJson = sample.Input;
+        sampleNote = sample.Note;
+        RunRules();
+    }
+
+    private void LoadGuardSample(string sample)
+    {
+        guardInput = sample;
+        RunGuards();
+    }
+
+    private static string VerdictText(GuardVerdict verdict) => verdict switch
+    {
+        GuardVerdict.Passes => "passes",
+        GuardVerdict.Rejects => "rejects (throws)",
+        _ => "unavailable in the browser"
+    };
+
+    private static string VerdictClass(GuardVerdict verdict) => verdict switch
+    {
+        GuardVerdict.Passes => "passed",
+        GuardVerdict.Rejects => "failed",
+        _ => "unavailable"
+    };
+}

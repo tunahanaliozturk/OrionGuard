@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk.BlazorWebAssembly">
+
+  <!--
+    Browser playground for the docs site. Not part of Moongazing.OrionGuard.sln and not packed.
+    Publish it before building the site; see site/README.md.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>OrionGuard.Playground</RootNamespace>
+    <OverrideHtmlAssetPlaceholders>true</OverrideHtmlAssetPlaceholders>
+    <IsPackable>false</IsPackable>
+    <!--
+      Publishing a Blazor WebAssembly app trims it, and trimming otherwise replaces framework
+      exception messages with their resource keys: ArgumentException.Message then ends with
+      "Arg_ParamName_Name, input" instead of "(Parameter 'input')". The playground exists to show
+      those messages, so keep the real strings.
+    -->
+    <UseSystemResourceKeys>false</UseSystemResourceKeys>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.12" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="10.0.12" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Moongazing.OrionGuard\Moongazing.OrionGuard.csproj" />
+  </ItemGroup>
+
+</Project>
