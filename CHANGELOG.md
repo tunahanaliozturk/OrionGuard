@@ -291,6 +291,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   translate.** Attributes were matched by simple name, so `System.ComponentModel.DataAnnotations.RangeAttribute` was
   enforced as an OrionGuard range; matching is now by full name. A `ValidationAttribute` subclass the generator does
   not translate, including your own, used to be ignored silently and now raises the new warning **OG0002**.
+- **`OrionGuard.Generators`: `[GenerateValidator]` skips a property it cannot read and says so.** An inherited
+  property whose getter is not public (`{ protected get; set; }`) was emitted as `instance.Property`, which does not
+  compile from the generated namespace-level validator. Such a property is skipped and, when it carries attributes,
+  raises the new warning **OG0003**; the reflection-based `AttributeValidator` still enforces it.
+- **`OrionGuard.Generators`: a `NaN` `[Range]` bound rejects every value, as the attribute does.** Every comparison
+  against `NaN` is false, so `[Range(double.NaN, 10)]` made the generated check accept everything while the
+  reflection-based attribute rejected everything. The generated check now fails for every non-null value.
+- **`OrionGuard.Generators`: hint names cannot collide.** Punctuation in a metadata name all became `_`, so a type
+  named `A_B` and a type `B` nested in `A` produced the same file name and Roslyn dropped every generated source.
+  Each character now has an escape of its own.
 - **`OrionGuard.Generators`: a regex timeout in a generated validator is a validation error.** `[Email]` and
   `[Regex]` checks that exceed the one-second match timeout add the `EMAIL` or `REGEX` error instead of throwing
   `RegexMatchTimeoutException`, as the core package's result-returning APIs do.

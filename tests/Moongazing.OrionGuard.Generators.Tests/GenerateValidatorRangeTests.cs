@@ -1,4 +1,4 @@
-namespace Moongazing.OrionGuard.Generators.Tests;
+﻿namespace Moongazing.OrionGuard.Generators.Tests;
 
 using System.Globalization;
 using static GeneratorTestHarness;
@@ -106,5 +106,35 @@ public class GenerateValidatorRangeTests
 
         Assert.True(atBound.IsValid, ErrorSummary(atBound));
         Assert.Contains(over.Errors, e => e.ParameterName == "Weight" && e.ErrorCode == "RANGE");
+    }
+    [Fact]
+    public void GeneratedValidator_ShouldRejectEveryValue_WhenARangeBoundIsNaN()
+    {
+        // Every comparison against NaN is false, so the reflection-based RangeAttribute rejects the value.
+        // The generated check compared against NaN too, which did the opposite and let the value through.
+        const string source = """
+            using Moongazing.OrionGuard.Attributes;
+            using Moongazing.OrionGuard.Generators;
+
+            namespace App
+            {
+                [GenerateValidator]
+                public sealed class Sample
+                {
+                    [Range(double.NaN, 10)] public double Weight { get; set; }
+                    [Range(0, double.NaN)] public double? Optional { get; set; }
+                }
+            }
+            """;
+
+        var assembly = Compile(source, new OrionGuardGenerator());
+
+        var inRange = Validate(assembly, "App.SampleValidator", New(assembly, "App.Sample", ("Weight", 5d), ("Optional", 5d)));
+        var missing = Validate(assembly, "App.SampleValidator", New(assembly, "App.Sample", ("Weight", 5d)));
+
+        Assert.Contains(inRange.Errors, e => e.ParameterName == "Weight" && e.ErrorCode == "RANGE");
+        Assert.Contains(inRange.Errors, e => e.ParameterName == "Optional" && e.ErrorCode == "RANGE");
+        // A null value is outside every rule's reach, NaN bound or not.
+        Assert.DoesNotContain(missing.Errors, e => e.ParameterName == "Optional");
     }
 }

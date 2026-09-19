@@ -13,7 +13,9 @@ namespace Moongazing.OrionGuard.Generators
         /// Roslyn requires every hint name of a generator to be unique and, when two sources collide,
         /// fails the whole generator run, dropping every generated file. A stem built from the simple name
         /// alone collided as soon as two namespaces declared a type with the same name. Dots are kept;
-        /// any other character that is not a letter or digit becomes an underscore.
+        /// every other character that is not a letter or digit gets an escape of its own, so two different
+        /// metadata names can never produce the same stem: a type named <c>A_B</c> and a type <c>B</c>
+        /// nested in <c>A</c> both used to become <c>A_B</c>.
         /// </summary>
         public static string ForType(INamedTypeSymbol type)
         {
@@ -31,7 +33,24 @@ namespace Moongazing.OrionGuard.Generators
             var sb = new StringBuilder(name.Length);
             foreach (char c in name)
             {
-                sb.Append(c == '.' || char.IsLetterOrDigit(c) ? c : '_');
+                switch (c)
+                {
+                    case '.':
+                        sb.Append(c);
+                        break;
+                    case '_':
+                        sb.Append("__");   // so an underscore in a name never reads as an escape
+                        break;
+                    case '+':
+                        sb.Append("_n");   // nesting
+                        break;
+                    case '`':
+                        sb.Append("_g");   // generic arity
+                        break;
+                    default:
+                        sb.Append(char.IsLetterOrDigit(c) ? c.ToString() : "_x");
+                        break;
+                }
             }
 
             return sb.ToString();
