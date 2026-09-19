@@ -38,6 +38,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in the schema and carries a `// not enforced here:` comment in the TypeScript instead of being dropped.
   Rules registered on an `AbstractValidator<T>` or built with `Validate.For` are C# delegates and stay
   invisible to both exporters. Both entry points are `[RequiresUnreferencedCode]`.
+  - `[NotEmpty]` on a string is `IsNullOrWhiteSpace`, so the schema adds an unanchored `\S` pattern next to
+    `minLength: 1`; `minLength` alone would accept `"   "`. Several patterns on one member are ANDed under
+    `allOf` rather than all but one being dropped.
+  - A `[Regex]` pattern is only copied into the artifact when it is ECMAScript regex. Inline options
+    (`(?i)`), .NET anchors (`\A`, `\Z`, `\z`, `\G`), Unicode categories (`\p{...}`), named, balancing,
+    atomic and conditional groups, and character class subtraction are reported under
+    `x-orionguard-unsupported` instead, because a JSON Schema `pattern` that a consumer reads differently
+    is worse than a missing one.
+  - Element nullability is carried through every collection level: `List<string?>` exports
+    `(string | null)[]`, and nested collections such as `List<List<Address>>` define `Address` and export
+    `Address[][]`.
+  - `byte[]` exports as `string` with `contentEncoding: base64`, matching what `System.Text.Json` writes.
+  - A serialized name that is not a valid TypeScript identifier, such as one from
+    `[JsonPropertyName("first-name")]`, is emitted as a quoted and escaped member name so the declaration
+    parses.
 
 ### Changed
 

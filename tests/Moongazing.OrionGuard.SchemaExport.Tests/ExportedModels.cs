@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Moongazing.OrionGuard.Attributes;
 
 namespace Moongazing.OrionGuard.SchemaExport.Tests;
@@ -80,6 +81,50 @@ public sealed class EvenNumberAttribute : ValidationAttribute
 
     protected override string GetDefaultMessage(string propertyName) =>
         $"{propertyName} must be even.";
+}
+
+/// <summary>Serialized names that are not valid TypeScript identifiers.</summary>
+public sealed class WireNames
+{
+    [JsonPropertyName("plain")] public string Plain { get; set; } = string.Empty;
+    [JsonPropertyName("first-name")] public string FirstName { get; set; } = string.Empty;
+    [JsonPropertyName("2fa")] public bool TwoFactorEnabled { get; set; }
+    [JsonPropertyName("say \"hi\"")] public string? Greeting { get; set; }
+}
+
+/// <summary>Patterns an ECMAScript engine can and cannot read the way .NET does.</summary>
+public sealed class PatternRules
+{
+    [Regex("^[a-z]+$")] public string Portable { get; set; } = string.Empty;
+    [Regex("(?i)^abc$")] public string InlineOptions { get; set; } = string.Empty;
+    [Regex(@"\Aabc\z")] public string DotNetAnchors { get; set; } = string.Empty;
+    [Regex(@"(?<word>\w+)")] public string NamedGroup { get; set; } = string.Empty;
+    [Regex(@"\p{Lu}")] public string UnicodeCategory { get; set; } = string.Empty;
+    [Regex("[a-z-[aeiou]]")] public string ClassSubtraction { get; set; } = string.Empty;
+    [Regex("(?=.*[0-9])^.{4,}$")] public string Lookahead { get; set; } = string.Empty;
+
+    [NotEmpty]
+    [Regex("^[a-z]+$")]
+    public string NotBlankAndPattern { get; set; } = string.Empty;
+}
+
+public sealed class Roster
+{
+    public List<string?> Nicknames { get; set; } = [];
+    public List<string> Names { get; set; } = [];
+    public string?[] Aliases { get; set; } = [];
+    public List<int?> Scores { get; set; } = [];
+}
+
+public sealed class Warehouse
+{
+    public List<List<Address>> Shelves { get; set; } = [];
+}
+
+public sealed class Upload
+{
+    public byte[] Content { get; set; } = [];
+    public byte[]? Thumbnail { get; set; }
 }
 
 public sealed class PasswordChange

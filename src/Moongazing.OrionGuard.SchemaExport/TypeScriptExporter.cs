@@ -62,27 +62,82 @@ public static class TypeScriptExporter
                     builder.Append("  /** ").Append(description).Append(" */\n");
                 }
 
-                builder.Append("  ").Append(member.Name);
-
-                if (!member.IsRequired)
-                {
-                    builder.Append('?');
-                }
-
-                builder.Append(": ").Append(TypeScriptType(model, member.ClrType));
-
-                if (member.IsNullable)
-                {
-                    builder.Append(" | null");
-                }
-
-                builder.Append(";\n");
+                builder.Append("  ").Append(Signature(member))
+                    .Append(": ").Append(TypeScriptType(model, member.Shape)).Append(";\n");
             }
 
             builder.Append("}\n");
         }
 
         return builder.ToString();
+    }
+
+    /// <summary>
+    /// The member's name and optional marker. A serialized name that is not a valid TypeScript
+    /// identifier -- anything from a <c>[JsonPropertyName("first-name")]</c> -- has to be written
+    /// as a quoted string, or the declaration does not parse and the whole file is unusable.
+    /// </summary>
+    private static string Signature(MemberModel member)
+    {
+        var name = IsIdentifier(member.Name) ? member.Name : Quote(member.Name);
+        return member.IsRequired ? name : name + "?";
+    }
+
+    private static bool IsIdentifier(string name)
+    {
+        if (name.Length == 0 || (!char.IsLetter(name[0]) && name[0] != '_' && name[0] != '$'))
+        {
+            return false;
+        }
+
+        for (var index = 1; index < name.Length; index++)
+        {
+            if (!char.IsLetterOrDigit(name[index]) && name[index] != '_' && name[index] != '$')
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static string Quote(string name)
+    {
+        var quoted = new StringBuilder(name.Length + 2).Append('"');
+
+        foreach (var character in name)
+        {
+            switch (character)
+            {
+                case '"':
+                    quoted.Append("\\\"");
+                    break;
+                case '\\':
+                    quoted.Append("\\\\");
+                    break;
+                case '\n':
+                    quoted.Append("\\n");
+                    break;
+                case '\r':
+                    quoted.Append("\\r");
+                    break;
+                case '\t':
+                    quoted.Append("\\t");
+                    break;
+                default:
+                    if (char.IsControl(character))
+                    {
+                        quoted.Append("\\u").Append(((int)character).ToString("x4", CultureInfo.InvariantCulture));
+                    }
+                    else
+                    {
+                        quoted.Append(character);
+                    }
+                    break;
+            }
+        }
+
+        return quoted.Append('"').ToString();
     }
 
     /// <summary>
@@ -104,10 +159,16 @@ public static class TypeScriptExporter
         }
 
         // A length rule on a collection bounds the number of items, not the number of characters.
-        var collection = TypeShapes.GetElementType(member.ClrType) is not null;
+        var collection = member.Shape.Element is not null;
+
+        // "not blank" already says "at least 1 character", so a bare [NotEmpty] does not say it twice.
+        var lengthIsImpliedByNotBlank =
+            member.RequiresNonWhitespace && member.MinLength == 1 && member.MaxLength is null;
 
         switch (member.MinLength, member.MaxLength)
         {
+            case (_, _) when lengthIsImpliedByNotBlank:
+                break;
             case ({ } min, { } max):
                 parts.Add($"{min} to {max} {Unit(max, collection)}");
                 break;
@@ -119,6 +180,11 @@ public static class TypeScriptExporter
                 break;
             default:
                 break;
+        }
+
+        if (member.RequiresNonWhitespace)
+        {
+            parts.Add("not blank");
         }
 
         switch (member.Minimum, member.Maximum)
@@ -141,7 +207,7 @@ public static class TypeScriptExporter
             parts.Add($"greater than {Number(exclusiveMinimum)}");
         }
 
-        if (member.Pattern is { } pattern)
+        foreach (var pattern in member.Patterns)
         {
             parts.Add($"pattern: {pattern}");
         }
@@ -165,14 +231,21 @@ public static class TypeScriptExporter
     private static string Number(double value) => value.ToString(CultureInfo.InvariantCulture);
 
     [RequiresUnreferencedCode(SchemaExportAnnotations.UnreferencedCode)]
-    private static string TypeScriptType(ExportModel model, Type clrType)
+    private static string TypeScriptType(ExportModel model, ShapeModel shape)
     {
-        if (model.Names.TryGetValue(clrType, out var name))
+        var declaration = BaseType(model, shape);
+        return shape.IsNullable ? $"{declaration} | null" : declaration;
+    }
+
+    [RequiresUnreferencedCode(SchemaExportAnnotations.UnreferencedCode)]
+    private static string BaseType(ExportModel model, ShapeModel shape)
+    {
+        if (model.Names.TryGetValue(shape.ClrType, out var name))
         {
             return name;
         }
 
-        if (TypeShapes.GetElementType(clrType) is { } element)
+        if (shape.Element is { } element)
         {
             var elementType = TypeScriptType(model, element);
 
@@ -182,18 +255,18 @@ public static class TypeScriptExporter
                 : $"{elementType}[]";
         }
 
-        if (clrType.IsEnum)
+        if (shape.ClrType.IsEnum)
         {
             // Exported by name, matching the JSON Schema enum and what JsonStringEnumConverter writes.
-            return string.Join(" | ", Enum.GetNames(clrType).Select(value => $"'{value}'"));
+            return string.Join(" | ", Enum.GetNames(shape.ClrType).Select(value => $"'{value}'"));
         }
 
-        if (TypeShapes.IsDictionary(clrType))
+        if (TypeShapes.IsDictionary(shape.ClrType))
         {
             return "Record<string, unknown>";
         }
 
-        return TypeShapes.ScalarJsonType(clrType) switch
+        return TypeShapes.ScalarJsonType(shape.ClrType) switch
         {
             "boolean" => "boolean",
             "integer" or "number" => "number",

@@ -91,6 +91,8 @@ public sealed class PasswordChange
 ]
 ```
 
+`RegexAttribute` appears in that list when its expression uses .NET regex constructs ECMAScript does not have, such as an inline option (`(?i)`), a .NET anchor (`\A`, `\Z`, `\z`, `\G`), a Unicode category (`\p{...}`), a named or balancing group (`(?<name>...)`, `(?'name'...)`), an atomic or conditional group (`(?>...)`, `(?(...)...)`), or character class subtraction (`[a-z-[aeiou]]`). A JSON Schema `pattern` is an ECMAScript regex with no flags, so copying one of those across would make the artifact match something the server does not. Lookahead and lookbehind, non-capturing groups, and the ordinary escapes are shared and are copied through. The screen is pessimistic: it may report a pattern an engine would in fact have handled, which costs a constraint and says so, rather than shipping one that lies.
+
 ```ts
   // not enforced here: MatchesPasswordAttribute
   confirmation?: string;
@@ -103,15 +105,17 @@ One gap the artifacts cannot even report: rules registered on an `AbstractValida
 | Attribute | JSON Schema | TypeScript comment |
 | --- | --- | --- |
 | `[NotNull]` | adds the member to `required` | `required` |
-| `[NotEmpty]` | adds the member to `required`, plus `minLength: 1` (`minItems: 1` on a collection) | `required; at least 1 character` |
+| `[NotEmpty]` | adds the member to `required`, plus `minLength: 1` and `pattern: \S` on a string, or `minItems: 1` on a collection | `required; not blank` |
 | `[Length(min, max)]` | `minLength`, `maxLength` (`minItems`, `maxItems` on a collection) | `min to max characters` |
 | `[Range(min, max)]` | `minimum`, `maximum` | `between min and max` |
-| `[Regex(pattern)]` | `pattern` | `pattern: ...` |
+| `[Regex(pattern)]` | `pattern`, when the expression is ECMAScript regex | `pattern: ...` |
 | `[Email]` | `format: email` | `format: email` |
 | `[Positive]` | `exclusiveMinimum: 0` (the numeric form used by JSON Schema 2020-12) | `greater than 0` |
 | any other `ValidationAttribute` | `x-orionguard-unsupported` | `// not enforced here: ...` |
 
-`[NotEmpty]` rejects null as well as the empty value, so it makes a member required on its own. Attributes combine rather than overwrite: two `[Length]` rules produce the bounds that satisfy both.
+`[NotEmpty]` rejects null as well as the empty value, so it makes a member required on its own. On a **string** it is `IsNullOrWhiteSpace`, not a length check, so `minLength: 1` alone would accept `"   "` and the client would pass what the server rejects; the exporters add an unanchored `\S` pattern, which means "holds a non-whitespace character", to close that gap.
+
+Attributes combine rather than overwrite: two `[Length]` rules produce the bounds that satisfy both, and two patterns on one member are ANDed under `allOf`, because `pattern` holds a single expression.
 
 ## Type mapping
 
@@ -127,7 +131,8 @@ One gap the artifacts cannot even report: rules registered on an `AbstractValida
 | `DateOnly` / `TimeOnly` | `string`, `format: date` / `time` | `string` |
 | `TimeSpan` | `string` | `string` |
 | enum | `string` plus an `enum` list of the member names | a union of the member names |
-| `IEnumerable<T>`, `T[]` | `array` with `items` | `T[]` |
+| `IEnumerable<T>`, `T[]` | `array` with `items`, nested to any depth | `T[]`, `T[][]`, … |
+| `byte[]` | `string`, `contentEncoding: base64` | `string` |
 | dictionary | `object` | `Record<string, unknown>` |
 | any other class, record, or struct | `$ref` into `$defs` | its own `export interface` |
 | `object` | unconstrained | `unknown` |
@@ -139,7 +144,9 @@ OrionGuard has no URL attribute, so a `Uri` member is the only way the exporters
 - Members are the public instance properties with a getter, the same surface `AttributeValidator` and the Swagger schema filter validate. Indexers and `[JsonIgnore]` members are skipped.
 - The serialized name is `[JsonPropertyName]` when present, otherwise the camelCase form of the property name.
 - A member is **required** only when an OrionGuard rule requires it. A non-nullable CLR type on its own does not: it removes the `null` branch from the type, but leaves the member optional (`?`) in TypeScript and out of the `required` list.
-- A nullable member gets `"type": ["x", "null"]`; a nullable nested type gets an `anyOf` with a `{"type": "null"}` branch. A property in an assembly compiled without nullable reference types is treated as nullable, because nothing there rules null out.
+- A nullable member gets `"type": ["x", "null"]`; a nullable nested type gets an `anyOf` with a `{"type": "null"}` branch. Element nullability is carried too, at every level: `List<string?>` exports `(string | null)[]`, `List<string>` exports `string[]`.
+- A property in an assembly compiled without nullable reference types is treated as nullable, because nothing there rules null out. The same applies to the elements of a collection that reaches `IEnumerable<T>` without being an array or a single-argument generic, where no element annotation is available.
+- A serialized name that is not a valid TypeScript identifier -- anything from a `[JsonPropertyName("first-name")]` -- is written as a quoted, escaped member name, because the declaration would otherwise not parse.
 - Enums are exported **by name**, which is what `JsonStringEnumConverter` writes. A payload that serializes enums as numbers will not match the schema.
 - Nested types are emitted once under `$defs` and referenced. A type that references itself, directly or through a cycle, points back at the document root (`"$ref": "#"`).
 - Two nested types with the same short name would collide in `$defs`, so the second one is published under its namespace-qualified name instead.

@@ -11,13 +11,14 @@ internal static class TypeShapes
 {
     /// <summary>
     /// The element type when <paramref name="type"/> serializes as a JSON array, otherwise null.
-    /// <see cref="string"/> is an <see cref="IEnumerable{T}"/> but serializes as a scalar, and a
-    /// dictionary serializes as a JSON object, so both are excluded.
+    /// <see cref="string"/> is an <see cref="IEnumerable{T}"/> but serializes as a scalar, a
+    /// <see cref="byte"/> array goes on the wire as a base64 string, and a dictionary serializes as
+    /// a JSON object, so all three are excluded.
     /// </summary>
     [RequiresUnreferencedCode(SchemaExportAnnotations.UnreferencedCode)]
     internal static Type? GetElementType(Type type)
     {
-        if (type == typeof(string) || IsDictionary(type))
+        if (type == typeof(string) || type == typeof(byte[]) || IsDictionary(type))
         {
             return null;
         }
@@ -59,6 +60,12 @@ internal static class TypeShapes
             return null;
         }
 
+        if (type == typeof(byte[]))
+        {
+            // System.Text.Json writes a byte array as a base64 string, not as an array of numbers.
+            return "string";
+        }
+
         return Type.GetTypeCode(type) switch
         {
             TypeCode.Boolean => "boolean",
@@ -86,6 +93,12 @@ internal static class TypeShapes
         if (type == typeof(TimeOnly)) return "time";
         return null;
     }
+
+    /// <summary>
+    /// How the string on the wire is encoded, when the CLR type is not really text. Only a
+    /// <see cref="byte"/> array qualifies today.
+    /// </summary>
+    internal static string? ContentEncoding(Type type) => type == typeof(byte[]) ? "base64" : null;
 
     /// <summary>
     /// True when the type gets its own schema definition (and its own TypeScript interface)

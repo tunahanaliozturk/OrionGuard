@@ -227,6 +227,107 @@ public sealed class JsonSchemaExporterTests
         Assert.Throws<ArgumentNullException>(() => JsonSchemaExporter.Export<PlainProfile>(null!));
     }
 
+    [Fact]
+    public void Export_NotEmptyOnAString_RequiresANonWhitespaceCharacterNotJustALength()
+    {
+        using var schema = Schema<ConstrainedRequest>();
+
+        // [NotEmpty] is IsNullOrWhiteSpace for a string; minLength alone would accept "   ".
+        Assert.Equal(@"\S", Member(schema, "nickname").GetProperty("pattern").GetString());
+    }
+
+    [Fact]
+    public void Export_NotEmptyOnACollection_DoesNotAddTheNonWhitespacePattern()
+    {
+        using var schema = Schema<Basket>();
+
+        Assert.False(Member(schema, "lines").TryGetProperty("pattern", out _));
+    }
+
+    [Fact]
+    public void Export_MemberWithSeveralPatterns_AndsThemInsteadOfKeepingOne()
+    {
+        using var schema = Schema<PatternRules>();
+
+        var patterns = Member(schema, "notBlankAndPattern").GetProperty("allOf")
+            .EnumerateArray().Select(branch => branch.GetProperty("pattern").GetString()!).ToArray();
+
+        Assert.Equal([@"\S", "^[a-z]+$"], patterns);
+    }
+
+    [Fact]
+    public void Export_PortablePattern_IsCopiedIntoTheSchema()
+    {
+        using var schema = Schema<PatternRules>();
+
+        Assert.Equal("^[a-z]+$", Member(schema, "portable").GetProperty("pattern").GetString());
+        Assert.Equal("(?=.*[0-9])^.{4,}$", Member(schema, "lookahead").GetProperty("pattern").GetString());
+    }
+
+    [Theory]
+    [InlineData("inlineOptions")]
+    [InlineData("dotNetAnchors")]
+    [InlineData("namedGroup")]
+    [InlineData("unicodeCategory")]
+    [InlineData("classSubtraction")]
+    public void Export_PatternThatIsNotEcmaScript_IsReportedRatherThanCopied(string member)
+    {
+        using var schema = Schema<PatternRules>();
+
+        Assert.False(Member(schema, member).TryGetProperty("pattern", out _));
+
+        var reported = schema.RootElement.GetProperty("x-orionguard-unsupported")
+            .EnumerateArray()
+            .Any(entry => entry.GetProperty("member").GetString() == member
+                && entry.GetProperty("rule").GetString() == "RegexAttribute");
+
+        Assert.True(reported);
+    }
+
+    [Fact]
+    public void Export_NullableCollectionElement_AllowsNullInTheItemSchema()
+    {
+        using var schema = Schema<Roster>();
+
+        Assert.Equal(["string", "null"], Types(Member(schema, "nicknames").GetProperty("items")));
+        Assert.Equal(["string", "null"], Types(Member(schema, "aliases").GetProperty("items")));
+        Assert.Equal(["integer", "null"], Types(Member(schema, "scores").GetProperty("items")));
+    }
+
+    [Fact]
+    public void Export_NonNullableCollectionElement_KeepsNullOutOfTheItemSchema()
+    {
+        using var schema = Schema<Roster>();
+
+        Assert.Equal("string", Member(schema, "names").GetProperty("items").GetProperty("type").GetString());
+    }
+
+    [Fact]
+    public void Export_NestedCollection_DefinesTheObjectAtTheBottomOfIt()
+    {
+        using var schema = Schema<Warehouse>();
+        var shelves = Member(schema, "shelves");
+
+        Assert.Equal("array", shelves.GetProperty("type").GetString());
+
+        var inner = shelves.GetProperty("items");
+        Assert.Equal("array", inner.GetProperty("type").GetString());
+        Assert.Equal("#/$defs/Address", inner.GetProperty("items").GetProperty("$ref").GetString());
+        Assert.True(schema.RootElement.GetProperty("$defs").TryGetProperty("Address", out _));
+    }
+
+    [Fact]
+    public void Export_ByteArray_IsABase64StringNotAnArrayOfIntegers()
+    {
+        using var schema = Schema<Upload>();
+        var content = Member(schema, "content");
+
+        Assert.Equal("string", content.GetProperty("type").GetString());
+        Assert.Equal("base64", content.GetProperty("contentEncoding").GetString());
+        Assert.False(content.TryGetProperty("items", out _));
+        Assert.Equal(["string", "null"], Types(Member(schema, "thumbnail")));
+    }
+
     private static JsonDocument Schema<T>() => JsonDocument.Parse(JsonSchemaExporter.Export<T>());
 
     private static JsonElement Member(JsonDocument schema, string name) =>

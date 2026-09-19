@@ -33,6 +33,12 @@ public static class JsonSchemaExporter
     private const string Dialect = "https://json-schema.org/draft/2020-12/schema";
 
     /// <summary>
+    /// Unanchored, so it means "holds a non-whitespace character" -- the part of <c>[NotEmpty]</c>
+    /// on a string that <c>minLength</c> cannot say.
+    /// </summary>
+    private const string NonWhitespace = @"\S";
+
+    /// <summary>
     /// Exports <typeparamref name="T"/> as an indented JSON Schema document.
     /// </summary>
     /// <typeparam name="T">The model whose members and validation attributes are exported.</typeparam>
@@ -134,10 +140,10 @@ public static class JsonSchemaExporter
     {
         writer.WriteStartObject();
 
-        WriteShape(writer, model, member.ClrType, member.IsNullable, member.Format);
+        WriteShape(writer, model, member.Shape, member.Format);
 
         // A length rule on a collection bounds the number of items, not the number of characters.
-        var isCollection = TypeShapes.GetElementType(member.ClrType) is not null;
+        var isCollection = member.Shape.Element is not null;
 
         if (member.MinLength is { } minLength)
         {
@@ -149,10 +155,7 @@ public static class JsonSchemaExporter
             writer.WriteNumber(isCollection ? "maxItems" : "maxLength", maxLength);
         }
 
-        if (member.Pattern is { } pattern)
-        {
-            writer.WriteString("pattern", pattern);
-        }
+        WritePatterns(writer, member);
 
         if (member.Minimum is { } minimum)
         {
@@ -173,11 +176,55 @@ public static class JsonSchemaExporter
     }
 
     /// <summary>
+    /// Writes the declared patterns. <c>pattern</c> holds a single expression, so a member with
+    /// more than one rule gets them ANDed explicitly instead of losing all but the last.
+    /// </summary>
+    private static void WritePatterns(Utf8JsonWriter writer, MemberModel member)
+    {
+        var count = member.Patterns.Count + (member.RequiresNonWhitespace ? 1 : 0);
+
+        if (count == 0)
+        {
+            return;
+        }
+
+        if (count == 1)
+        {
+            writer.WriteString("pattern", member.RequiresNonWhitespace ? NonWhitespace : member.Patterns[0]);
+            return;
+        }
+
+        writer.WriteStartArray("allOf");
+
+        if (member.RequiresNonWhitespace)
+        {
+            WritePattern(writer, NonWhitespace);
+        }
+
+        foreach (var pattern in member.Patterns)
+        {
+            WritePattern(writer, pattern);
+        }
+
+        writer.WriteEndArray();
+    }
+
+    private static void WritePattern(Utf8JsonWriter writer, string pattern)
+    {
+        writer.WriteStartObject();
+        writer.WriteString("pattern", pattern);
+        writer.WriteEndObject();
+    }
+
+    /// <summary>
     /// Writes the type keywords for one value into the object the caller has already opened.
     /// </summary>
     [RequiresUnreferencedCode(SchemaExportAnnotations.UnreferencedCode)]
-    private static void WriteShape(Utf8JsonWriter writer, ExportModel model, Type clrType, bool nullable, string? format)
+    private static void WriteShape(Utf8JsonWriter writer, ExportModel model, ShapeModel shape, string? format)
     {
+        var clrType = shape.ClrType;
+        var nullable = shape.IsNullable;
+
         if (model.Names.TryGetValue(clrType, out var name))
         {
             // The root is the document itself, so a member pointing back at it -- directly or
@@ -203,13 +250,11 @@ public static class JsonSchemaExporter
             return;
         }
 
-        if (TypeShapes.GetElementType(clrType) is { } element)
+        if (shape.Element is { } element)
         {
             WriteType(writer, "array", nullable);
             writer.WriteStartObject("items");
-            // C# cannot annotate the nullability of a collection element separately here, so the
-            // element is described without a null branch.
-            WriteShape(writer, model, element, nullable: false, TypeShapes.TypeFormat(element));
+            WriteShape(writer, model, element, TypeShapes.TypeFormat(element.ClrType));
             writer.WriteEndObject();
             return;
         }
@@ -245,6 +290,11 @@ public static class JsonSchemaExporter
             if (format is not null)
             {
                 writer.WriteString("format", format);
+            }
+
+            if (TypeShapes.ContentEncoding(clrType) is { } encoding)
+            {
+                writer.WriteString("contentEncoding", encoding);
             }
         }
 

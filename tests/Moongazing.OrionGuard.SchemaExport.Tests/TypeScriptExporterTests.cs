@@ -29,7 +29,7 @@ public sealed class TypeScriptExporterTests
             export interface ConstrainedRequest {
               /** required */
               id: string;
-              /** required; at least 1 character */
+              /** required; not blank */
               nickname: string;
               /** 3 to 50 characters */
               slug?: string;
@@ -64,7 +64,7 @@ public sealed class TypeScriptExporterTests
             }
 
             export interface Address {
-              /** required; at least 1 character */
+              /** required; not blank */
               city: string;
             }
 
@@ -128,6 +128,82 @@ public sealed class TypeScriptExporterTests
             """;
 
         Assert.Equal(Normalize(expected), TypeScriptExporter.Export<PasswordChange>());
+    }
+
+    [Fact]
+    public void Export_SerializedNameThatIsNotAnIdentifier_IsQuotedSoTheDeclarationParses()
+    {
+        var declaration = TypeScriptExporter.Export<WireNames>();
+
+        Assert.Contains("  \"first-name\"?: string;\n", declaration, StringComparison.Ordinal);
+        Assert.Contains("  \"2fa\"?: boolean;\n", declaration, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Export_SerializedNameHoldingAQuote_EscapesItInsideTheQuotedName()
+    {
+        var declaration = TypeScriptExporter.Export<WireNames>();
+
+        Assert.Contains("  \"say \\\"hi\\\"\"?: string | null;\n", declaration, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Export_SerializedNameThatIsAnIdentifier_StaysUnquoted()
+    {
+        var declaration = TypeScriptExporter.Export<WireNames>();
+
+        Assert.Contains("  plain?: string;\n", declaration, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Export_NotEmptyOnAString_SaysNotBlankRatherThanAMinimumLength()
+    {
+        var declaration = TypeScriptExporter.Export<Address>();
+
+        Assert.Contains("  /** required; not blank */\n  city: string;\n", declaration, StringComparison.Ordinal);
+        Assert.DoesNotContain("at least 1 character", declaration, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Export_PatternThatIsNotEcmaScript_IsReportedInsteadOfDocumented()
+    {
+        var declaration = TypeScriptExporter.Export<PatternRules>();
+
+        Assert.Contains("  /** pattern: ^[a-z]+$ */\n  portable?: string;\n", declaration, StringComparison.Ordinal);
+        Assert.Contains("  // not enforced here: RegexAttribute\n  inlineOptions?: string;\n", declaration, StringComparison.Ordinal);
+        Assert.DoesNotContain("(?i)", declaration, StringComparison.Ordinal);
+        Assert.DoesNotContain(@"\Aabc\z", declaration, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Export_NullableCollectionElement_AcceptsNullInsideTheArray()
+    {
+        var declaration = TypeScriptExporter.Export<Roster>();
+
+        Assert.Contains("  nicknames?: (string | null)[];\n", declaration, StringComparison.Ordinal);
+        Assert.Contains("  names?: string[];\n", declaration, StringComparison.Ordinal);
+        Assert.Contains("  aliases?: (string | null)[];\n", declaration, StringComparison.Ordinal);
+        Assert.Contains("  scores?: (number | null)[];\n", declaration, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Export_NestedCollection_ReachesTheInterfaceAtTheBottomOfIt()
+    {
+        var declaration = TypeScriptExporter.Export<Warehouse>();
+
+        Assert.Contains("  shelves?: Address[][];\n", declaration, StringComparison.Ordinal);
+        Assert.Contains("export interface Address {", declaration, StringComparison.Ordinal);
+        Assert.DoesNotContain("unknown", declaration, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Export_ByteArray_IsAStringNotAnArrayOfNumbers()
+    {
+        var declaration = TypeScriptExporter.Export<Upload>();
+
+        Assert.Contains("  content?: string;\n", declaration, StringComparison.Ordinal);
+        Assert.Contains("  thumbnail?: string | null;\n", declaration, StringComparison.Ordinal);
+        Assert.DoesNotContain("number[]", declaration, StringComparison.Ordinal);
     }
 
     // The exporter always writes "\n" so the artifact is byte-identical on every platform.
