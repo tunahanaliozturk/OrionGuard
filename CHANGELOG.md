@@ -28,6 +28,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `AgainstLdapInjection` is not; its documentation now points to them.
 - `OrionGuard.Outbox.Dashboard`: `OutboxDashboardOptions.RequireMutationHeader` (default `true`) and
   `OutboxDashboardOptions.MutationHeaderName` (default `X-OrionGuard-Dashboard`); see Security.
+- **`OrionGuard.SchemaExport`, a new package.** `JsonSchemaExporter.Export<T>()` turns the OrionGuard validation
+  attributes declared on a model into a JSON Schema draft 2020-12 document (an overload writes to a
+  `Utf8JsonWriter`), and `TypeScriptExporter.Export<T>()` turns the same model into a TypeScript `interface`
+  with the constraints as doc comments, so a frontend stops re-writing the rules by hand. Required/not-null,
+  string length, pattern, numeric range, positive, email and URI formats, enum values, and nested and
+  collection members are mapped; `System.Text.Json` is the only dependency. A rule the artifact cannot express
+  -- a custom predicate, a comparison against a second property -- is listed under `x-orionguard-unsupported`
+  in the schema and carries a `// not enforced here:` comment in the TypeScript instead of being dropped.
+  Rules registered on an `AbstractValidator<T>` or built with `Validate.For` are C# delegates and stay
+  invisible to both exporters. Both entry points are `[RequiresUnreferencedCode]`.
 
 ### Changed
 
