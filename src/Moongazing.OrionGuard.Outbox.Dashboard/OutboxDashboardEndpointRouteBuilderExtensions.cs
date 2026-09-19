@@ -1,9 +1,12 @@
 namespace Moongazing.OrionGuard.Outbox.Dashboard;
 
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Moongazing.OrionGuard.EntityFrameworkCore.Outbox;
 
 /// <summary>
@@ -14,9 +17,11 @@ using Moongazing.OrionGuard.EntityFrameworkCore.Outbox;
 public static class OutboxDashboardEndpointRouteBuilderExtensions
 {
     /// <summary>
-    /// Map the dashboard endpoints (currently a single failed-messages listing). The
-    /// endpoint group is configured with <c>RequireAuthorization()</c> by default so the
-    /// host's fallback policy applies; pass an explicit
+    /// Map the dashboard endpoints (failed-message listings and, when
+    /// <see cref="OutboxDashboardOptions.EnableMutations"/> is on, replay / discard). The
+    /// group is never anonymous by default: when the host configures an
+    /// <c>AuthorizationOptions.FallbackPolicy</c> that policy applies, otherwise the group
+    /// requires the host's default policy (an authenticated user). Pass an explicit
     /// <see cref="OutboxDashboardOptions.AuthorizationPolicyName"/> to require a named
     /// policy, or set <see cref="OutboxDashboardOptions.AllowAnonymous"/> = <c>true</c>
     /// to opt out entirely (NOT recommended for production).
@@ -59,13 +64,13 @@ public static class OutboxDashboardEndpointRouteBuilderExtensions
         // Authorization wiring:
         //   AllowAnonymous   -> mark anonymous (NOT recommended in production).
         //   Named policy     -> evaluate that policy explicitly.
-        //   Neither          -> do NOT call RequireAuthorization() so the host's
-        //                       AuthorizationOptions.FallbackPolicy applies. Calling
-        //                       RequireAuthorization() unconditionally would attach auth
-        //                       metadata that bypasses a stricter FallbackPolicy (the host
-        //                       fallback only fires for endpoints WITHOUT auth metadata).
-        //                       Hosts that have no fallback policy and rely on the dashboard
-        //                       being authorized should set AuthorizationPolicyName.
+        //   Host fallback    -> attach no auth metadata. RequireAuthorization() would swap a
+        //                       stricter AuthorizationOptions.FallbackPolicy for the weaker
+        //                       DefaultPolicy, because the fallback only covers endpoints
+        //                       WITHOUT auth metadata.
+        //   No fallback      -> RequireAuthorization() with the default policy. Leaving the
+        //                       group bare here would expose replay/discard to anonymous
+        //                       callers, so the dashboard fails closed instead.
         if (options.AllowAnonymous)
         {
             group.AllowAnonymous();
@@ -74,7 +79,10 @@ public static class OutboxDashboardEndpointRouteBuilderExtensions
         {
             group.RequireAuthorization(policy);
         }
-        // else: intentionally fall through so the host's FallbackPolicy applies.
+        else if (!HostHasFallbackPolicy(endpoints))
+        {
+            group.RequireAuthorization();
+        }
 
         group.MapGet("/failed", async (TDbContext db, HttpContext http, int? page, int? size, string? sort) =>
         {
@@ -333,6 +341,9 @@ public static class OutboxDashboardEndpointRouteBuilderExtensions
             ? parsed
             : fallback;
     }
+
+    private static bool HostHasFallbackPolicy(IEndpointRouteBuilder endpoints) =>
+        endpoints.ServiceProvider.GetService<IOptions<AuthorizationOptions>>()?.Value.FallbackPolicy is not null;
 
     private static void ValidateOptions(OutboxDashboardOptions options)
     {

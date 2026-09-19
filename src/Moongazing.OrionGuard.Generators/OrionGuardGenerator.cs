@@ -409,7 +409,8 @@ namespace Moongazing.OrionGuard.Generators
                         string message = EscapeString(rule.CustomMessage ?? $"{prop.Name} must be a valid email address.");
                         string errorCode = EscapeString(rule.CustomErrorCode ?? "EMAIL");
 
-                        sb.AppendLine($"{indent}if (instance.{prop.Name} != null && !System.Text.RegularExpressions.Regex.IsMatch(instance.{prop.Name}, @\"^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$\"))");
+                        // The core package's source-generated email regex carries a match timeout.
+                        sb.AppendLine($"{indent}if (instance.{prop.Name} != null && !Moongazing.OrionGuard.Utilities.GeneratedRegexPatterns.Email().IsMatch(instance.{prop.Name}))");
                         sb.AppendLine($"{indent}    errors.Add(new Moongazing.OrionGuard.Core.ValidationError(\"{prop.Name}\", \"{message}\", \"{errorCode}\"));");
                     }
                     break;
@@ -445,7 +446,9 @@ namespace Moongazing.OrionGuard.Generators
                         // Escape the pattern for embedding in a verbatim string literal.
                         string escapedPattern = pattern.Replace("\"", "\"\"");
 
-                        sb.AppendLine($"{indent}if (instance.{prop.Name} != null && !System.Text.RegularExpressions.Regex.IsMatch(instance.{prop.Name}, @\"{escapedPattern}\"))");
+                        // RegexCache in the core package applies a match timeout, so a hostile input
+                        // cannot backtrack indefinitely inside the consumer's generated validator.
+                        sb.AppendLine($"{indent}if (instance.{prop.Name} != null && !Moongazing.OrionGuard.Core.RegexCache.GetOrCreate(@\"{escapedPattern}\").IsMatch(instance.{prop.Name}))");
                         sb.AppendLine($"{indent}    errors.Add(new Moongazing.OrionGuard.Core.ValidationError(\"{prop.Name}\", \"{message}\", \"{errorCode}\"));");
                     }
                     break;
