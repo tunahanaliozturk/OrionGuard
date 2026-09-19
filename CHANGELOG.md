@@ -230,6 +230,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The outbox dispatcher, archival worker and `SkipLockedDistributedLock` read the time from a `TimeProvider`.** They
   used `DateTime.UtcNow`, so their timestamps could not be controlled in tests. New constructor overloads take a
   `TimeProvider`, and the DI registrations pass one when it is registered; existing constructors are unchanged.
+- **The FluentValidation compatibility builder (`FluentStyleValidator<T>`) now gives FluentValidation's results.**
+  - `NotEmpty()` passed every non-string value. It now also fails an empty collection or sequence and the default
+    value of a value type (`0`, `Guid.Empty`, `DateTime.MinValue`, `false`). A nullable property holding `0` still
+    passes, as in FluentValidation.
+  - `GreaterThan`, `GreaterThanOrEqualTo`, `LessThan`, `LessThanOrEqualTo`, `InclusiveBetween` and
+    `ExclusiveBetween` compare numbers by value across numeric types. `RuleFor(x => x.Price).GreaterThan(0)` on a
+    `decimal` threw `ArgumentException: Object must be of type Decimal` on every call.
+  - A pair that cannot be compared (`NaN`, a `null` threshold, or unrelated types such as a `DateTime` against
+    `0`) now fails the rule instead of throwing. A non-null value that is not `IComparable` now fails instead of
+    passing. A `null` value still passes.
+  - `Length(min, max)` is now a single rule, so `WithMessage` and `WithErrorCode` also cover a value that is too
+    short. Before, such a value kept the default minimum-length message and code. Without an override the codes
+    stay `MIN_LENGTH` and `MAX_LENGTH`.
+- **`FluentStyleValidator<T>` no longer recompiles its property accessors for every instance.** Validators are
+  registered as transient, so every resolution compiled every `RuleFor` expression again. Member selectors now
+  come from the shared accessor cache and are compiled once per process.
+- **`OrionGuard.Migration` now rewrites a rule only when the OrionGuard equivalent gives the same result.**
+  - `Matches(...)` and `EmailAddress()` are reported instead of rewritten. FluentValidation checks empty strings
+    against both rules, and its email check only requires one `@`. The compatibility builder skips blank values
+    and uses a stricter email pattern.
+  - `WithMessage` is migrated only when its argument is a string literal without `{`. FluentValidation fills in
+    placeholders such as `{PropertyName}`, and the compatibility builder prints them as written.
+  - These overloads are now reported, because the rewritten code did not compile: `Must`, `When` and `Unless`
+    with a two- or three-parameter lambda, and `Length` with `Func<T, int>` bounds.
+  - FluentValidation's exact-length rule `Length(n)` is now migrated to `Length(n, n)`. It used to be reported
+    as an unknown rule.
+  - `ExactLength(n)` is not a FluentValidation rule, so it is now reported instead of rewritten.
 
 ### Deprecated
 

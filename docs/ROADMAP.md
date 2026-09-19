@@ -184,11 +184,12 @@ Theme: *make adoption a weekend, not a quarter.*
 - **R1: FluentValidation migration codemod (`dotnet orionguard migrate`).** Shipped as the
   `OrionGuard.Migration` tool package (`PackAsTool`, command `orionguard`). Reads C# sources with
   Roslyn, finds `AbstractValidator<T>` classes, and rewrites their `RuleFor(...)` chains onto
-  OrionGuard's `FluentStyleValidator<T>` compatibility surface. 24 common FluentValidation
+  OrionGuard's `FluentStyleValidator<T>` compatibility surface. 19 common FluentValidation
   built-ins migrate directly (`NotNull`, `NotEmpty`, `Equal`, `NotEqual`, `Length`,
-  `MinimumLength`, `MaximumLength`, `ExactLength` to `Length(n, n)`, `Matches`, `EmailAddress`,
+  `Length(n)` to `Length(n, n)`, `MinimumLength`, `MaximumLength`,
   `GreaterThan` / `GreaterThanOrEqualTo` / `LessThan` / `LessThanOrEqualTo`, `InclusiveBetween`,
-  `ExclusiveBetween`, `Must(predicate)`, `WithMessage`, `WithErrorCode`, `When`, `Unless`).
+  `ExclusiveBetween`, `Must(predicate)`, `WithMessage`, `WithErrorCode`, `When`, `Unless`). `Matches`, `EmailAddress` and `ExactLength` are
+  reported for review instead of rewritten, because their semantics differ from the compatibility builder.
   Anything without a safe equivalent (`SetValidator`, `RuleForEach`, `Null`, `Empty`,
   `ScalePrecision`, `MustAsync`, `Cascade`, `WithName`, `Include`, `ChildRules`, custom rules,
   unsupported overloads) is left untouched with a `// TODO` marker and listed in a report rather
@@ -276,9 +277,9 @@ dotnet orionguard migrate ./src --apply
 Built on Roslyn. Finds classes deriving from `AbstractValidator<T>` and rewrites their
 `RuleFor(...)` chains onto OrionGuard's `FluentStyleValidator<T>` compatibility surface.
 
-**Scope shipped.** 24 common FluentValidation built-ins migrate directly: `NotNull`,
-`NotEmpty`, `Equal`, `NotEqual`, `Length`, `MinimumLength`, `MaximumLength`, `ExactLength`
-(to `Length(n, n)`), `Matches`, `EmailAddress`, `GreaterThan`, `GreaterThanOrEqualTo`,
+**Scope shipped.** 19 common FluentValidation built-ins migrate directly: `NotNull`,
+`NotEmpty`, `Equal`, `NotEqual`, `Length`, `MinimumLength`, `MaximumLength`, `Length(n)`
+(to `Length(n, n)`), `GreaterThan`, `GreaterThanOrEqualTo`,
 `LessThan`, `LessThanOrEqualTo`, `InclusiveBetween`, `ExclusiveBetween`, `Must(predicate)`,
 `WithMessage`, `WithErrorCode`, `When`, `Unless`.
 
