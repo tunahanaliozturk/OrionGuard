@@ -93,6 +93,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Moongazing.OrionGuard.Schem
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Moongazing.OrionGuard.SchemaExport.Tests", "tests\Moongazing.OrionGuard.SchemaExport.Tests\Moongazing.OrionGuard.SchemaExport.Tests.csproj", "{9353C416-D26B-4799-9B46-4DBBB0C2DBEC}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Moongazing.OrionGuard.Aspire", "src\Moongazing.OrionGuard.Aspire\Moongazing.OrionGuard.Aspire.csproj", "{939A7794-7E3A-4BBF-9735-50290483AC12}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Moongazing.OrionGuard.Aspire.Tests", "tests\Moongazing.OrionGuard.Aspire.Tests\Moongazing.OrionGuard.Aspire.Tests.csproj", "{2B3824B1-C6AD-4CB7-9E22-07E5E1DB63E5}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -559,6 +563,30 @@ Global
 		{9353C416-D26B-4799-9B46-4DBBB0C2DBEC}.Release|x64.Build.0 = Release|Any CPU
 		{9353C416-D26B-4799-9B46-4DBBB0C2DBEC}.Release|x86.ActiveCfg = Release|Any CPU
 		{9353C416-D26B-4799-9B46-4DBBB0C2DBEC}.Release|x86.Build.0 = Release|Any CPU
+		{939A7794-7E3A-4BBF-9735-50290483AC12}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{939A7794-7E3A-4BBF-9735-50290483AC12}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{939A7794-7E3A-4BBF-9735-50290483AC12}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{939A7794-7E3A-4BBF-9735-50290483AC12}.Debug|x64.Build.0 = Debug|Any CPU
+		{939A7794-7E3A-4BBF-9735-50290483AC12}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{939A7794-7E3A-4BBF-9735-50290483AC12}.Debug|x86.Build.0 = Debug|Any CPU
+		{939A7794-7E3A-4BBF-9735-50290483AC12}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{939A7794-7E3A-4BBF-9735-50290483AC12}.Release|Any CPU.Build.0 = Release|Any CPU
+		{939A7794-7E3A-4BBF-9735-50290483AC12}.Release|x64.ActiveCfg = Release|Any CPU
+		{939A7794-7E3A-4BBF-9735-50290483AC12}.Release|x64.Build.0 = Release|Any CPU
+		{939A7794-7E3A-4BBF-9735-50290483AC12}.Release|x86.ActiveCfg = Release|Any CPU
+		{939A7794-7E3A-4BBF-9735-50290483AC12}.Release|x86.Build.0 = Release|Any CPU
+		{2B3824B1-C6AD-4CB7-9E22-07E5E1DB63E5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2B3824B1-C6AD-4CB7-9E22-07E5E1DB63E5}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2B3824B1-C6AD-4CB7-9E22-07E5E1DB63E5}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{2B3824B1-C6AD-4CB7-9E22-07E5E1DB63E5}.Debug|x64.Build.0 = Debug|Any CPU
+		{2B3824B1-C6AD-4CB7-9E22-07E5E1DB63E5}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{2B3824B1-C6AD-4CB7-9E22-07E5E1DB63E5}.Debug|x86.Build.0 = Debug|Any CPU
+		{2B3824B1-C6AD-4CB7-9E22-07E5E1DB63E5}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2B3824B1-C6AD-4CB7-9E22-07E5E1DB63E5}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2B3824B1-C6AD-4CB7-9E22-07E5E1DB63E5}.Release|x64.ActiveCfg = Release|Any CPU
+		{2B3824B1-C6AD-4CB7-9E22-07E5E1DB63E5}.Release|x64.Build.0 = Release|Any CPU
+		{2B3824B1-C6AD-4CB7-9E22-07E5E1DB63E5}.Release|x86.ActiveCfg = Release|Any CPU
+		{2B3824B1-C6AD-4CB7-9E22-07E5E1DB63E5}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -602,5 +630,7 @@ Global
 		{FAE4CED5-935F-4E6D-817B-45072F9CDAC2} = {A26C0EB7-E4A7-4335-8423-E8AEE9EF1738}
 		{12E45441-D3EB-4436-80A7-AB3154888D4A} = {397A784D-16D0-4DC2-8609-3EE0EF18998F}
 		{9353C416-D26B-4799-9B46-4DBBB0C2DBEC} = {A26C0EB7-E4A7-4335-8423-E8AEE9EF1738}
+		{939A7794-7E3A-4BBF-9735-50290483AC12} = {397A784D-16D0-4DC2-8609-3EE0EF18998F}
+		{2B3824B1-C6AD-4CB7-9E22-07E5E1DB63E5} = {A26C0EB7-E4A7-4335-8423-E8AEE9EF1738}
 	EndGlobalSection
 EndGlobal

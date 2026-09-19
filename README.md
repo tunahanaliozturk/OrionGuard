@@ -155,6 +155,7 @@ if (result.IsInvalid)
 | `OrionGuard.OpenApi` | `dotnet add package OrionGuard.OpenApi` | OpenAPI-first validators (OpenAPI to validator) |
 | `OrionGuard.SchemaExport` | `dotnet add package OrionGuard.SchemaExport` | JSON Schema + TypeScript interfaces from your models |
 | `OrionGuard.OpenTelemetry` | `dotnet add package OrionGuard.OpenTelemetry` | Metrics & tracing |
+| `OrionGuard.Aspire` | `dotnet add package OrionGuard.Aspire` | One-call Aspire setup: OrionGuard telemetry in the dashboard + health checks |
 | `OrionGuard.Blazor` | `dotnet add package OrionGuard.Blazor` | EditForm validation |
 | `OrionGuard.Grpc` | `dotnet add package OrionGuard.Grpc` | Server interceptor |
 | `OrionGuard.SignalR` | `dotnet add package OrionGuard.SignalR` | Hub method validation |
