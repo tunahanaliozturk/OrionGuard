@@ -73,37 +73,52 @@ appear inside a recognised validator and are invoked the FluentValidation way (a
 
 ## Rules covered
 
-These FluentValidation built-ins map directly onto the OrionGuard compatibility builder:
+These FluentValidation built-ins map onto the OrionGuard compatibility builder and give the same
+pass/fail result for every value. The test suite checks this by migrating, compiling, and running one
+validator per rule:
 
 | FluentValidation | OrionGuard |
 | ---------------- | ---------- |
 | `NotNull()` | `NotNull()` |
 | `NotEmpty()` | `NotEmpty()` |
-| `Equal(x)` | `Equal(x)` |
-| `NotEqual(x)` | `NotEqual(x)` |
+| `Equal(value)` | `Equal(value)` |
+| `NotEqual(value)` | `NotEqual(value)` |
 | `Length(min, max)` | `Length(min, max)` |
+| `Length(n)` (exact length, `n` a numeric literal) | `Length(n, n)` |
 | `MinimumLength(n)` | `MinimumLength(n)` |
 | `MaximumLength(n)` | `MaximumLength(n)` |
-| `ExactLength(n)` | `Length(n, n)` |
-| `Matches(pattern)` | `Matches(pattern)` |
-| `EmailAddress()` | `EmailAddress()` |
-| `GreaterThan(x)` | `GreaterThan(x)` |
-| `GreaterThanOrEqualTo(x)` | `GreaterThanOrEqualTo(x)` |
-| `LessThan(x)` | `LessThan(x)` |
-| `LessThanOrEqualTo(x)` | `LessThanOrEqualTo(x)` |
-| `InclusiveBetween(a, b)` | `InclusiveBetween(a, b)` |
-| `ExclusiveBetween(a, b)` | `ExclusiveBetween(a, b)` |
-| `Must(predicate)` | `Must(predicate)` |
-| `WithMessage("...")` | `WithMessage("...")` |
-| `WithErrorCode("...")` | `WithErrorCode("...")` |
-| `When(predicate)` | `When(predicate)` |
-| `Unless(predicate)` | `Unless(predicate)` |
+| `GreaterThan(value)` | `GreaterThan(value)` |
+| `GreaterThanOrEqualTo(value)` | `GreaterThanOrEqualTo(value)` |
+| `LessThan(value)` | `LessThan(value)` |
+| `LessThanOrEqualTo(value)` | `LessThanOrEqualTo(value)` |
+| `InclusiveBetween(from, to)` | `InclusiveBetween(from, to)` |
+| `ExclusiveBetween(from, to)` | `ExclusiveBetween(from, to)` |
+| `Must(value => ...)` | `Must(value => ...)` |
+| `WithMessage("...")`, a string literal with no `{` | `WithMessage("...")` |
+| `WithErrorCode(code)` | `WithErrorCode(code)` |
+| `When(x => ...)` | `When(x => ...)` |
+| `Unless(x => ...)` | `Unless(x => ...)` |
+
+Default error messages and error codes are OrionGuard's, not FluentValidation's. One edge case also
+differs: a `double` or `float` `NaN` fails every comparison rule. FluentValidation orders `NaN` below
+every number, so it lets `NaN` pass `LessThan` and `LessThanOrEqualTo`.
 
 ## Reported, not migrated
 
 These are recognised but left untouched with a TODO and a report entry, because there is no safe
 one-to-one equivalent on the compatibility builder:
 
+- `Matches(...)`. FluentValidation checks an empty or whitespace string against the pattern, so `""`
+  fails `Matches("^[A-Z]+$")`. The compatibility builder skips blank values.
+- `EmailAddress()`. FluentValidation only requires one `@` that is neither the first nor the last
+  character, and it rejects `""`. The compatibility builder uses a stricter pattern, so `a@b` fails,
+  and it skips blank values.
+- `WithMessage(...)` with anything other than a string literal without `{`: a constant, a resource,
+  an interpolated string, a literal containing `{PropertyName}`-style placeholders, or the
+  `WithMessage(Func<T, string>)` factory. FluentValidation fills in placeholders and the compatibility
+  builder prints the text as written.
+- `ExactLength(...)`. This is not a FluentValidation rule (the built-in exact-length rule is
+  `Length(n)`), so it is treated as a custom extension.
 - `Null()`, `Empty()`
 - `WithName(...)` / `OverridePropertyName(...)`
 - `Cascade(...)`
@@ -111,10 +126,13 @@ one-to-one equivalent on the compatibility builder:
 - `MustAsync(...)`
 - `SetValidator(...)`, `InjectValidator(...)`, `RuleForEach(...)`, `Include(...)`, `ChildRules(...)`,
   `DependentRules(...)`, `Custom(...)`
-- Overloads whose argument shape is not translated (for example `EmailAddress(mode)`, the
-  `WithMessage(Func<T, string>)` factory, `Must` with a context argument, or the member-comparison
-  (lambda) overloads of `Equal`, `NotEqual`, `GreaterThan`, `GreaterThanOrEqualTo`, `LessThan`, and
-  `LessThanOrEqualTo`)
+- Overloads whose argument shape is not translated, for example:
+  - `EmailAddress(mode)`
+  - the `Func<T, int>` overloads of `Length`
+  - `Must`, `When` or `Unless` with a two- or three-parameter lambda (instance, value, context)
+  - `Must(MethodName)`, a method group
+  - the member-comparison (lambda) overloads of `Equal`, `NotEqual`, `GreaterThan`,
+    `GreaterThanOrEqualTo`, `LessThan`, and `LessThanOrEqualTo`
 - Any custom or unrecognised rule extension method
 
 ## Exit codes

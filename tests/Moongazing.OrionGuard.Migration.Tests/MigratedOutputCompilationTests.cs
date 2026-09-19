@@ -43,9 +43,9 @@ public sealed class MigratedOutputCompilationTests
                 public V1()
                 {
                     RuleFor(x => x.Name).NotNull().NotEmpty().MinimumLength(2).MaximumLength(100);
-                    RuleFor(x => x.Email).NotEmpty().EmailAddress();
-                    RuleFor(x => x.Code).ExactLength(6);
-                    RuleFor(x => x.Name).Length(2, 100).Matches("^[a-z]+$");
+                    RuleFor(x => x.Email).NotEmpty().MaximumLength(254);
+                    RuleFor(x => x.Code).Length(6);
+                    RuleFor(x => x.Name).Length(2, 100);
                 }
             }
         }
@@ -200,7 +200,7 @@ public sealed class MigratedOutputCompilationTests
                     public RunnableValidator()
                     {
                         RuleFor(x => x.Name).NotEmpty().MaximumLength(10);
-                        RuleFor(x => x.Email).NotEmpty().EmailAddress();
+                        RuleFor(x => x.Email).NotEmpty().MaximumLength(254);
                     }
                 }
             }
@@ -247,7 +247,7 @@ public sealed class MigratedOutputCompilationTests
             string.Join("\n", diagnostics.Select(d => d.ToString())));
     }
 
-    private static Assembly EmitAssembly(string migratedValidatorSource)
+    internal static Assembly EmitAssembly(string migratedValidatorSource)
     {
         var compilation = BuildCompilation(migratedValidatorSource);
         using var stream = new MemoryStream();

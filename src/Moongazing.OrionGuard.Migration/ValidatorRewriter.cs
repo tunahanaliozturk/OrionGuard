@@ -356,7 +356,7 @@ public sealed class ValidatorRewriter : CSharpSyntaxRewriter
 
     private static ArgumentListSyntax DuplicateSingleArgument(ArgumentListSyntax list)
     {
-        // ExactLength(n) becomes Length(n, n). Build the second argument from a FRESH clone of the
+        // Length(n) becomes Length(n, n). Build the second argument from a FRESH clone of the
         // first argument's expression rather than reusing the same node instance: a SeparatedList
         // must not contain the same node object twice (which would be ill-formed for any non-trivial
         // expression), so the duplicate is a structurally-equal but distinct expression node.

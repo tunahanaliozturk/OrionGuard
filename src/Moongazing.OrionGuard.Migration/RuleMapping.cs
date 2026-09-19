@@ -58,8 +58,8 @@ public enum ArgumentTransform
     Verbatim,
 
     /// <summary>
-    /// Duplicate a single argument into two (used to express FluentValidation's
-    /// <c>ExactLength(n)</c> as the compatibility <c>Length(n, n)</c>).
+    /// Duplicate a single argument into two (used to express FluentValidation's exact-length
+    /// <c>Length(n)</c> as the compatibility <c>Length(n, n)</c>).
     /// </summary>
     DuplicateSingleArgument,
 }

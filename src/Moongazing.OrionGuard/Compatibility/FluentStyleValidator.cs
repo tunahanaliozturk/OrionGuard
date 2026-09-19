@@ -47,9 +47,10 @@ public abstract class FluentStyleValidator<T> : IValidator<T> where T : class
     }
 
     /// <summary>
-    /// Materializes builder delegates into the flat rule list on first use.
-    /// Thread-safe via simple lock; validators are typically singletons so this
-    /// initialization cost is amortized across all calls.
+    /// Materializes builder delegates into the flat rule list on first use. Two threads racing on the first call
+    /// each build an identical list and the reference write is atomic, so no lock is needed. Validators are
+    /// usually transient, so this runs once per instance; the property accessors behind the rules come from a
+    /// process-wide cache and are not recompiled.
     /// </summary>
     private List<Func<T, ValidationError?>> GetCompiledRules()
     {

@@ -21,15 +21,12 @@ public sealed class RuleMapperTests
     [InlineData("Length", 2, "Length")]
     [InlineData("MinimumLength", 1, "MinimumLength")]
     [InlineData("MaximumLength", 1, "MaximumLength")]
-    [InlineData("Matches", 1, "Matches")]
-    [InlineData("EmailAddress", 0, "EmailAddress")]
     [InlineData("GreaterThan", 1, "GreaterThan")]
     [InlineData("GreaterThanOrEqualTo", 1, "GreaterThanOrEqualTo")]
     [InlineData("LessThan", 1, "LessThan")]
     [InlineData("LessThanOrEqualTo", 1, "LessThanOrEqualTo")]
     [InlineData("InclusiveBetween", 2, "InclusiveBetween")]
     [InlineData("ExclusiveBetween", 2, "ExclusiveBetween")]
-    [InlineData("WithMessage", 1, "WithMessage")]
     [InlineData("WithErrorCode", 1, "WithErrorCode")]
     public void Map_SupportedRule_ReturnsTargetMethod(string rule, int argCount, string expectedTarget)
     {
@@ -44,13 +41,81 @@ public sealed class RuleMapperTests
     }
 
     [Fact]
-    public void Map_ExactLength_MapsToLengthWithArgumentDuplication()
+    public void Map_LengthWithOneArgument_MapsToLengthWithArgumentDuplication()
     {
-        var mapping = RuleMapper.Map("ExactLength", Args("6"));
+        // FluentValidation's exact-length rule is Length(n).
+        var mapping = RuleMapper.Map("Length", Args("6"));
 
         Assert.True(mapping.IsSupported);
         Assert.Equal("Length", mapping.TargetMethod);
         Assert.Equal(ArgumentTransform.DuplicateSingleArgument, mapping.ArgumentTransform);
+    }
+
+    [Theory]
+    [InlineData("x => x.Min", "x => x.Max")]
+    [InlineData("x => x.Exact")]
+    // A method group is the Func<T, int> overload, and duplicating a call would evaluate it twice.
+    [InlineData("GetLimit")]
+    [InlineData("GetLimit()")]
+    [InlineData("Limits.Exact")]
+    public void Map_LengthWithLambdaBounds_IsReported(params string[] arguments)
+    {
+        // Length(Func<T, int>, Func<T, int>) and Length(Func<T, int>) would not compile against Length(int, int).
+        var mapping = RuleMapper.Map("Length", Args(arguments));
+
+        Assert.False(mapping.IsSupported);
+        Assert.Contains("Length", mapping.UnsupportedReason, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Map_ExactLength_IsReportedAsNotAFluentValidationRule()
+    {
+        // FluentValidation has no ExactLength rule, so an ExactLength call is the project's own extension.
+        var mapping = RuleMapper.Map("ExactLength", Args("6"));
+
+        Assert.False(mapping.IsSupported);
+        Assert.Contains("Length(n)", mapping.UnsupportedReason, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("Matches", "\"^[A-Z]+$\"")]
+    [InlineData("EmailAddress")]
+    public void Map_RuleWhoseCompatibilitySemanticsDiffer_IsReported(string rule, params string[] arguments)
+    {
+        // FluentValidation fails "" for both rules; the compatibility builder skips blank values, and its email
+        // pattern rejects addresses FluentValidation accepts (a@b). Migrating either would change verdicts.
+        var mapping = RuleMapper.Map(rule, Args(arguments));
+
+        Assert.False(mapping.IsSupported);
+        Assert.Null(mapping.TargetMethod);
+        Assert.Contains("differs from FluentValidation", mapping.UnsupportedReason, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("Must", "(x, value) => value > 0")]
+    [InlineData("Must", "(x, value, context) => value > 0")]
+    [InlineData("When", "(x, context) => x.Age > 0")]
+    [InlineData("Unless", "(x, context) => x.Age > 0")]
+    public void Map_PredicateLambdaWithMoreThanOneParameter_IsReported(string rule, string lambda)
+    {
+        // One argument, but the compatibility builder only takes one-parameter delegates.
+        var mapping = RuleMapper.Map(rule, Args(lambda));
+
+        Assert.False(mapping.IsSupported);
+        Assert.Contains(rule, mapping.UnsupportedReason, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("\"{PropertyName} is required\"")]
+    [InlineData("Messages.Required")]
+    [InlineData("$\"at most {Max} characters\"")]
+    public void Map_WithMessageThatMayHoldPlaceholders_IsReported(string message)
+    {
+        // FluentValidation expands {PropertyName} and friends; the compatibility builder prints the text as is.
+        var mapping = RuleMapper.Map("WithMessage", Args(message));
+
+        Assert.False(mapping.IsSupported);
+        Assert.Contains("placeholders", mapping.UnsupportedReason, StringComparison.Ordinal);
     }
 
     [Theory]
@@ -145,11 +210,12 @@ public sealed class RuleMapperTests
     }
 
     [Theory]
-    [InlineData("When")]
-    [InlineData("Unless")]
-    public void Map_ConditionWithPredicateLambda_IsSupported(string rule)
+    [InlineData("When", "x => x.Age > 0")]
+    [InlineData("Unless", "x => x.Age > 0")]
+    [InlineData("When", "(x) => x.Age > 0")]
+    public void Map_ConditionWithPredicateLambda_IsSupported(string rule, string lambda)
     {
-        var mapping = RuleMapper.Map(rule, Args("x => x.Age > 0"));
+        var mapping = RuleMapper.Map(rule, Args(lambda));
 
         Assert.True(mapping.IsSupported);
         Assert.Equal(rule, mapping.TargetMethod);

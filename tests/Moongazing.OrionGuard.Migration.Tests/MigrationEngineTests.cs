@@ -41,13 +41,11 @@ public sealed class MigrationEngineTests
 
     [Theory]
     [InlineData("RuleFor(x => x.Name).NotEmpty().MaximumLength(100);", "NotEmpty().MaximumLength(100)")]
-    [InlineData("RuleFor(x => x.Email).NotEmpty().EmailAddress();", "NotEmpty().EmailAddress()")]
     [InlineData("RuleFor(x => x.Age).InclusiveBetween(18, 120);", "InclusiveBetween(18, 120)")]
     [InlineData("RuleFor(x => x.Age).GreaterThanOrEqualTo(18);", "GreaterThanOrEqualTo(18)")]
     [InlineData("RuleFor(x => x.Name).MinimumLength(3);", "MinimumLength(3)")]
     [InlineData("RuleFor(x => x.Name).Equal(\"a\");", "Equal(\"a\")")]
     [InlineData("RuleFor(x => x.Name).NotEqual(\"a\");", "NotEqual(\"a\")")]
-    [InlineData("RuleFor(x => x.Name).Matches(\"^a$\");", "Matches(\"^a$\")")]
     public void Migrate_SupportedChain_IsPreservedVerbatim(string rule, string expectedFragment)
     {
         var result = MigrationEngine.Migrate(Path, Wrap("        " + rule));
@@ -57,12 +55,25 @@ public sealed class MigrationEngineTests
     }
 
     [Fact]
-    public void Migrate_ExactLength_BecomesLengthWithEqualBounds()
+    public void Migrate_ExactLengthRule_BecomesLengthWithEqualBounds()
     {
-        var result = MigrationEngine.Migrate(Path, Wrap("        RuleFor(x => x.Code).ExactLength(6);"));
+        var result = MigrationEngine.Migrate(Path, Wrap("        RuleFor(x => x.Code).Length(6);"));
 
         Assert.Contains("Length(6, 6)", result.MigratedText, StringComparison.Ordinal);
-        Assert.DoesNotContain("ExactLength", result.MigratedText, StringComparison.Ordinal);
+        Assert.False(result.HasUnmigrated);
+    }
+
+    [Theory]
+    [InlineData("RuleFor(x => x.Email).NotEmpty().EmailAddress();", "EmailAddress")]
+    [InlineData("RuleFor(x => x.Name).Matches(\"^a$\");", "Matches")]
+    [InlineData("RuleFor(x => x.Name).NotEmpty().WithMessage(\"{PropertyName} is required\");", "WithMessage")]
+    public void Migrate_RuleWithDifferentCompatibilitySemantics_IsLeftUntouchedAndReported(string rule, string blocker)
+    {
+        var result = MigrationEngine.Migrate(Path, Wrap("        " + rule));
+
+        Assert.Contains("// TODO: OrionGuard migration - " + blocker, result.MigratedText, StringComparison.Ordinal);
+        Assert.Contains(rule, result.MigratedText, StringComparison.Ordinal);
+        Assert.Equal(blocker, Assert.Single(result.Findings).Rule);
     }
 
     [Fact]
@@ -115,14 +126,14 @@ public sealed class MigrationEngineTests
     {
         var body =
             "        RuleFor(x => x.Name).NotEmpty().MaximumLength(50);\n" +
-            "        RuleFor(x => x.Email).NotEmpty().EmailAddress();\n" +
+            "        RuleFor(x => x.Email).NotEmpty().MaximumLength(254);\n" +
             "        RuleFor(x => x.Age).InclusiveBetween(0, 120);";
 
         var result = MigrationEngine.Migrate(Path, Wrap(body));
 
         Assert.False(result.HasUnmigrated);
         Assert.Contains("MaximumLength(50)", result.MigratedText, StringComparison.Ordinal);
-        Assert.Contains("EmailAddress()", result.MigratedText, StringComparison.Ordinal);
+        Assert.Contains("MaximumLength(254)", result.MigratedText, StringComparison.Ordinal);
         Assert.Contains("InclusiveBetween(0, 120)", result.MigratedText, StringComparison.Ordinal);
     }
 
@@ -338,15 +349,24 @@ public sealed class MigrationEngineTests
     }
 
     [Fact]
-    public void Migrate_ExactLengthWithNonTrivialArgument_DuplicatesExpressionCorrectly()
+    public void Migrate_ExactLengthRuleWithNonLiteralArgument_IsReportedInsteadOfDuplicated()
     {
-        // ExactLength(expr) -> Length(expr, expr) must clone the WHOLE argument expression, not just
-        // a trivial literal, into a fresh node for the second argument.
+        // Duplicating an expression into Length(expr, expr) evaluates it twice (a getter or a call can
+        // return different values or repeat side effects), so only a numeric literal is rewritten.
         var result = MigrationEngine.Migrate(
-            Path, Wrap("        RuleFor(x => x.Code).ExactLength(MaxLength + 1);"));
+            Path, Wrap("        RuleFor(x => x.Code).Length(MaxLength + 1);"));
 
-        Assert.Contains("Length(MaxLength + 1, MaxLength + 1)", result.MigratedText, StringComparison.Ordinal);
-        Assert.DoesNotContain("ExactLength", result.MigratedText, StringComparison.Ordinal);
+        Assert.DoesNotContain("Length(MaxLength + 1, MaxLength + 1)", result.MigratedText, StringComparison.Ordinal);
+        Assert.True(result.HasUnmigrated);
+    }
+
+    [Fact]
+    public void Migrate_ExactLengthRuleWithNumericLiteral_BecomesAnInclusiveRange()
+    {
+        var result = MigrationEngine.Migrate(
+            Path, Wrap("        RuleFor(x => x.Code).Length(8);"));
+
+        Assert.Contains("Length(8, 8)", result.MigratedText, StringComparison.Ordinal);
         Assert.False(result.HasUnmigrated);
     }
 
