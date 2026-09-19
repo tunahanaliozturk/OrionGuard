@@ -220,4 +220,53 @@ public class ObjectValidatorTests
     }
 
     #endregion
+
+    #region Delegate selector overload
+
+    [Fact]
+    public void Property_ShouldProduceTheSameResultAsTheExpressionOverload_WhenGivenADelegateSelector()
+    {
+        var person = new Person { Name = "  ", Email = "ada@example.com" };
+
+        var viaExpression = Validate.For(person)
+            .Property(p => p.Name, g => g.NotNull().NotEmpty())
+            .Property(p => p.Email, g => g.NotNull().Email())
+            .ToResult();
+
+        var viaDelegate = Validate.For(person)
+            .Property(static p => p.Name, nameof(Person.Name), g => g.NotNull().NotEmpty())
+            .Property(static p => p.Email, nameof(Person.Email), g => g.NotNull().Email())
+            .ToResult();
+
+        Assert.Equal(viaExpression.Errors.Count, viaDelegate.Errors.Count);
+        Assert.Equal(
+            viaExpression.Errors.Select(e => (e.ParameterName, e.Message, e.ErrorCode)),
+            viaDelegate.Errors.Select(e => (e.ParameterName, e.Message, e.ErrorCode)));
+    }
+
+    [Fact]
+    public void Property_ShouldReadTheCurrentValue_WhenTheDelegateSelectorIsReused()
+    {
+        var person = new Person { Name = "Ada" };
+
+        var before = Validate.For(person).Property(static p => p.Name, nameof(Person.Name), g => g.NotEmpty()).ToResult();
+        person.Name = "  ";
+        var after = Validate.For(person).Property(static p => p.Name, nameof(Person.Name), g => g.NotEmpty()).ToResult();
+
+        Assert.True(before.IsValid);
+        Assert.True(after.IsInvalid);
+    }
+
+    [Fact]
+    public void Property_ShouldThrowOnFirstError_WhenTheValidatorIsStrictAndTheSelectorIsADelegate()
+    {
+        var person = new Person { Name = "  " };
+
+        Assert.Throws<AggregateValidationException>(() =>
+            Validate.ForStrict(person)
+                .Property(static p => p.Name, nameof(Person.Name), g => g.NotEmpty())
+                .ToResult());
+    }
+
+    #endregion
 }

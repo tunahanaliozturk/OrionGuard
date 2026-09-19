@@ -80,18 +80,21 @@ public abstract class FluentStyleValidator<T> : IValidator<T> where T : class
     public GuardResult Validate(T value)
     {
         var rules = GetCompiledRules();
-        var errors = new List<ValidationError>();
+
+        // Allocated on the first failure only: an instance that passes every rule is the common case and
+        // should not pay for a list nobody reads.
+        List<ValidationError>? errors = null;
 
         foreach (var rule in rules)
         {
             var error = rule(value);
             if (error is not null)
             {
-                errors.Add(error);
+                (errors ??= new()).Add(error);
             }
         }
 
-        return errors.Count == 0 ? GuardResult.Success() : GuardResult.Failure(errors);
+        return errors is null ? GuardResult.Success() : GuardResult.Failure(errors);
     }
 
     /// <summary>

@@ -307,4 +307,78 @@ public class NestedValidatorTests
     }
 
     #endregion
+
+    #region Accessor caching
+
+    [Fact]
+    public void Property_ShouldReadTheCurrentValue_WhenTheSameSelectorRunsAgainstADifferentInstance()
+    {
+        var valid = new Order { OrderNumber = "ORD-001" };
+        var invalid = new Order { OrderNumber = "" };
+
+        var first = Validate.Nested(valid).Property(o => o.OrderNumber, p => p.NotEmpty()).ToResult();
+        var second = Validate.Nested(invalid).Property(o => o.OrderNumber, p => p.NotEmpty()).ToResult();
+        var third = Validate.Nested(valid).Property(o => o.OrderNumber, p => p.NotEmpty()).ToResult();
+
+        Assert.True(first.IsValid);
+        Assert.True(second.IsInvalid);
+        Assert.True(third.IsValid);
+    }
+
+    [Fact]
+    public void Property_ShouldReadTheCurrentValue_WhenThePropertyChangedBetweenCalls()
+    {
+        var order = new Order { OrderNumber = "ORD-001" };
+
+        var before = Validate.Nested(order).Property(o => o.OrderNumber, p => p.NotEmpty()).ToResult();
+        order.OrderNumber = "";
+        var after = Validate.Nested(order).Property(o => o.OrderNumber, p => p.NotEmpty()).ToResult();
+
+        Assert.True(before.IsValid);
+        Assert.True(after.IsInvalid);
+    }
+
+    [Fact]
+    public void Property_ShouldKeepSelectorsApart_WhenTwoMembersShareATypeAndALastName()
+    {
+        var order = new Order
+        {
+            OrderNumber = "ORD-001",
+            Address = new Address { City = "", ZipCode = "06100", Country = new Country { Name = "Turkey", Code = "TR" } }
+        };
+
+        var result = Validate.Nested(order)
+            .Property(o => o.OrderNumber, p => p.NotEmpty())
+            .Property(o => o.Address!.City, p => p.NotEmpty())
+            .ToResult();
+
+        var error = Assert.Single(result.Errors);
+        Assert.Equal("City", error.ParameterName);
+    }
+
+    [Fact]
+    public void Nested_And_Collection_ShouldReadTheCurrentValue_WhenTheGraphChangedBetweenCalls()
+    {
+        var order = new Order
+        {
+            Address = new Address { City = "Ankara" },
+            Items = [new OrderItem { ProductName = "Widget", Quantity = 1 }]
+        };
+
+        var before = ValidateGraph(order);
+        order.Address!.City = "";
+        order.Items!.Add(new OrderItem { ProductName = "", Quantity = 1 });
+        var after = ValidateGraph(order);
+
+        Assert.True(before.IsValid);
+        Assert.Equal(2, after.Errors.Count);
+
+        static GuardResult ValidateGraph(Order order) =>
+            Validate.Nested(order)
+                .Nested(o => o.Address, address => address.Property(a => a.City, p => p.NotEmpty()))
+                .Collection(o => o.Items, (item, _) => item.Property(i => i.ProductName, p => p.NotEmpty()))
+                .ToResult();
+    }
+
+    #endregion
 }
