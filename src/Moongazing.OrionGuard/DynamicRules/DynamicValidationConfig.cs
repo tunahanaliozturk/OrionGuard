@@ -1,4 +1,4 @@
-namespace Moongazing.OrionGuard.DynamicRules;
+﻿namespace Moongazing.OrionGuard.DynamicRules;
 
 /// <summary>
 /// Root configuration object for dynamic validation rules.
@@ -6,6 +6,12 @@ namespace Moongazing.OrionGuard.DynamicRules;
 /// </summary>
 public sealed class DynamicValidationConfig
 {
-    /// <summary>All rule sets defined in this configuration.</summary>
-    public List<DynamicRuleSet> RuleSets { get; set; } = new();
+    /// <summary>All rule sets defined in this configuration. A null assignment leaves it empty.</summary>
+    public List<DynamicRuleSet> RuleSets
+    {
+        get => ruleSets;
+        set => ruleSets = value ?? new();
+    }
+
+    private List<DynamicRuleSet> ruleSets = new();
 }

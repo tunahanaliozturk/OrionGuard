@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using Moongazing.OrionGuard.Core;
 using Moongazing.OrionGuard.DynamicRules;
 
@@ -638,6 +638,48 @@ public class DynamicRuleEngineTests
 
         Assert.True(validator.Validate(new UserDto { Name = "Al" }).IsInvalid);
         Assert.True(validator.Validate(new UserDto { Name = "Alice" }).IsValid);
+    }
+
+    [Fact]
+    public void Validate_ShouldTreatNullCollections_AsEmpty()
+    {
+        // "Rules": null and "Parameters": null overwrote the initializers, and Validate then threw
+        // NullReferenceException on configuration a JSON editor produces by simply clearing a field.
+        var emptyRules = DynamicValidator.FromJson("""
+            { "Name": "Empty", "Rules": null }
+            """);
+        var nullParameters = DynamicValidator.FromJson("""
+            {
+                "Name": "Names",
+                "Rules": [ { "PropertyName": "Name", "RuleType": "MinLength", "Parameters": null } ]
+            }
+            """);
+
+        Assert.True(emptyRules.Validate(new UserDto()).IsValid);
+        // A MinLength without its Min parameter has nothing to enforce, so it passes rather than throwing.
+        Assert.True(nullParameters.Validate(new UserDto { Name = "Al" }).IsValid);
+    }
+
+    [Fact]
+    public void Validate_ShouldReportTheRule_WhenItsPatternIsNotAValidRegex()
+    {
+        // The pattern comes from configuration, so a typo in it used to escape Validate as ArgumentException
+        // and take down every other rule in the set with it.
+        var validator = DynamicValidator.FromJson("""
+            {
+                "Name": "Names",
+                "Rules": [
+                    { "PropertyName": "Name", "RuleType": "Regex", "Parameters": { "Pattern": "[unclosed" } },
+                    { "PropertyName": "Email", "RuleType": "NotNull" }
+                ]
+            }
+            """);
+
+        var result = validator.Validate(new UserDto { Name = "Alice" });
+
+        Assert.True(result.IsInvalid);
+        Assert.Contains(result.Errors, e => e.ParameterName == "Name" && e.Message.Contains("not a valid regular expression", StringComparison.Ordinal));
+        Assert.Contains(result.Errors, e => e.ParameterName == "Email");
     }
 
     #endregion
