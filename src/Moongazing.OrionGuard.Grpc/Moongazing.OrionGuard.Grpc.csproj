@@ -20,7 +20,7 @@
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Grpc.AspNetCore.Server" Version="2.65.0" />
+    <PackageReference Include="Grpc.AspNetCore.Server" Version="2.83.0" />
     <ProjectReference Include="..\Moongazing.OrionGuard\Moongazing.OrionGuard.csproj" />
   </ItemGroup>
   <ItemGroup>

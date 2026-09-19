@@ -20,7 +20,7 @@
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="OpenTelemetry.Api" Version="1.15.3" />
+    <PackageReference Include="OpenTelemetry.Api" Version="1.19.0" />
     <ProjectReference Include="..\Moongazing.OrionGuard\Moongazing.OrionGuard.csproj" />
   </ItemGroup>
   <ItemGroup>

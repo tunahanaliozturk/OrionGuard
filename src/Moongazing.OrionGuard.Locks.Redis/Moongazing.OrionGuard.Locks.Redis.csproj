@@ -21,7 +21,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="OrionLock.Redis" Version="0.2.3" />
+    <PackageReference Include="OrionLock.Redis" Version="2.0.0" />
     <ProjectReference Include="..\Moongazing.OrionGuard.EntityFrameworkCore\Moongazing.OrionGuard.EntityFrameworkCore.csproj" />
   </ItemGroup>
 
