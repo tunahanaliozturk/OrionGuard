@@ -30,7 +30,7 @@
       to a commercial license, so referencing it would force that license on every consumer of this
       package. Consumers can still resolve any later 8.x release.
     -->
-    <PackageReference Include="MassTransit" Version="8.5.10" />
+    <PackageReference Include="MassTransit" Version="[8.5.10,9.0.0)" />
     <ProjectReference Include="..\Moongazing.OrionGuard\Moongazing.OrionGuard.csproj" />
   </ItemGroup>
   <ItemGroup>

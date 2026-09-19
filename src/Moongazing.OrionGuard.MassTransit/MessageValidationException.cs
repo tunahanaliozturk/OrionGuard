@@ -5,8 +5,9 @@ namespace Moongazing.OrionGuard.MassTransit;
 /// <summary>
 /// Thrown by <see cref="OrionGuardConsumeFilter{TMessage}"/> when a consumed message fails OrionGuard
 /// validation. The exception faults the message before it reaches the consumer, so MassTransit's
-/// standard error handling applies: a <c>Fault&lt;TMessage&gt;</c> is published and the message is moved
-/// to the endpoint's <c>_error</c> queue.
+/// standard error handling applies: the message is moved to the endpoint's <c>_error</c> queue with the
+/// <c>MT-Fault-*</c> headers. Because no consumer ran, MassTransit publishes <c>ReceiveFault</c>, not
+/// <c>Fault&lt;TMessage&gt;</c>; a fault consumer for the message type will not see these failures.
 /// </summary>
 /// <remarks>
 /// The <see cref="Errors"/> collection carries every blocking <see cref="ValidationError"/> from every

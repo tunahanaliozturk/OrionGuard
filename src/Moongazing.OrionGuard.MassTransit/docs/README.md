@@ -98,7 +98,7 @@ x.UsingRabbitMq((context, cfg) =>
 ## Targets
 
 - `net8.0`, `net9.0`, `net10.0`
-- `MassTransit` 8.x (built against 8.5.10). MassTransit 9 moved to a commercial license, so this package stays on the Apache-2.0 8.x line.
+- `MassTransit` `[8.5.10,9.0.0)`. MassTransit 9 moved to a commercial license, so this package stays on the Apache-2.0 8.x line, and the upper bound makes an application that pulls in MassTransit 9 fail restore instead of silently running against an unsupported major.
 
 ## Documentation
 
