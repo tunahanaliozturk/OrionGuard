@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Moongazing.OrionGuard.Core;
@@ -44,11 +45,17 @@ public abstract class Entity<TId> : IEquatable<Entity<TId>>
     /// <see langword="true"/> if the current entity and <paramref name="other"/> have the same identifier
     /// and are the same type; otherwise, <see langword="false"/>.
     /// </returns>
+    /// <remarks>
+    /// A transient entity, one whose <see cref="Id"/> is still the default of <typeparamref name="TId"/>
+    /// (for example before the database assigns it), has no identity yet and is equal only to itself.
+    /// Comparing default identifiers would make every new entity equal to every other one.
+    /// </remarks>
     public bool Equals(Entity<TId>? other)
     {
         if (other is null) return false;
         if (ReferenceEquals(this, other)) return true;
         if (GetType() != other.GetType()) return false;
+        if (IsTransient || other.IsTransient) return false;
         return EqualityComparer<TId>.Default.Equals(Id, other.Id);
     }
 
@@ -56,8 +63,14 @@ public abstract class Entity<TId> : IEquatable<Entity<TId>>
     public override bool Equals(object? obj) => obj is Entity<TId> e && Equals(e);
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// A transient entity hashes by reference. Its hash code therefore changes when an identifier is
+    /// assigned, so do not keep a transient entity in a hash-based collection across that assignment.
+    /// </remarks>
     public override int GetHashCode() =>
-        EqualityComparer<TId>.Default.GetHashCode(Id!);
+        IsTransient ? RuntimeHelpers.GetHashCode(this) : EqualityComparer<TId>.Default.GetHashCode(Id);
+
+    private bool IsTransient => EqualityComparer<TId>.Default.Equals(Id, default!);
 
     /// <summary>Determines whether two entities are equal by comparing their identifiers.</summary>
     /// <param name="left">The first entity to compare.</param>

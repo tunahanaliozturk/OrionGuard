@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Linq.Expressions;
 
 namespace Moongazing.OrionGuard.Core;
@@ -7,31 +6,13 @@ namespace Moongazing.OrionGuard.Core;
 /// Object validator that validates all properties of an object at once.
 /// </summary>
 /// <remarks>
-/// <para>
-/// <b>Accessor caching.</b> Compiled property accessors are cached in a nested generic
-/// <see cref="AccessorCache{TProperty}"/> keyed only by property name. Because the outer
-/// <typeparamref name="T"/> and the inner <c>TProperty</c> are both bound through the
-/// generic type system, the CLR naturally partitions the cache per <c>(T, TProperty)</c>
-/// pair without any runtime string concatenation.
-/// </para>
-/// <para>
-/// Cache hits have zero allocation on the key path -- no <c>typeof().FullName</c> lookups,
-/// no string interpolation, and no <see cref="Delegate"/> cast.
-/// </para>
+/// <b>Accessor caching.</b> Compiled property accessors are cached in <see cref="AccessorCache{T, TProperty}"/>,
+/// keyed by the member (<c>o =&gt; o.Name</c>) or the full member path (<c>o =&gt; o.Customer.Name</c>), so two
+/// selectors share an accessor only when they read the same members. Other selector shapes are compiled
+/// per call.
 /// </remarks>
 public sealed class ObjectValidator<T> where T : class
 {
-    /// <summary>
-    /// Per-<typeparamref name="T"/>, per-<c>TProperty</c> compiled-accessor cache.
-    /// A nested generic static class gives us free partitioning: each closed generic type
-    /// gets its own cache. No need to include <c>typeof(T)</c>/<c>typeof(TProperty)</c> in the key.
-    /// </summary>
-    private static class AccessorCache<TProperty>
-    {
-        public static readonly ConcurrentDictionary<string, Func<T, TProperty>> Instances =
-            new(StringComparer.Ordinal);
-    }
-
     private readonly T _instance;
     private readonly List<ValidationError> _errors = new();
     private readonly bool _throwOnFirstError;
@@ -78,7 +59,7 @@ public sealed class ObjectValidator<T> where T : class
         Action<FluentGuard<TProperty>> configure)
     {
         var propertyName = GetPropertyName(selector);
-        var accessor = GetOrCompileAccessor(selector, propertyName);
+        var accessor = GetOrCompileAccessor(selector);
         var value = accessor(_instance);
 
         var guard = new FluentGuard<TProperty>(value, propertyName, throwOnFirstError: false);
@@ -110,8 +91,8 @@ public sealed class ObjectValidator<T> where T : class
     {
         var name1 = GetPropertyName(selector1);
         var name2 = GetPropertyName(selector2);
-        var value1 = GetOrCompileAccessor(selector1, name1)(_instance);
-        var value2 = GetOrCompileAccessor(selector2, name2)(_instance);
+        var value1 = GetOrCompileAccessor(selector1)(_instance);
+        var value2 = GetOrCompileAccessor(selector2)(_instance);
 
         if (!predicate(value1, value2))
         {
@@ -190,7 +171,7 @@ public sealed class ObjectValidator<T> where T : class
         ArgumentNullException.ThrowIfNull(predicate);
 
         var propertyName = GetPropertyName(selector);
-        var accessor = GetOrCompileAccessor(selector, propertyName);
+        var accessor = GetOrCompileAccessor(selector);
 
         AddAsyncRule(async ct =>
         {
@@ -430,17 +411,8 @@ public sealed class ObjectValidator<T> where T : class
         }
     }
 
-    private static Func<T, TProperty> GetOrCompileAccessor<TProperty>(
-        Expression<Func<T, TProperty>> selector, string propertyName)
-    {
-        // Property name is a stable key within (T, TProperty) because the CLR partitions the
-        // AccessorCache<TProperty> static class per closed generic type.
-        var cache = AccessorCache<TProperty>.Instances;
-        if (cache.TryGetValue(propertyName, out var cached))
-            return cached;
-
-        return cache.GetOrAdd(propertyName, static (_, sel) => sel.Compile(), selector);
-    }
+    private static Func<T, TProperty> GetOrCompileAccessor<TProperty>(Expression<Func<T, TProperty>> selector) =>
+        AccessorCache<T, TProperty>.Get(selector);
 
     private static string GetPropertyName<TProperty>(Expression<Func<T, TProperty>> expression)
     {

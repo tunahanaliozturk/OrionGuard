@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Globalization;
 using System.Reflection;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -190,6 +191,10 @@ public sealed class DynamicValidator
         return null;
     }
 
+    // Numeric rules convert values and parameters to double without going through text. The previous
+    // value.ToString() used the current culture, so under tr-TR or de-DE 0.5 became "0,5", which the
+    // invariant parser read as 5 (',' being its group separator).
+
     private static ValidationError? ValidateRange(DynamicRule rule, object? value, string propertyName)
     {
         if (value is null) return null;
@@ -200,13 +205,14 @@ public sealed class DynamicValidator
         var hasMin = TryGetDouble(rule, "Min", out var min);
         var hasMax = TryGetDouble(rule, "Max", out var max);
 
-        if (hasMin && numericValue < min)
+        // !(x >= min) rather than x < min, so a NaN value fails the rule instead of passing it.
+        if (hasMin && !(numericValue >= min))
         {
             return CreateError(rule, propertyName,
                 $"{propertyName} must be at least {min}.");
         }
 
-        if (hasMax && numericValue > max)
+        if (hasMax && !(numericValue <= max))
         {
             return CreateError(rule, propertyName,
                 $"{propertyName} must be at most {max}.");
@@ -228,9 +234,9 @@ public sealed class DynamicValidator
 
         return op switch
         {
-            ">" when numericValue <= threshold =>
+            ">" when !(numericValue > threshold) =>
                 CreateError(rule, propertyName, $"{propertyName} must be greater than {threshold}."),
-            "<" when numericValue >= threshold =>
+            "<" when !(numericValue < threshold) =>
                 CreateError(rule, propertyName, $"{propertyName} must be less than {threshold}."),
             _ => null
         };
@@ -297,40 +303,45 @@ public sealed class DynamicValidator
     private static bool TryGetInt(DynamicRule rule, string parameterName, out int value)
     {
         value = 0;
-        if (!rule.Parameters.TryGetValue(parameterName, out var raw))
+
+        // Whole numbers only, as before: 5 and 5.0 are accepted, 5.5 is not.
+        if (!TryGetDouble(rule, parameterName, out var number) ||
+            number != Math.Truncate(number) ||
+            number < int.MinValue || number > int.MaxValue)
             return false;
 
-        var normalized = NormalizeValue(raw);
-        if (normalized is not null && int.TryParse(normalized.ToString(), out value))
-            return true;
-
-        return false;
+        value = (int)number;
+        return true;
     }
 
     private static bool TryGetDouble(DynamicRule rule, string parameterName, out double value)
     {
         value = 0;
-        if (!rule.Parameters.TryGetValue(parameterName, out var raw))
-            return false;
-
-        var normalized = NormalizeValue(raw);
-        if (normalized is not null && double.TryParse(normalized.ToString(),
-                System.Globalization.NumberStyles.Any,
-                System.Globalization.CultureInfo.InvariantCulture, out value))
-            return true;
-
-        return false;
+        return rule.Parameters.TryGetValue(parameterName, out var raw) && TryGetDouble(raw, out value);
     }
 
+    /// <summary>
+    /// Reads a number from a property value or a rule parameter. CLR numbers and JSON numbers are converted
+    /// directly; text (a string property, or a JSON string parameter) is parsed with the invariant culture.
+    /// Anything else is not numeric, and the rule is skipped for it as before.
+    /// </summary>
     private static bool TryGetDouble(object? value, out double result)
     {
         result = 0;
-        if (value is null) return false;
-
-        var normalized = NormalizeValue(value);
-        return normalized is not null && double.TryParse(normalized.ToString(),
-            System.Globalization.NumberStyles.Any,
-            System.Globalization.CultureInfo.InvariantCulture, out result);
+        switch (value)
+        {
+            case JsonElement { ValueKind: JsonValueKind.Number } number:
+                return number.TryGetDouble(out result);
+            case JsonElement { ValueKind: JsonValueKind.String } text:
+                return double.TryParse(text.GetString(), NumberStyles.Any, CultureInfo.InvariantCulture, out result);
+            case string text:
+                return double.TryParse(text, NumberStyles.Any, CultureInfo.InvariantCulture, out result);
+            case sbyte or byte or short or ushort or int or uint or long or ulong or float or double or decimal:
+                result = ((IConvertible)value).ToDouble(CultureInfo.InvariantCulture);
+                return true;
+            default:
+                return false;
+        }
     }
 
     private static List<string> ExtractStringList(object valuesObj)

@@ -11,6 +11,10 @@ public sealed class AsyncGuard<T>
     private readonly List<Func<Task<ValidationError?>>> _asyncValidations;
     private bool _shouldValidate = true;
 
+    // Number of registered rules that have already run. Each rule runs at most once, so calling
+    // ValidateAsync again neither repeats I/O nor appends the same errors a second time.
+    private int _completedValidations;
+
     internal AsyncGuard(T value, string parameterName)
     {
         _value = value;
@@ -68,15 +72,21 @@ public sealed class AsyncGuard<T>
     /// <summary>
     /// Executes all validations and returns the result.
     /// </summary>
+    /// <remarks>
+    /// Idempotent: each rule runs once, on the first call after it was registered. Later calls return the
+    /// same errors without re-running the rules. A rule that throws has not completed and runs again on the
+    /// next call.
+    /// </remarks>
     public async Task<GuardResult> ValidateAsync()
     {
-        foreach (var validation in _asyncValidations)
+        while (_completedValidations < _asyncValidations.Count)
         {
-            var error = await validation().ConfigureAwait(false);
+            var error = await _asyncValidations[_completedValidations]().ConfigureAwait(false);
             if (error != null)
             {
                 _errors.Add(error);
             }
+            _completedValidations++;
         }
 
         return _errors.Count == 0 ? GuardResult.Success() : GuardResult.Failure(_errors);

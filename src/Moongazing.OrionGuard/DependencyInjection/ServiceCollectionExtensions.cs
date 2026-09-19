@@ -14,29 +14,49 @@ public static class ServiceCollectionExtensions
     /// </summary>
     public static IServiceCollection AddOrionGuard(this IServiceCollection services)
     {
+        // Kept for the AspNetCore health check, which reports the registered IExceptionFactory. Guards
+        // never resolve it (see IExceptionFactory).
+#pragma warning disable CS0618
         services.TryAddSingleton<IExceptionFactory>(DefaultExceptionFactory.Instance);
+#pragma warning restore CS0618
         services.AddSingleton<IValidatorFactory, ValidatorFactory>();
         return services;
     }
 
     /// <summary>
-    /// Adds OrionGuard with custom validator registration.
+    /// Adds OrionGuard and registers the validators added to the <see cref="ValidatorRegistry"/>.
+    /// Each <c>Register&lt;T, TValidator&gt;()</c> becomes a transient <see cref="IValidator{T}"/>
+    /// registration, exactly like <see cref="AddValidator{T, TValidator}"/>, so the validator is resolved by
+    /// <see cref="IValidatorFactory"/> and by every integration that resolves <see cref="IValidator{T}"/>.
     /// </summary>
     public static IServiceCollection AddOrionGuard(this IServiceCollection services, Action<ValidatorRegistry> configure)
     {
+        ArgumentNullException.ThrowIfNull(configure);
+
         var registry = new ValidatorRegistry();
         configure(registry);
+
+        services.AddOrionGuard();
         services.AddSingleton(registry);
-        services.AddSingleton<IValidatorFactory, ValidatorFactory>();
+        foreach (var (modelType, validatorType) in registry.Registrations)
+        {
+            services.AddTransient(typeof(IValidator<>).MakeGenericType(modelType), validatorType);
+        }
         return services;
     }
 
     /// <summary>
-    /// Registers a custom exception factory for OrionGuard.
-    /// The factory is instantiated immediately and wired into both the DI container
-    /// and the static <see cref="ExceptionFactoryProvider"/> so that non-DI code paths
-    /// (e.g. Guard.Against helpers) also use the custom factory.
+    /// Registers an <see cref="IExceptionFactory"/> in the DI container and in
+    /// <see cref="ExceptionFactoryProvider"/>.
     /// </summary>
+    /// <remarks>
+    /// No guard consults the factory: <c>Guard</c>, <c>Ensure</c>, <c>FastGuard</c> and the extension guards
+    /// always throw their own exception types (<c>NullValueException</c>, <c>GuardException</c>,
+    /// <see cref="ArgumentException"/>, ...). Registering a factory therefore does not change which
+    /// exception a guard throws.
+    /// </remarks>
+    [Obsolete("OrionGuard guards never call IExceptionFactory, so registering one does not change the exceptions they throw. " +
+              "Catch GuardException (or the specific exception type) and translate it at your boundary instead. This method will be removed in v7.")]
     public static IServiceCollection AddOrionGuardExceptionFactory<TFactory>(this IServiceCollection services)
         where TFactory : class, IExceptionFactory, new()
     {
@@ -87,14 +107,16 @@ public sealed class ValidatorFactory : IValidatorFactory
 }
 
 /// <summary>
-/// Registry for custom validators.
+/// Collects validator registrations for
+/// <see cref="ServiceCollectionExtensions.AddOrionGuard(IServiceCollection, Action{ValidatorRegistry})"/>,
+/// which registers each one as a transient <see cref="IValidator{T}"/>.
 /// </summary>
 public sealed class ValidatorRegistry
 {
     private readonly Dictionary<Type, Type> _validators = new();
 
     /// <summary>
-    /// Registers a validator for a type.
+    /// Registers a validator for a type. Registering the same type again replaces the earlier validator.
     /// </summary>
     public ValidatorRegistry Register<T, TValidator>() where TValidator : IValidator<T>
     {
@@ -102,10 +124,8 @@ public sealed class ValidatorRegistry
         return this;
     }
 
-    internal Type? GetValidatorType(Type modelType)
-    {
-        return _validators.TryGetValue(modelType, out var validatorType) ? validatorType : null;
-    }
+    internal IEnumerable<(Type ModelType, Type ValidatorType)> Registrations =>
+        _validators.Select(pair => (pair.Key, pair.Value));
 }
 
 /// <summary>
@@ -130,7 +150,8 @@ public interface IValidator<T>
     /// <remarks>
     /// Default interface implementation delegates to the context-less overload so existing
     /// implementations remain source-compatible. Implementations that want to honor the
-    /// context should override this method.
+    /// context should override this method, and decorators must override it and forward the
+    /// context to the inner validator, or the context is lost.
     /// </remarks>
     Core.GuardResult Validate(T value, Core.ValidationContext context) => Validate(value);
 
@@ -744,11 +765,16 @@ public sealed class PropertyValidator<T>
         return this;
     }
 
+    /// <summary>
+    /// Adds a rule that the value is strictly greater than <paramref name="min"/>. The comparison is by
+    /// numeric value across built-in numeric types, so <c>GreaterThan(0)</c> works on a <see cref="decimal"/>
+    /// property. A null value passes (use <see cref="NotNull"/>); NaN or an unrelated type fails.
+    /// </summary>
     public PropertyValidator<T> GreaterThan<TValue>(TValue min, string? message = null) where TValue : IComparable<TValue>
     {
         _rules.Add(value =>
         {
-            if (value is TValue comparable && comparable.CompareTo(min) <= 0)
+            if (value is not null && (!Core.NumericComparer.TryCompare(value, min, out var comparison) || comparison <= 0))
             {
                 return new Core.ValidationError(_propertyName, message ?? $"{_propertyName} must be greater than {min}.");
             }

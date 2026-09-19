@@ -8,6 +8,11 @@ namespace Moongazing.OrionGuard.OpenTelemetry;
 /// Decorator that wraps an <see cref="IValidator{T}"/> with OpenTelemetry instrumentation,
 /// recording validation metrics (count, failures, duration) and distributed tracing spans.
 /// </summary>
+/// <remarks>
+/// Every <see cref="IValidator{T}"/> overload is implemented and forwarded to the same overload of the
+/// inner validator, so a <see cref="ValidationContext"/> reaches the inner validator's context-aware rules
+/// instead of being dropped by the interface's default implementation.
+/// </remarks>
 public sealed class InstrumentedValidator<T> : IValidator<T>
 {
     private readonly IValidator<T> _inner;
@@ -19,28 +24,49 @@ public sealed class InstrumentedValidator<T> : IValidator<T>
 
     public GuardResult Validate(T value)
     {
-        using var activity = OrionGuardInstrumentation.ActivitySource.StartActivity("OrionGuard.Validate");
-        activity?.SetTag("orionguard.validator_type", typeof(T).Name);
+        using var activity = StartActivity("OrionGuard.Validate");
 
         var startTimestamp = Stopwatch.GetTimestamp();
         var result = _inner.Validate(value);
-        var elapsed = Stopwatch.GetElapsedTime(startTimestamp);
+        RecordMetrics(result, Stopwatch.GetElapsedTime(startTimestamp), activity);
+        return result;
+    }
 
-        RecordMetrics(result, elapsed, activity);
+    public GuardResult Validate(T value, ValidationContext context)
+    {
+        using var activity = StartActivity("OrionGuard.Validate");
+
+        var startTimestamp = Stopwatch.GetTimestamp();
+        var result = _inner.Validate(value, context);
+        RecordMetrics(result, Stopwatch.GetElapsedTime(startTimestamp), activity);
         return result;
     }
 
     public async Task<GuardResult> ValidateAsync(T value, CancellationToken cancellationToken = default)
     {
-        using var activity = OrionGuardInstrumentation.ActivitySource.StartActivity("OrionGuard.ValidateAsync");
-        activity?.SetTag("orionguard.validator_type", typeof(T).Name);
+        using var activity = StartActivity("OrionGuard.ValidateAsync");
 
         var startTimestamp = Stopwatch.GetTimestamp();
         var result = await _inner.ValidateAsync(value, cancellationToken).ConfigureAwait(false);
-        var elapsed = Stopwatch.GetElapsedTime(startTimestamp);
-
-        RecordMetrics(result, elapsed, activity);
+        RecordMetrics(result, Stopwatch.GetElapsedTime(startTimestamp), activity);
         return result;
+    }
+
+    public async Task<GuardResult> ValidateAsync(T value, ValidationContext context, CancellationToken cancellationToken = default)
+    {
+        using var activity = StartActivity("OrionGuard.ValidateAsync");
+
+        var startTimestamp = Stopwatch.GetTimestamp();
+        var result = await _inner.ValidateAsync(value, context, cancellationToken).ConfigureAwait(false);
+        RecordMetrics(result, Stopwatch.GetElapsedTime(startTimestamp), activity);
+        return result;
+    }
+
+    private static Activity? StartActivity(string name)
+    {
+        var activity = OrionGuardInstrumentation.ActivitySource.StartActivity(name);
+        activity?.SetTag("orionguard.validator_type", typeof(T).Name);
+        return activity;
     }
 
     private static void RecordMetrics(GuardResult result, TimeSpan elapsed, Activity? activity)

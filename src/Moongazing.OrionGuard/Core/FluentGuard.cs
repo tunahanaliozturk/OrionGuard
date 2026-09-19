@@ -293,14 +293,19 @@ public sealed class FluentGuard<T>
 
     #region Numeric Validations
 
+    // The comparison rules below compare by numeric value across all built-in numeric types, so
+    // GreaterThan(0) on a decimal, long or double value really compares with zero. A null value is left
+    // to NotNull(). A value that cannot be ordered against the threshold (NaN, or a type that is neither
+    // the threshold's type nor numeric) fails the rule instead of being skipped.
+
     /// <summary>
     /// Validates numeric value is greater than specified minimum.
     /// </summary>
     public FluentGuard<T> GreaterThan<TValue>(TValue min, string? message = null) where TValue : IComparable<TValue>
     {
-        if (!_shouldValidate) return this;
+        if (!_shouldValidate || _value is null) return this;
 
-        if (_value is TValue val && val.CompareTo(min) <= 0)
+        if (!NumericComparer.TryCompare(_value, min, out var comparison) || comparison <= 0)
         {
             AddError(message ?? $"{_parameterName} must be greater than {min}.", "GREATER_THAN");
         }
@@ -312,9 +317,9 @@ public sealed class FluentGuard<T>
     /// </summary>
     public FluentGuard<T> LessThan<TValue>(TValue max, string? message = null) where TValue : IComparable<TValue>
     {
-        if (!_shouldValidate) return this;
+        if (!_shouldValidate || _value is null) return this;
 
-        if (_value is TValue val && val.CompareTo(max) >= 0)
+        if (!NumericComparer.TryCompare(_value, max, out var comparison) || comparison >= 0)
         {
             AddError(message ?? $"{_parameterName} must be less than {max}.", "LESS_THAN");
         }
@@ -326,9 +331,10 @@ public sealed class FluentGuard<T>
     /// </summary>
     public FluentGuard<T> InRange<TValue>(TValue min, TValue max, string? message = null) where TValue : IComparable<TValue>
     {
-        if (!_shouldValidate) return this;
+        if (!_shouldValidate || _value is null) return this;
 
-        if (_value is TValue val && (val.CompareTo(min) < 0 || val.CompareTo(max) > 0))
+        if (!NumericComparer.TryCompare(_value, min, out var lower) || lower < 0 ||
+            !NumericComparer.TryCompare(_value, max, out var upper) || upper > 0)
         {
             AddError(message ?? $"{_parameterName} must be between {min} and {max}.", "IN_RANGE");
         }
@@ -340,19 +346,9 @@ public sealed class FluentGuard<T>
     /// </summary>
     public FluentGuard<T> Positive(string? message = null)
     {
-        if (!_shouldValidate) return this;
+        if (!_shouldValidate || _value is null) return this;
 
-        bool isNegativeOrZero = _value switch
-        {
-            int i => i <= 0,
-            long l => l <= 0,
-            decimal d => d <= 0,
-            double dbl => dbl <= 0,
-            float f => f <= 0,
-            _ => false
-        };
-
-        if (isNegativeOrZero)
+        if (!NumericComparer.TryCompare(_value, 0, out var comparison) || comparison <= 0)
         {
             AddError(message ?? $"{_parameterName} must be positive.", "POSITIVE");
         }
@@ -364,19 +360,9 @@ public sealed class FluentGuard<T>
     /// </summary>
     public FluentGuard<T> NotNegative(string? message = null)
     {
-        if (!_shouldValidate) return this;
+        if (!_shouldValidate || _value is null) return this;
 
-        bool isNegative = _value switch
-        {
-            int i => i < 0,
-            long l => l < 0,
-            decimal d => d < 0,
-            double dbl => dbl < 0,
-            float f => f < 0,
-            _ => false
-        };
-
-        if (isNegative)
+        if (!NumericComparer.TryCompare(_value, 0, out var comparison) || comparison < 0)
         {
             AddError(message ?? $"{_parameterName} cannot be negative.", "NOT_NEGATIVE");
         }
@@ -388,19 +374,9 @@ public sealed class FluentGuard<T>
     /// </summary>
     public FluentGuard<T> NotZero(string? message = null)
     {
-        if (!_shouldValidate) return this;
+        if (!_shouldValidate || _value is null) return this;
 
-        bool isZero = _value switch
-        {
-            int i => i == 0,
-            long l => l == 0,
-            decimal d => d == 0,
-            double dbl => dbl == 0,
-            float f => f == 0,
-            _ => false
-        };
-
-        if (isZero)
+        if (!NumericComparer.TryCompare(_value, 0, out var comparison) || comparison == 0)
         {
             AddError(message ?? $"{_parameterName} cannot be zero.", "NOT_ZERO");
         }
@@ -500,11 +476,16 @@ public sealed class FluentGuard<T>
     /// <summary>
     /// Validates date is in the past.
     /// </summary>
+    /// <remarks>
+    /// A <see cref="DateTime"/> with <see cref="DateTimeKind.Local"/> is converted to UTC before it is
+    /// compared with <see cref="DateTime.UtcNow"/>; <see cref="DateTimeKind.Unspecified"/> is treated as UTC.
+    /// A <see cref="DateOnly"/> is compared with today's UTC date.
+    /// </remarks>
     public FluentGuard<T> InPast(string? message = null)
     {
         if (!_shouldValidate) return this;
 
-        if (_value is DateTime dt && dt >= DateTime.UtcNow)
+        if (_value is DateTime dt && Utilities.DateTimeNormalization.ToUtc(dt) >= DateTime.UtcNow)
         {
             AddError(message ?? $"{_parameterName} must be in the past.", "IN_PAST");
         }
@@ -518,11 +499,16 @@ public sealed class FluentGuard<T>
     /// <summary>
     /// Validates date is in the future.
     /// </summary>
+    /// <remarks>
+    /// A <see cref="DateTime"/> with <see cref="DateTimeKind.Local"/> is converted to UTC before it is
+    /// compared with <see cref="DateTime.UtcNow"/>; <see cref="DateTimeKind.Unspecified"/> is treated as UTC.
+    /// A <see cref="DateOnly"/> is compared with today's UTC date.
+    /// </remarks>
     public FluentGuard<T> InFuture(string? message = null)
     {
         if (!_shouldValidate) return this;
 
-        if (_value is DateTime dt && dt <= DateTime.UtcNow)
+        if (_value is DateTime dt && Utilities.DateTimeNormalization.ToUtc(dt) <= DateTime.UtcNow)
         {
             AddError(message ?? $"{_parameterName} must be in the future.", "IN_FUTURE");
         }

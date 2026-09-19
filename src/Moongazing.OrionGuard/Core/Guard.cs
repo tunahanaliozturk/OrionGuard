@@ -157,15 +157,23 @@ public static class Guard
             ThrowHelper.ThrowInvalidGuid(parameterName);
     }
 
+    /// <summary>
+    /// Throws when <paramref name="date"/> is earlier than <see cref="DateTime.UtcNow"/>.
+    /// A <see cref="DateTimeKind.Local"/> value is converted to UTC first; <see cref="DateTimeKind.Unspecified"/> is treated as UTC.
+    /// </summary>
     public static void AgainstPastDate(DateTime date, string parameterName)
     {
-        if (date < DateTime.UtcNow)
+        if (Utilities.DateTimeNormalization.ToUtc(date) < DateTime.UtcNow)
             ThrowHelper.ThrowPastDate(parameterName);
     }
 
+    /// <summary>
+    /// Throws when <paramref name="date"/> is later than <see cref="DateTime.UtcNow"/>.
+    /// A <see cref="DateTimeKind.Local"/> value is converted to UTC first; <see cref="DateTimeKind.Unspecified"/> is treated as UTC.
+    /// </summary>
     public static void AgainstFutureDate(DateTime date, string parameterName)
     {
-        if (date > DateTime.UtcNow)
+        if (Utilities.DateTimeNormalization.ToUtc(date) > DateTime.UtcNow)
             ThrowHelper.ThrowFutureDate(parameterName);
     }
 
@@ -239,10 +247,15 @@ public static class Guard
         }
     }
 
+    /// <summary>
+    /// Throws when <paramref name="date"/> is in the future or more than 120 years ago.
+    /// A <see cref="DateTimeKind.Local"/> value is converted to UTC first; <see cref="DateTimeKind.Unspecified"/> is treated as UTC.
+    /// </summary>
     public static void AgainstUnrealisticBirthDate(DateTime date, string parameterName)
     {
         var now = DateTime.UtcNow;
         var maxDate = now.AddYears(-120);
+        date = Utilities.DateTimeNormalization.ToUtc(date);
         if (date > now || date < maxDate)
         {
             throw new UnrealisticBirthDateException(parameterName);

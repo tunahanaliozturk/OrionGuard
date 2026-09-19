@@ -77,6 +77,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `OrionGuard.MediatR`: stream requests (`IStreamRequest<T>` sent with `IMediator.CreateStream`) were never
   validated, because only `IPipelineBehavior<,>` was registered. `AddOrionGuardMediatR` now also registers
   `StreamValidationBehavior<,>`, which validates the request before the handler yields its first item.
+- **Numeric comparison rules now compare by value across numeric types.** `GreaterThan`, `LessThan` and `InRange`
+  (on `Ensure`, `Validate.For`, `Validate.Nested` and `AbstractValidator`'s `RuleFor`) took their type from the
+  literal, so `GreaterThan(0)` on a `decimal`, `long` or `double` silently passed every value, negative ones
+  included. All built-in numeric types (`sbyte` through `decimal`) now compare with each other: integers
+  exactly (also against floating-point values, so a `long` above 2^53 is not rounded), and a `decimal` against a
+  `double` literal by the literal's decimal value, so `0.1m` equals `0.1`. A value
+  that cannot be compared with the threshold (for example a string against a number) now fails the rule instead
+  of being skipped, and `NaN` fails every comparison. `Positive()`, `NotNegative()` and `NotZero()` now also
+  check `short`, `byte`, `sbyte`, `ushort`, `uint` and `ulong`, and fail for `NaN`; on a non-numeric value they
+  now fail instead of passing. The `IComparable` overloads of `Validate.Nested` no longer throw
+  `ArgumentException` when the types differ.
+- **`Validate.For` and `Validate.Delta` no longer read the wrong property.** Their compiled-accessor cache was
+  keyed by the last member name, so after `o => o.Customer.Name` a rule on `o => o.Name` read
+  `Customer.Name` (and `o => o.Items.Count` / `o => o.Tags.Count`, or any two non-member selectors, shared one
+  accessor). `Delta` keyed by the expression text, so one lambda capturing different variables read the first
+  variable every time. Accessors are now shared only between selectors that read the same members; other
+  selectors are compiled per call.
+- **`CachedValidator` no longer serves a result cached for a different input.** Its key was built from each
+  property's `ToString()`, so objects differing only in a collection, or `null` versus the string `"null"`,
+  shared one cached result. Without a key selector a result is now cached only when the model is a record with
+  compiler-synthesized equality; other models, including types with a hand-written `IEquatable<T>` such as an
+  entity compared by Id, are validated on every call. The new
+  `validator.WithCaching(keySelector)` overload caches any model by an explicit key. Calls with a non-empty
+  `ValidationContext` now reach the inner validator's context overloads and are never cached; previously the
+  context was dropped and results could be shared across tenants.
+- **`InstrumentedValidator` (OrionGuard.OpenTelemetry) now passes the `ValidationContext` to the validator it
+  wraps.** Enabling instrumentation used to drop the context, so context-aware rules (tenant, role, feature
+  flags) stopped running.
+- **`AddOrionGuardOpenTelemetry()` no longer breaks the service provider.** An open-generic `IValidator<>`
+  registration made `BuildServiceProvider` throw, and a keyed registration made the call itself throw. Both are
+  now left unchanged and are not instrumented.
+- **Dynamic rules read numbers correctly in every culture.** `Range`, `GreaterThan`, `LessThan` and the length
+  rules turned numbers into text with the current culture, so under tr-TR or de-DE `0.5` was read as `5`
+  (`Range[1,1000]` accepted `0.5` and rejected `150.75`). Values and parameters are now converted without text;
+  string values are parsed with the invariant culture, as before. A `NaN` value now fails a range or
+  comparison rule.
+- **Date guards now handle `DateTime.Kind`.** `Guard.AgainstPastDate` / `AgainstFutureDate` /
+  `AgainstUnrealisticBirthDate`, the `DateTimeGuards` and `AgainstExpired` / `AgainstNotYetActive` extensions,
+  and `Ensure(...).InPast()` / `InFuture()` compared raw ticks with `DateTime.UtcNow`, so a local time was off by
+  the machine's UTC offset (`AgainstFutureDate(DateTime.Now)` threw east of UTC). Local values are now converted
+  to UTC first. `Unspecified` values are treated as UTC, as before, and that is now documented.
+- **Transient entities are no longer equal to each other.** Two `Entity<TId>` instances whose `Id` is still the
+  default (`0`, `Guid.Empty`, `null`) compared equal and collapsed to one item in a `HashSet`. Such an entity is
+  now equal only to itself and hashes by reference; note that its hash code changes once an `Id` is assigned.
+- **`GuardResult.Combine` and `Merge` keep `SuggestedHttpStatusCode`.** The first non-null status code of the
+  inputs is carried over instead of being dropped.
+- **`ValidationMessages` follows the calling thread's culture when none is set.** The culture of whichever
+  thread touched the class first used to become the default for every thread. Without `SetCulture`, messages
+  now use the calling thread's `CurrentCulture`.
+- **`EnsureAsync(...).ValidateAsync()` can be called more than once.** Each call re-ran every async rule and
+  appended its errors again, so one failing rule reported two errors on the second call. Each rule now runs
+  once, and later calls return the same result.
+- **`AddOrionGuard(registry => ...)` now registers the validators.** Validators added with
+  `ValidatorRegistry.Register<T, TValidator>()` were stored but never resolved; `IValidatorFactory` returned
+  `null` for them. Each is now registered as a transient `IValidator<T>`, like `AddValidator<T, TValidator>()`.
+
+### Deprecated
+
+- `AddOrionGuardExceptionFactory<TFactory>()`, `ExceptionFactoryProvider.Configure` / `Reset` and
+  `DefaultExceptionFactory` are marked `[Obsolete]` and will be removed in v7. No guard ever called
+  `IExceptionFactory`, so registering a factory never changed the exceptions guards throw, contrary to the
+  documentation. Catch `GuardException` (or the specific exception type) at your boundary instead.
 
 ### Security
 

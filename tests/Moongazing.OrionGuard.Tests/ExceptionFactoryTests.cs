@@ -2,6 +2,10 @@ using Moongazing.OrionGuard.Core;
 
 namespace Moongazing.OrionGuard.Tests;
 
+// The exception factory APIs are obsolete (guards never call them) but still ship until v7, so their
+// own behaviour stays covered here.
+#pragma warning disable CS0618
+
 public class ExceptionFactoryTests : IDisposable
 {
     public ExceptionFactoryTests()
@@ -135,6 +139,18 @@ public class ExceptionFactoryTests : IDisposable
     public void Current_ShouldReturnDefaultFactory_Initially()
     {
         Assert.IsType<DefaultExceptionFactory>(ExceptionFactoryProvider.Current);
+    }
+
+    #endregion
+
+    #region Guards do not consult the factory (documented contract)
+
+    [Fact]
+    public void Guard_ShouldThrowItsOwnException_WhenCustomFactoryIsConfigured()
+    {
+        ExceptionFactoryProvider.Configure(new TestExceptionFactory());
+
+        Assert.Throws<Moongazing.OrionGuard.Exceptions.NullValueException>(() => Guard.AgainstNull<string>(null, "value"));
     }
 
     #endregion

@@ -30,7 +30,7 @@ There is no `AddOrionGuardInstrumentation()` builder extension. Subscribe to the
 
 ## Validator instrumentation
 
-`AddOrionGuardOpenTelemetry()` replaces every `IValidator<T>` registration already in the service collection with an `InstrumentedValidator<T>` that wraps the original and keeps its lifetime. Validators registered after the call are not instrumented. Neither is validation that does not go through a DI-resolved `IValidator<T>`, such as `Guard.Against`, `Ensure`, or `AttributeValidator`.
+`AddOrionGuardOpenTelemetry()` replaces every closed, non-keyed `IValidator<T>` registration already in the service collection with an `InstrumentedValidator<T>` that wraps the original and keeps its lifetime. Validators registered after the call are not instrumented. Neither is validation that does not go through a DI-resolved `IValidator<T>`, such as `Guard.Against`, `Ensure`, or `AttributeValidator`.
 
 Meter and ActivitySource name: `Moongazing.OrionGuard` (`OrionGuardInstrumentation.MeterName`, `OrionGuardInstrumentation.ActivitySourceName`). The instrumentation version is the package version.
 
@@ -48,7 +48,9 @@ Spans are named `OrionGuard.Validate` or `OrionGuard.ValidateAsync`, depending o
 
 Spans are `Internal` and start under the current `Activity`, for example an ASP.NET Core request span.
 
-`InstrumentedValidator<T>` implements only `Validate(T)` and `ValidateAsync(T, CancellationToken)`. The `ValidationContext` overloads fall back to the interface defaults, so the context is not passed to the wrapped validator while instrumentation is enabled.
+`InstrumentedValidator<T>` implements every `IValidator<T>` overload, including `Validate(T, ValidationContext)` and `ValidateAsync(T, ValidationContext, CancellationToken)`, and passes the `ValidationContext` on to the wrapped validator.
+
+Open-generic registrations (`AddTransient(typeof(IValidator<>), typeof(MyValidator<>))`) and keyed registrations are left unchanged and are not instrumented.
 
 ## Domain-event instrumentation
 

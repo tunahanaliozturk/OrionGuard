@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Runtime.Loader;
 using Moongazing.OrionGuard.Localization;
 
 namespace Moongazing.OrionGuard.Tests;
@@ -6,6 +7,42 @@ namespace Moongazing.OrionGuard.Tests;
 public class ValidationMessagesTests
 {
     #region Culture Management
+
+    [Fact]
+    public void CurrentCulture_ShouldFollowCallingThread_WhenNoGlobalCultureWasSet()
+    {
+        // ValidationMessages keeps its culture in static state, and other tests in this process set it.
+        // A collectible load context gets a pristine copy of the type, so the first touch happens here.
+        var loadContext = new AssemblyLoadContext(nameof(CurrentCulture_ShouldFollowCallingThread_WhenNoGlobalCultureWasSet), isCollectible: true);
+        try
+        {
+            var isolatedType = loadContext
+                .LoadFromAssemblyPath(typeof(ValidationMessages).Assembly.Location)
+                .GetType(typeof(ValidationMessages).FullName!)!;
+            var currentCulture = isolatedType.GetProperty(nameof(ValidationMessages.CurrentCulture))!;
+
+            string ReadOnThreadWithCulture(string cultureName)
+            {
+                string? observed = null;
+                var thread = new Thread(() =>
+                {
+                    CultureInfo.CurrentCulture = new CultureInfo(cultureName);
+                    observed = ((CultureInfo)currentCulture.GetValue(null)!).Name;
+                });
+                thread.Start();
+                thread.Join();
+                return observed!;
+            }
+
+            // The first touch used to freeze de-DE as the culture of every later caller.
+            Assert.Equal("de-DE", ReadOnThreadWithCulture("de-DE"));
+            Assert.Equal("fr-FR", ReadOnThreadWithCulture("fr-FR"));
+        }
+        finally
+        {
+            loadContext.Unload();
+        }
+    }
 
     [Fact]
     public void SetCulture_ShouldChangeCulture()

@@ -14,10 +14,15 @@ public static class ServiceCollectionExtensions
     /// This adds distributed tracing spans and validation metrics (count, failure rate, duration) to every validation call.
     /// Must be called after all validators have been registered.
     /// </summary>
+    /// <remarks>
+    /// Open-generic registrations (<c>AddTransient(typeof(IValidator&lt;&gt;), typeof(MyValidator&lt;&gt;))</c>)
+    /// and keyed registrations are left as they are and are not instrumented: a factory-based decorator
+    /// cannot be registered for an open generic service, and a keyed descriptor is resolved through its key.
+    /// </remarks>
     public static IServiceCollection AddOrionGuardOpenTelemetry(this IServiceCollection services)
     {
         var validatorDescriptors = services
-            .Where(d => d.ServiceType.IsGenericType && d.ServiceType.GetGenericTypeDefinition() == typeof(IValidator<>))
+            .Where(IsDecoratable)
             .ToList();
 
         foreach (var descriptor in validatorDescriptors)
@@ -25,6 +30,9 @@ public static class ServiceCollectionExtensions
             var serviceType = descriptor.ServiceType;
             var modelType = serviceType.GetGenericArguments()[0];
             var instrumentedType = typeof(InstrumentedValidator<>).MakeGenericType(modelType);
+
+            // Built once per descriptor instead of reflecting over the constructor on every resolution.
+            var createInstrumented = ActivatorUtilities.CreateFactory(instrumentedType, new[] { serviceType });
 
             services.Remove(descriptor);
 
@@ -45,11 +53,19 @@ public static class ServiceCollectionExtensions
                             ? descriptor.ImplementationFactory(sp)
                             : descriptor.ImplementationInstance!;
 
-                    return Activator.CreateInstance(instrumentedType, innerValidator)!;
+                    return createInstrumented(sp, new[] { innerValidator });
                 },
                 descriptor.Lifetime));
         }
 
         return services;
     }
+
+    private static bool IsDecoratable(ServiceDescriptor descriptor) =>
+        // IsKeyedService is checked first: reading ImplementationType on a keyed descriptor throws.
+        !descriptor.IsKeyedService
+        && descriptor.ServiceType.IsGenericType
+        && !descriptor.ServiceType.IsGenericTypeDefinition
+        && descriptor.ServiceType.GetGenericTypeDefinition() == typeof(IValidator<>)
+        && descriptor.ImplementationType is not { IsGenericTypeDefinition: true };
 }

@@ -47,14 +47,14 @@ public static class Registration
   - Business: monetary amount, currency code, SKU, coupon code, discount, status transitions, business hours, date ranges.
   - Rate limits: `AgainstRateLimitExceeded`, `AgainstSlidingWindowExceeded`, `AgainstDailyQuotaExceeded`, and more.
 - Validation messages in 14 languages: English, Turkish, German, French, Spanish, Portuguese, Arabic, Japanese, Chinese, Korean, Russian, Dutch, Polish, Italian. Set the culture per request with `ValidationMessages.SetCultureForCurrentScope`.
-- Custom exception types: implement `IExceptionFactory` and register it with `services.AddOrionGuardExceptionFactory<TFactory>()`.
+- Exceptions: `Guard` and `Ensure` throw `GuardException` or one of its subclasses (`NullValueException`, `OutOfRangeException`, ...), and most extension guards throw `ArgumentException`. To use your own exception types, catch these at your boundary and rethrow. `IExceptionFactory` is never called by the guards; `AddOrionGuardExceptionFactory<TFactory>()`, `ExceptionFactoryProvider.Configure` and `DefaultExceptionFactory` are obsolete and will be removed in v7.
 - Regex patterns use `[GeneratedRegex]` source generation, so nothing is compiled at runtime.
 
 ### Object validation
 
 - `Validate.For(obj)`: property rules with cached, compiled property accessors. Add I/O-bound rules with `MustAsync` and finish with `ToResultAsync` or `ThrowIfInvalidAsync`.
 - `Validate.Nested(obj)` for deep object graphs and collections, `Validate.CrossProperties(obj)` for rules across properties, and `Validate.Polymorphic<T>()` for per-subtype rules.
-- `AbstractValidator<T>` with named rule sets (`RuleSet("create", ...)`, then `Validate(value, RuleSet.Create)`) and `ValidateAsync`. Wrap any `IValidator<T>` in a `CachedValidator<T>` with `validator.WithCaching()`.
+- `AbstractValidator<T>` with named rule sets (`RuleSet("create", ...)`, then `Validate(value, RuleSet.Create)`) and `ValidateAsync`. Wrap any `IValidator<T>` in a `CachedValidator<T>` with `validator.WithCaching()`: results are cached when `T` is a record with compiler-synthesized equality, or by an explicit key with `validator.WithCaching(order => (order.Id, order.Version))`. Other types, and calls with a non-empty `ValidationContext`, always run the inner validator.
 - `DynamicValidator.FromJson(json)`: rules loaded at runtime from JSON (a database, config file, or API).
 - Attribute validation: `[NotNull]`, `[NotEmpty]`, `[Length]`, `[Email]`, `[Range]`, `[Regex]`, `[Positive]` checked with `AttributeValidator.Validate(obj)`.
 - FluentValidation-style syntax: `FluentStyleValidator<T>` in `Moongazing.OrionGuard.Compatibility` supports `RuleFor(x => x.Email).NotEmpty().EmailAddress()`. The `OrionGuard.Migration` tool rewrites existing FluentValidation validators onto it.

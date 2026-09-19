@@ -49,6 +49,51 @@ public class EntityTests
         Assert.Equal(0, customer.Id);
     }
 
+    [Fact]
+    public void Equals_ShouldReturnFalse_WhenBothEntitiesAreTransient()
+    {
+        var a = new Customer();
+        var b = new Customer();
+
+        Assert.False(a.Equals(b));
+        Assert.False(a == b);
+        Assert.True(a != b);
+    }
+
+    [Fact]
+    public void HashSet_ShouldKeepEveryTransientEntity_WhenIdsAreDefault()
+    {
+        var set = new HashSet<Customer> { new(), new(), new() };
+
+        Assert.Equal(3, set.Count);
+    }
+
+    [Fact]
+    public void Equals_ShouldReturnTrue_WhenTransientEntityIsComparedWithItself()
+    {
+        var a = new Customer();
+        var sameReference = a;
+
+        Assert.True(a.Equals(sameReference));
+        Assert.True(a == sameReference);
+        Assert.Equal(a.GetHashCode(), sameReference.GetHashCode());
+    }
+
+    [Fact]
+    public void Equals_ShouldReturnFalse_WhenReferenceIdEntitiesAreTransient()
+    {
+        var a = new TransientReferenceIdEntity();
+        var b = new TransientReferenceIdEntity();
+
+        Assert.False(a.Equals(b));
+        Assert.Equal(2, new HashSet<TransientReferenceIdEntity> { a, b }.Count);
+    }
+
+    private sealed class TransientReferenceIdEntity : Entity<string>
+    {
+        public TransientReferenceIdEntity() { }
+    }
+
     private sealed class ReferenceIdEntity : Entity<string>
     {
         public ReferenceIdEntity(string id) : base(id) { }
