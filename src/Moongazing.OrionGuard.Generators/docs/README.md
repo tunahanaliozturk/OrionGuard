@@ -53,10 +53,12 @@ public static class Signup
 
 ## What `[GenerateValidator]` generates
 
-For each class or struct marked `[GenerateValidator]`, the generator emits `public static class <TypeName>Validator` with two methods:
+For each class, struct, or record marked `[GenerateValidator]`, the generator emits a static class `<TypeName>Validator` in the type's namespace with two methods:
 
 - `GuardResult Validate(<TypeName> instance)` collects every error.
 - `<TypeName> ValidateAndThrow(<TypeName> instance)` returns the instance, or throws `AggregateValidationException` when validation fails.
+
+The validator is `public` when the type and every type enclosing it are public, and `internal` otherwise.
 
 These attributes from `Moongazing.OrionGuard.Attributes` are translated into generated checks:
 
@@ -75,20 +77,34 @@ Set the `ErrorMessage` and `ErrorCode` named arguments on any of these attribute
 Notes:
 
 - The null and empty checks run first; the other checks for a property run only when those pass, so a null value reports one error, not several.
-- Only public properties with at least one of these attributes are validated. A type with no such property gets no generated validator.
+- Public instance properties with at least one of these attributes are validated, including properties inherited from base classes. An override without attributes keeps the rules declared on the property it overrides. A type with no such property gets no generated validator.
+- Attributes are matched by full name, so same-named attributes from other namespaces, such as `System.ComponentModel.DataAnnotations.RangeAttribute`, are ignored. Any other `ValidationAttribute` subclass, including your own, is not translated and raises OG0002.
+- `[Range]` bounds are compared in the property's type: `decimal` properties against `decimal` literals, `float` properties against `float` literals, other numeric types against `double`. A bound outside `decimal`'s range, such as `double.MaxValue`, is compared in `double`. The generated code is the same whatever culture the build machine uses.
+- `[Email]` and `[Regex]` matches run with a one-second timeout. A match that times out counts as a mismatch and adds the `EMAIL` or `REGEX` error; it does not throw.
 - The `[GenerateValidator]` attribute itself is injected into your compilation by the generator, in the `Moongazing.OrionGuard.Generators` namespace.
+
+### Supported target shapes
+
+- **Classes and structs**, sealed or not, in a namespace or in the global namespace.
+- **Records**: `record`, `record class`, and `record struct`. The attributes must be on the property. For a positional record, target the property explicitly: `public record Signup([property: NotNull, Email] string? Email);`.
+- **Nested types**: the validator for `Outer.Inner` is `InnerValidator`, declared at namespace level next to `Outer`. The nested type must be public or internal, and so must every type enclosing it. Two nested types with the same name in one namespace, or a nested type and a top-level type with the same name, produce two validators with the same name, which does not compile; rename one of the types.
+- **Same-named types in different namespaces**, such as `Orders.CreateRequest` and `Users.CreateRequest`, each get their own validator.
+- Generic types are not supported.
 
 ## Analyzer diagnostics
 
 | ID | Category | Severity | Meaning |
 | --- | --- | --- | --- |
 | `OG0001` | Usage | Warning | A public property on a `[GenerateValidator]` type has no attribute from `Moongazing.OrionGuard.Attributes`, so the generated validator accepts any value for it. |
+| `OG0002` | Usage | Warning | A property on a `[GenerateValidator]` type has a `ValidationAttribute` subclass the generator does not translate (anything other than the seven attributes above), so the generated validator does not enforce it. Validate that rule another way, or use the reflection-based `AttributeValidator`. |
 
 Types without `[GenerateValidator]` are never analyzed.
 
 ## Deprecated: `[StronglyTypedId<TValue>]`
 
 Still shipped in v6.x for existing code. On a `readonly partial struct`, `[StronglyTypedId<TValue>]` (namespace `Moongazing.OrionGuard.Domain.Primitives`) generates the struct body (`Value`, constructor, equality, `IStronglyTypedId<TValue>`), a `System.Text.Json` converter, a `TypeConverter`, `IParsable` / `ISpanParsable`, and an EF Core `ValueConverter` when the project references EF Core. Supported value types are `Guid`, `int`, `long`, and `string`. The core package's `services.AddOrionGuardStronglyTypedIds()` registers the generated EF Core converters.
+
+The struct is marked `[TypeConverter]` with the generated converter, so `TypeDescriptor` (and ASP.NET Core model binding) finds it; if you already applied one yourself, yours is kept. The generated `<TypeName>JsonConverter` is not attached automatically, so `System.Text.Json` keeps writing `{"Value":"abc"}`, which it cannot read back into the id. Add the converter to `JsonSerializerOptions.Converters` to read and write the bare value (`"abc"`). For a `string` id, `default(TId)` holds a null `Value`; equality, `GetHashCode()`, and `ToString()` (which returns an empty string) handle it. The struct can be declared in the global namespace.
 
 The attribute is marked `[Obsolete]`, so every use produces compiler warning CS0618. To move to OrionKey:
 

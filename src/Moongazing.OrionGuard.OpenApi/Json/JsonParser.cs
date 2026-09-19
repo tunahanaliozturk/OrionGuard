@@ -25,6 +25,14 @@ namespace Moongazing.OrionGuard.OpenApi.Json
     /// </summary>
     internal static class JsonParser
     {
+        /// <summary>
+        /// The deepest object/array nesting accepted. The parser recurses once per level, and a stack
+        /// overflow cannot be caught: a deeply nested AdditionalFile used to take down the compiler
+        /// server and the IDE with it. Real OpenAPI documents nest a few dozen levels at most, so 256
+        /// leaves ample headroom while keeping the recursion far from the stack limit.
+        /// </summary>
+        internal const int MaxDepth = 256;
+
         public static JsonValue Parse(string text)
         {
             if (text is null)
@@ -34,7 +42,7 @@ namespace Moongazing.OrionGuard.OpenApi.Json
 
             var cursor = new Cursor(text);
             cursor.SkipWhitespace();
-            var value = ParseValue(ref cursor);
+            var value = ParseValue(ref cursor, depth: 0);
             cursor.SkipWhitespace();
 
             if (!cursor.AtEnd)
@@ -45,7 +53,7 @@ namespace Moongazing.OrionGuard.OpenApi.Json
             return value;
         }
 
-        private static JsonValue ParseValue(ref Cursor cursor)
+        private static JsonValue ParseValue(ref Cursor cursor, int depth)
         {
             cursor.SkipWhitespace();
             if (cursor.AtEnd)
@@ -54,12 +62,18 @@ namespace Moongazing.OrionGuard.OpenApi.Json
             }
 
             char c = cursor.Current;
+            if ((c == '{' || c == '[') && depth >= MaxDepth)
+            {
+                throw new JsonParseException(
+                    $"Nesting exceeds the maximum depth of {MaxDepth} at position {cursor.Position}.");
+            }
+
             switch (c)
             {
                 case '{':
-                    return ParseObject(ref cursor);
+                    return ParseObject(ref cursor, depth + 1);
                 case '[':
-                    return ParseArray(ref cursor);
+                    return ParseArray(ref cursor, depth + 1);
                 case '"':
                     return JsonValue.NewString(ParseString(ref cursor));
                 case 't':
@@ -78,7 +92,7 @@ namespace Moongazing.OrionGuard.OpenApi.Json
             }
         }
 
-        private static JsonValue ParseObject(ref Cursor cursor)
+        private static JsonValue ParseObject(ref Cursor cursor, int depth)
         {
             cursor.Expect('{');
             var members = new Dictionary<string, JsonValue>(StringComparer.Ordinal);
@@ -106,7 +120,7 @@ namespace Moongazing.OrionGuard.OpenApi.Json
                 string key = ParseString(ref cursor);
                 cursor.SkipWhitespace();
                 cursor.Expect(':');
-                var value = ParseValue(ref cursor);
+                var value = ParseValue(ref cursor, depth);
 
                 // Last writer wins on a duplicate key, matching common JSON reader behaviour.
                 members[key] = value;
@@ -128,7 +142,7 @@ namespace Moongazing.OrionGuard.OpenApi.Json
             return JsonValue.NewObject(members);
         }
 
-        private static JsonValue ParseArray(ref Cursor cursor)
+        private static JsonValue ParseArray(ref Cursor cursor, int depth)
         {
             cursor.Expect('[');
             var items = new List<JsonValue>();
@@ -141,7 +155,7 @@ namespace Moongazing.OrionGuard.OpenApi.Json
 
             while (true)
             {
-                var value = ParseValue(ref cursor);
+                var value = ParseValue(ref cursor, depth);
                 items.Add(value);
 
                 cursor.SkipWhitespace();

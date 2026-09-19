@@ -31,7 +31,8 @@ namespace Moongazing.OrionGuard.OpenApi.Emit
         private const string GuardResult = "global::Moongazing.OrionGuard.Core.GuardResult";
         private const string ValidationError = "global::Moongazing.OrionGuard.Core.ValidationError";
         private const string IValidator = "global::Moongazing.OrionGuard.DependencyInjection.IValidator";
-        private const string Regex = "global::System.Text.RegularExpressions.Regex";
+        private const string RegexCache = "global::Moongazing.OrionGuard.Core.RegexCache";
+        private const string RegexHelper = "__MatchesWithinTimeout";
 
         public static string Emit(ValidatorEmitModel model)
         {
@@ -73,6 +74,12 @@ namespace Moongazing.OrionGuard.OpenApi.Emit
             EmitValidateMethod(sb, model, indent + "    ");
             sb.AppendLine();
             EmitValidateAsyncMethod(sb, model, indent + "    ");
+
+            if (UsesRegex(model))
+            {
+                sb.AppendLine();
+                EmitRegexHelper(sb, indent + "    ");
+            }
 
             sb.Append(indent).AppendLine("}");
 
@@ -139,6 +146,50 @@ namespace Moongazing.OrionGuard.OpenApi.Emit
             sb.Append(indent).Append("    return global::System.Threading.Tasks.Task.FromResult(Validate(value));");
             sb.AppendLine();
             sb.Append(indent).AppendLine("}");
+        }
+
+        private static bool UsesRegex(ValidatorEmitModel model)
+        {
+            foreach (var property in model.Properties)
+            {
+                if (property.Category == MemberTypeCategory.String
+                    && (!string.IsNullOrEmpty(property.Schema.Pattern) || FormatPattern(property.Schema.Format) is not null))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Emits the helper every pattern and format check goes through. <c>RegexCache</c> builds each regex
+        /// with a one-second match timeout (the static <c>Regex.IsMatch</c> used before had none, so a
+        /// hostile value could pin a request thread on a backtracking schema pattern), and a match that runs
+        /// past it counts as a mismatch: the value gets a validation error instead of the validator throwing
+        /// <c>RegexMatchTimeoutException</c>.
+        /// </summary>
+        private static void EmitRegexHelper(StringBuilder sb, string indent)
+        {
+            sb.Append(indent).Append("private static bool ").Append(RegexHelper)
+                .AppendLine("(global::System.Text.RegularExpressions.Regex regex, string input)");
+            sb.Append(indent).AppendLine("{");
+            sb.Append(indent).AppendLine("    try");
+            sb.Append(indent).AppendLine("    {");
+            sb.Append(indent).AppendLine("        return regex.IsMatch(input);");
+            sb.Append(indent).AppendLine("    }");
+            sb.Append(indent).AppendLine("    catch (global::System.Text.RegularExpressions.RegexMatchTimeoutException)");
+            sb.Append(indent).AppendLine("    {");
+            sb.Append(indent).AppendLine("        return false;");
+            sb.Append(indent).AppendLine("    }");
+            sb.Append(indent).AppendLine("}");
+        }
+
+        private static void AppendRegexCheck(StringBuilder sb, string indent, string member, string pattern)
+        {
+            sb.Append(indent).Append("if (!").Append(RegexHelper).Append('(').Append(RegexCache)
+                .Append(".GetOrCreate(@\"").Append(VerbatimPattern(pattern)).Append("\"), ").Append(member)
+                .AppendLine("))");
         }
 
         private static void EmitProperty(StringBuilder sb, PropertyBinding property, string indent)
@@ -217,9 +268,7 @@ namespace Moongazing.OrionGuard.OpenApi.Emit
 
             if (!string.IsNullOrEmpty(schema.Pattern))
             {
-                string pattern = VerbatimPattern(schema.Pattern!);
-                sb.Append(indent).Append("if (!").Append(Regex).Append(".IsMatch(").Append(member)
-                    .Append(", @\"").Append(pattern).AppendLine("\"))");
+                AppendRegexCheck(sb, indent, member, schema.Pattern!);
                 AppendError(sb, indent + "    ", errorKey,
                     $"{name} does not match the required pattern.", "PATTERN");
             }
@@ -230,38 +279,35 @@ namespace Moongazing.OrionGuard.OpenApi.Emit
         private static void EmitFormatConstraint(
             StringBuilder sb, OpenApiSchema schema, string member, string errorKey, string name, string indent)
         {
-            if (string.IsNullOrEmpty(schema.Format))
-            {
-                return;
-            }
-
-            // Each supported format maps to an anchored regex. The email/uuid/uri/date-time patterns mirror
-            // the conventions used by the in-box OrionGuard.Generators email check; the remainder are
-            // documented regexes. Unknown formats are ignored (an open-ended set in OpenAPI).
-            string? formatPattern = schema.Format switch
-            {
-                // Same pattern as the core GeneratedRegexPatterns.Email: linear, and capped at 254 characters,
-                // because the emitted Regex.IsMatch call runs without a match timeout.
-                "email" => @"^(?=.{1,254}\z)[^@\s]+@[^@\s.]+(?:\.[^@\s.]+)+\z",
-                "uuid" => @"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
-                "date-time" => @"^\d{4}-\d{2}-\d{2}[Tt]\d{2}:\d{2}:\d{2}(\.\d+)?([Zz]|[+-]\d{2}:\d{2})?$",
-                "date" => @"^\d{4}-\d{2}-\d{2}$",
-                "uri" => @"^[A-Za-z][A-Za-z0-9+.-]*:.+$",
-                "hostname" => @"^(?=.{1,253}$)([A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)(\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*$",
-                "ipv4" => @"^((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)$",
-                _ => null,
-            };
-
+            string? formatPattern = FormatPattern(schema.Format);
             if (formatPattern is null)
             {
                 return;
             }
 
-            sb.Append(indent).Append("if (!").Append(Regex).Append(".IsMatch(").Append(member)
-                .Append(", @\"").Append(formatPattern).AppendLine("\"))");
+            AppendRegexCheck(sb, indent, member, formatPattern);
             AppendError(sb, indent + "    ", errorKey,
                 $"{name} must be a valid {schema.Format} value.", "FORMAT");
         }
+
+        /// <summary>
+        /// Maps a supported <c>format</c> to an anchored regex, or returns <c>null</c> for any other format
+        /// (an open-ended set in OpenAPI, so unknown ones are ignored). Every pattern ends in <c>\z</c>:
+        /// <c>$</c> also matches before a trailing newline, so <c>"2026-01-01\n"</c> passed as a date.
+        /// Digits are <c>[0-9]</c> because <c>\d</c> accepts any Unicode digit, such as Arabic-Indic ones.
+        /// </summary>
+        private static string? FormatPattern(string? format) => format switch
+        {
+            // Same pattern as the core GeneratedRegexPatterns.Email: linear, and capped at 254 characters.
+            "email" => @"^(?=.{1,254}\z)[^@\s]+@[^@\s.]+(?:\.[^@\s.]+)+\z",
+            "uuid" => @"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\z",
+            "date-time" => @"^[0-9]{4}-[0-9]{2}-[0-9]{2}[Tt][0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})?\z",
+            "date" => @"^[0-9]{4}-[0-9]{2}-[0-9]{2}\z",
+            "uri" => @"^[A-Za-z][A-Za-z0-9+.-]*:.+\z",
+            "hostname" => @"^(?=.{1,253}\z)([A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)(\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*\z",
+            "ipv4" => @"^((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\z",
+            _ => null,
+        };
 
         private static void EmitNumericConstraints(
             StringBuilder sb, OpenApiSchema schema, string member, string errorKey, string name,
@@ -445,9 +491,9 @@ namespace Moongazing.OrionGuard.OpenApi.Emit
         /// Renders a numeric bound so it compiles against the member's actual CLR type. Integral and
         /// <c>decimal</c> members compare in <c>decimal</c> (which losslessly represents every integral
         /// value and any decimal bound), so an unsigned or 64-bit member never trips a signed/over-range
-        /// or <c>decimal</c>-vs-<c>double</c> mismatch; <c>float</c>/<c>double</c> members compare in
-        /// <c>double</c>. Returns <c>false</c> for a bound that cannot be represented (it is then skipped
-        /// rather than emitted as uncompilable code).
+        /// or <c>decimal</c>-vs-<c>double</c> mismatch; <c>float</c> members compare in <c>float</c> and
+        /// <c>double</c> members in <c>double</c>. Returns <c>false</c> for a bound that cannot be
+        /// represented (it is then skipped rather than emitted as uncompilable code).
         /// </summary>
         private static bool TryRenderBound(string raw, NumericKind numericKind, out BoundRender render)
         {
@@ -472,8 +518,19 @@ namespace Moongazing.OrionGuard.OpenApi.Emit
                     return TryRenderAsDouble(raw, castOperand: true, out render);
 
                 case NumericKind.Single:
+                    // Compare a float in float. Widened to double, the float 0.1f is 0.10000000149..., which
+                    // is greater than the double 0.1: a value equal to its maximum (or enum member) failed.
+                    if (float.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out float single)
+                        && !float.IsInfinity(single) && !float.IsNaN(single))
+                    {
+                        render = new BoundRender(single.ToString("R", CultureInfo.InvariantCulture) + "f", null);
+                        return true;
+                    }
+
+                    // Outside float's range: float widens to double implicitly, so a double literal compiles.
+                    return TryRenderAsDouble(raw, castOperand: false, out render);
+
                 case NumericKind.Double:
-                    // float widens to double implicitly, so a double literal compiles for both with no cast.
                     return TryRenderAsDouble(raw, castOperand: false, out render);
 
                 default:
