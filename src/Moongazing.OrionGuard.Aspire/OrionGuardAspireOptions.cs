@@ -18,10 +18,11 @@ public sealed class OrionGuardAspireOptions
     /// in services that enable archival with <c>UseOutboxArchival()</c>; services without archival are skipped.
     /// </summary>
     /// <remarks>
-    /// Off by default because the check's default thresholds (Degraded after 5 minutes, Unhealthy after 15) are
-    /// shorter than archival's default one-hour polling interval, so turning it on unchanged would fail readiness
-    /// between batches. Register an <c>OutboxArchivalHealthCheckOptions</c> singleton with thresholds above your
-    /// <c>PollingInterval</c> when you enable it.
+    /// Thresholds left unset scale with the archival polling interval - Degraded after two intervals, Unhealthy
+    /// after three, never below 5 and 15 minutes - so the default one-hour interval gives two and three hours and
+    /// the check does not flap between batches. Set them explicitly on an <c>OutboxArchivalHealthCheckOptions</c>
+    /// singleton only to tighten them. This is off by default because it reports on a background maintenance job:
+    /// once it is part of the readiness report, archival falling behind takes the service out of rotation.
     /// </remarks>
     public bool EnableOutboxArchivalHealthCheck { get; set; }
 }
