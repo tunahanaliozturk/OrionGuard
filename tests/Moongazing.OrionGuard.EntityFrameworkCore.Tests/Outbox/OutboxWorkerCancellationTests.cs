@@ -2,7 +2,6 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
-using Moongazing.OrionGuard.EntityFrameworkCore.Outbox;
 using Moongazing.OrionGuard.EntityFrameworkCore.Outbox.Archival;
 using Moongazing.OrionGuard.EntityFrameworkCore.Outbox.Locking;
 using Moongazing.OrionGuard.EntityFrameworkCore.Tests.TestFixtures;

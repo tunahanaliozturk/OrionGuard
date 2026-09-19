@@ -1,6 +1,5 @@
 using System.Reflection;
 using Moongazing.OrionGuard.Core;
-using Moongazing.OrionGuard.Migration;
 
 namespace Moongazing.OrionGuard.Migration.Tests;
 

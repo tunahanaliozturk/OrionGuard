@@ -1,9 +1,5 @@
 ﻿using Moongazing.OrionGuard.Core;
 using Moongazing.OrionGuard.Exceptions;
-using System;
-using System.Collections.Generic;
-using System.IO;
-using Xunit;
 
 namespace Moongazing.OrionGuard.Tests
 {

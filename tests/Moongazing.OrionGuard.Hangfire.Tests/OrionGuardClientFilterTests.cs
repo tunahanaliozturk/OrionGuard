@@ -1,4 +1,3 @@
-using Hangfire;
 using Hangfire.Common;
 using Microsoft.Extensions.DependencyInjection;
 using Moongazing.OrionGuard.DependencyInjection;

@@ -2,7 +2,6 @@ namespace Moongazing.OrionGuard.Outbox.PostgresNotify;
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using Microsoft.Extensions.Hosting;
 using Moongazing.OrionGuard.EntityFrameworkCore.Outbox.Push;
 
 /// <summary>

@@ -2,7 +2,6 @@ using System.Reflection;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Moongazing.OrionGuard.Compatibility;
-using Moongazing.OrionGuard.Migration;
 
 namespace Moongazing.OrionGuard.Migration.Tests;
 

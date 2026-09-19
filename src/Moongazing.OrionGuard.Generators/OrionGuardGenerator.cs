@@ -1,9 +1,5 @@
 ﻿#nullable enable
 
-using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Microsoft.CodeAnalysis.Text;
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
@@ -11,6 +7,9 @@ using System.Globalization;
 using System.Linq;
 using System.Text;
 using System.Threading;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Text;
 
 namespace Moongazing.OrionGuard.Generators
 {
@@ -293,21 +292,21 @@ namespace Moongazing.OrionGuard.Generators
                     break;
 
                 case "LengthAttribute":
+                {
+                    int minLen = 0;
+                    int maxLen = int.MaxValue;
+                    if (ctorArgs.Length >= 2)
                     {
-                        int minLen = 0;
-                        int maxLen = int.MaxValue;
-                        if (ctorArgs.Length >= 2)
-                        {
-                            if (ctorArgs[0].Value is int min) minLen = min;
-                            if (ctorArgs[1].Value is int max) maxLen = max;
-                        }
-                        rules.Add(new ValidationRule(
-                            ValidationType.Length,
-                            minLen.ToString(CultureInfo.InvariantCulture),
-                            maxLen.ToString(CultureInfo.InvariantCulture),
-                            null, customMessage, customErrorCode));
+                        if (ctorArgs[0].Value is int min) minLen = min;
+                        if (ctorArgs[1].Value is int max) maxLen = max;
                     }
-                    break;
+                    rules.Add(new ValidationRule(
+                        ValidationType.Length,
+                        minLen.ToString(CultureInfo.InvariantCulture),
+                        maxLen.ToString(CultureInfo.InvariantCulture),
+                        null, customMessage, customErrorCode));
+                }
+                break;
 
                 case "EmailAttribute":
                     rules.Add(new ValidationRule(
@@ -315,18 +314,18 @@ namespace Moongazing.OrionGuard.Generators
                     break;
 
                 case "RangeAttribute":
+                {
+                    string minVal = "0";
+                    string maxVal = "0";
+                    if (ctorArgs.Length >= 2)
                     {
-                        string minVal = "0";
-                        string maxVal = "0";
-                        if (ctorArgs.Length >= 2)
-                        {
-                            minVal = FormatBound(ctorArgs[0]);
-                            maxVal = FormatBound(ctorArgs[1]);
-                        }
-                        rules.Add(new ValidationRule(
-                            ValidationType.Range, minVal, maxVal, null, customMessage, customErrorCode));
+                        minVal = FormatBound(ctorArgs[0]);
+                        maxVal = FormatBound(ctorArgs[1]);
                     }
-                    break;
+                    rules.Add(new ValidationRule(
+                        ValidationType.Range, minVal, maxVal, null, customMessage, customErrorCode));
+                }
+                break;
 
                 case "PositiveAttribute":
                     rules.Add(new ValidationRule(
@@ -334,16 +333,16 @@ namespace Moongazing.OrionGuard.Generators
                     break;
 
                 case "RegexAttribute":
+                {
+                    string pattern = string.Empty;
+                    if (ctorArgs.Length >= 1 && ctorArgs[0].Value is string pat)
                     {
-                        string pattern = string.Empty;
-                        if (ctorArgs.Length >= 1 && ctorArgs[0].Value is string pat)
-                        {
-                            pattern = pat;
-                        }
-                        rules.Add(new ValidationRule(
-                            ValidationType.Regex, null, null, pattern, customMessage, customErrorCode));
+                        pattern = pat;
                     }
-                    break;
+                    rules.Add(new ValidationRule(
+                        ValidationType.Regex, null, null, pattern, customMessage, customErrorCode));
+                }
+                break;
 
                 default:
                     if (IsValidationAttribute(attributeClass))
@@ -606,72 +605,72 @@ namespace Moongazing.OrionGuard.Generators
             switch (rule.Type)
             {
                 case ValidationType.Length:
-                    {
-                        string min = rule.Min ?? "0";
-                        string max = rule.Max ?? int.MaxValue.ToString(CultureInfo.InvariantCulture);
-                        string message = EscapeString(rule.CustomMessage ?? $"{prop.Name} must be between {min} and {max} characters.");
-                        string errorCode = EscapeString(rule.CustomErrorCode ?? "LENGTH");
+                {
+                    string min = rule.Min ?? "0";
+                    string max = rule.Max ?? int.MaxValue.ToString(CultureInfo.InvariantCulture);
+                    string message = EscapeString(rule.CustomMessage ?? $"{prop.Name} must be between {min} and {max} characters.");
+                    string errorCode = EscapeString(rule.CustomErrorCode ?? "LENGTH");
 
-                        sb.AppendLine($"{indent}if (instance.{prop.Name} != null && (instance.{prop.Name}.Length < {min} || instance.{prop.Name}.Length > {max}))");
-                        sb.AppendLine($"{indent}    (errors ??= new System.Collections.Generic.List<Moongazing.OrionGuard.Core.ValidationError>()).Add(new Moongazing.OrionGuard.Core.ValidationError(\"{prop.Name}\", \"{message}\", \"{errorCode}\"));");
-                    }
-                    break;
+                    sb.AppendLine($"{indent}if (instance.{prop.Name} != null && (instance.{prop.Name}.Length < {min} || instance.{prop.Name}.Length > {max}))");
+                    sb.AppendLine($"{indent}    (errors ??= new System.Collections.Generic.List<Moongazing.OrionGuard.Core.ValidationError>()).Add(new Moongazing.OrionGuard.Core.ValidationError(\"{prop.Name}\", \"{message}\", \"{errorCode}\"));");
+                }
+                break;
 
                 case ValidationType.Email:
-                    {
-                        string message = EscapeString(rule.CustomMessage ?? $"{prop.Name} must be a valid email address.");
-                        string errorCode = EscapeString(rule.CustomErrorCode ?? "EMAIL");
+                {
+                    string message = EscapeString(rule.CustomMessage ?? $"{prop.Name} must be a valid email address.");
+                    string errorCode = EscapeString(rule.CustomErrorCode ?? "EMAIL");
 
-                        // The core package's source-generated email regex carries a match timeout.
-                        sb.AppendLine($"{indent}if (instance.{prop.Name} != null && !{RegexHelperName}(Moongazing.OrionGuard.Utilities.GeneratedRegexPatterns.Email(), instance.{prop.Name}))");
-                        sb.AppendLine($"{indent}    (errors ??= new System.Collections.Generic.List<Moongazing.OrionGuard.Core.ValidationError>()).Add(new Moongazing.OrionGuard.Core.ValidationError(\"{prop.Name}\", \"{message}\", \"{errorCode}\"));");
-                    }
-                    break;
+                    // The core package's source-generated email regex carries a match timeout.
+                    sb.AppendLine($"{indent}if (instance.{prop.Name} != null && !{RegexHelperName}(Moongazing.OrionGuard.Utilities.GeneratedRegexPatterns.Email(), instance.{prop.Name}))");
+                    sb.AppendLine($"{indent}    (errors ??= new System.Collections.Generic.List<Moongazing.OrionGuard.Core.ValidationError>()).Add(new Moongazing.OrionGuard.Core.ValidationError(\"{prop.Name}\", \"{message}\", \"{errorCode}\"));");
+                }
+                break;
 
                 case ValidationType.Range:
-                    {
-                        string min = rule.Min ?? "0";
-                        string max = rule.Max ?? "0";
-                        string message = EscapeString(rule.CustomMessage ?? $"{prop.Name} must be between {min} and {max}.");
-                        string errorCode = EscapeString(rule.CustomErrorCode ?? "RANGE");
+                {
+                    string min = rule.Min ?? "0";
+                    string max = rule.Max ?? "0";
+                    string message = EscapeString(rule.CustomMessage ?? $"{prop.Name} must be between {min} and {max}.");
+                    string errorCode = EscapeString(rule.CustomErrorCode ?? "RANGE");
 
-                        // A NaN bound fails every comparison, so the reflection-based RangeAttribute rejects
-                        // every non-null value. Comparing against NaN here would do the opposite and let the
-                        // value through, so the check is emitted as an outright failure instead.
-                        string condition = IsNaNBound(min) || IsNaNBound(max)
-                            ? (prop.IsNullable ? $"instance.{prop.Name} != null" : "true")
-                            : $"{RangeComparison(prop, "<", min)} || {RangeComparison(prop, ">", max)}";
+                    // A NaN bound fails every comparison, so the reflection-based RangeAttribute rejects
+                    // every non-null value. Comparing against NaN here would do the opposite and let the
+                    // value through, so the check is emitted as an outright failure instead.
+                    string condition = IsNaNBound(min) || IsNaNBound(max)
+                        ? (prop.IsNullable ? $"instance.{prop.Name} != null" : "true")
+                        : $"{RangeComparison(prop, "<", min)} || {RangeComparison(prop, ">", max)}";
 
-                        sb.AppendLine($"{indent}if ({condition})");
-                        sb.AppendLine($"{indent}    (errors ??= new System.Collections.Generic.List<Moongazing.OrionGuard.Core.ValidationError>()).Add(new Moongazing.OrionGuard.Core.ValidationError(\"{prop.Name}\", \"{message}\", \"{errorCode}\"));");
-                    }
-                    break;
+                    sb.AppendLine($"{indent}if ({condition})");
+                    sb.AppendLine($"{indent}    (errors ??= new System.Collections.Generic.List<Moongazing.OrionGuard.Core.ValidationError>()).Add(new Moongazing.OrionGuard.Core.ValidationError(\"{prop.Name}\", \"{message}\", \"{errorCode}\"));");
+                }
+                break;
 
                 case ValidationType.Positive:
-                    {
-                        string message = EscapeString(rule.CustomMessage ?? $"{prop.Name} must be positive.");
-                        string errorCode = EscapeString(rule.CustomErrorCode ?? "POSITIVE");
+                {
+                    string message = EscapeString(rule.CustomMessage ?? $"{prop.Name} must be positive.");
+                    string errorCode = EscapeString(rule.CustomErrorCode ?? "POSITIVE");
 
-                        sb.AppendLine($"{indent}if (instance.{prop.Name} <= 0)");
-                        sb.AppendLine($"{indent}    (errors ??= new System.Collections.Generic.List<Moongazing.OrionGuard.Core.ValidationError>()).Add(new Moongazing.OrionGuard.Core.ValidationError(\"{prop.Name}\", \"{message}\", \"{errorCode}\"));");
-                    }
-                    break;
+                    sb.AppendLine($"{indent}if (instance.{prop.Name} <= 0)");
+                    sb.AppendLine($"{indent}    (errors ??= new System.Collections.Generic.List<Moongazing.OrionGuard.Core.ValidationError>()).Add(new Moongazing.OrionGuard.Core.ValidationError(\"{prop.Name}\", \"{message}\", \"{errorCode}\"));");
+                }
+                break;
 
                 case ValidationType.Regex:
-                    {
-                        string pattern = rule.Pattern ?? string.Empty;
-                        string message = EscapeString(rule.CustomMessage ?? $"{prop.Name} does not match the required pattern.");
-                        string errorCode = EscapeString(rule.CustomErrorCode ?? "REGEX");
+                {
+                    string pattern = rule.Pattern ?? string.Empty;
+                    string message = EscapeString(rule.CustomMessage ?? $"{prop.Name} does not match the required pattern.");
+                    string errorCode = EscapeString(rule.CustomErrorCode ?? "REGEX");
 
-                        // Escape the pattern for embedding in a verbatim string literal.
-                        string escapedPattern = pattern.Replace("\"", "\"\"");
+                    // Escape the pattern for embedding in a verbatim string literal.
+                    string escapedPattern = pattern.Replace("\"", "\"\"");
 
-                        // RegexCache in the core package applies a match timeout, so a hostile input
-                        // cannot backtrack indefinitely inside the consumer's generated validator.
-                        sb.AppendLine($"{indent}if (instance.{prop.Name} != null && !{RegexHelperName}(Moongazing.OrionGuard.Core.RegexCache.GetOrCreate(@\"{escapedPattern}\"), instance.{prop.Name}))");
-                        sb.AppendLine($"{indent}    (errors ??= new System.Collections.Generic.List<Moongazing.OrionGuard.Core.ValidationError>()).Add(new Moongazing.OrionGuard.Core.ValidationError(\"{prop.Name}\", \"{message}\", \"{errorCode}\"));");
-                    }
-                    break;
+                    // RegexCache in the core package applies a match timeout, so a hostile input
+                    // cannot backtrack indefinitely inside the consumer's generated validator.
+                    sb.AppendLine($"{indent}if (instance.{prop.Name} != null && !{RegexHelperName}(Moongazing.OrionGuard.Core.RegexCache.GetOrCreate(@\"{escapedPattern}\"), instance.{prop.Name}))");
+                    sb.AppendLine($"{indent}    (errors ??= new System.Collections.Generic.List<Moongazing.OrionGuard.Core.ValidationError>()).Add(new Moongazing.OrionGuard.Core.ValidationError(\"{prop.Name}\", \"{message}\", \"{errorCode}\"));");
+                }
+                break;
             }
         }
 

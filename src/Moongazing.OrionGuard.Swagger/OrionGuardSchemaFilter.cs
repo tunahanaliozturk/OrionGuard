@@ -1,8 +1,8 @@
-using Microsoft.OpenApi;
-using Swashbuckle.AspNetCore.SwaggerGen;
 using System.Globalization;
 using System.Reflection;
+using Microsoft.OpenApi;
 using Moongazing.OrionGuard.Attributes;
+using Swashbuckle.AspNetCore.SwaggerGen;
 
 namespace Moongazing.OrionGuard.Swagger;
 

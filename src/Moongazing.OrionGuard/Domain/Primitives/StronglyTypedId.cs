@@ -1,5 +1,3 @@
-using System;
-
 namespace Moongazing.OrionGuard.Domain.Primitives;
 
 /// <summary>

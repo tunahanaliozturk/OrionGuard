@@ -159,7 +159,7 @@ public static class OrionGuardAspireExtensions
     {
         // HealthCheckService rejects duplicate names case-insensitively, so compare the same way.
         if (healthCheckType is null
-            || healthChecks.Registrations.Any(r => string.Equals(r.Name, name,StringComparison.OrdinalIgnoreCase)))
+            || healthChecks.Registrations.Any(r => string.Equals(r.Name, name, StringComparison.OrdinalIgnoreCase)))
         {
             return;
         }

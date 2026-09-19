@@ -1,4 +1,3 @@
-using System;
 using Moongazing.OrionGuard.Domain.Rules;
 using Moongazing.OrionGuard.Localization;
 

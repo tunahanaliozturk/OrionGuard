@@ -5,7 +5,6 @@ using Hangfire.Common;
 using Hangfire.Server;
 using Hangfire.States;
 using Hangfire.Storage;
-using Hangfire.Storage.Monitoring;
 using Microsoft.Extensions.DependencyInjection;
 using Moongazing.OrionGuard.DependencyInjection;
 

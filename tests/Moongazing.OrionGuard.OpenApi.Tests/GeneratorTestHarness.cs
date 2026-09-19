@@ -4,7 +4,6 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Text;
 using Moongazing.OrionGuard.Core;
-using Moongazing.OrionGuard.OpenApi;
 
 namespace Moongazing.OrionGuard.OpenApi.Tests;
 

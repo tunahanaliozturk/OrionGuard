@@ -1,5 +1,5 @@
-using Moongazing.OrionGuard.Localization;
 using System.Globalization;
+using Moongazing.OrionGuard.Localization;
 
 namespace Moongazing.OrionGuard.Demo;
 

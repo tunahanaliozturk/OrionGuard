@@ -1,7 +1,4 @@
-﻿using Moongazing.OrionGuard.Exceptions;
-using System.Text.RegularExpressions;
-
-namespace Moongazing.OrionGuard.Core;
+﻿namespace Moongazing.OrionGuard.Core;
 
 public sealed class GuardBuilder<T> : IFluentGuardStep<T>
 {
