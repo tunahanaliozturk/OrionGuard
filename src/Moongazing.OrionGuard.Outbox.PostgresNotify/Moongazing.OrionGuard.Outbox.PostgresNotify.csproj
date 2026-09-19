@@ -1,23 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-    <LangVersion>latest</LangVersion>
-    <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <NoWarn>CS1591;NU1900</NoWarn>
     <PackageId>OrionGuard.Outbox.PostgresNotify</PackageId>
     <Version>6.7.0</Version>
-    <Authors>Tunahan Ali Ozturk</Authors>
     <Description>Postgres LISTEN/NOTIFY backed IOutboxWakeSignal for OrionGuard.EntityFrameworkCore. Replaces the v6.5.1 polling fallback with an event-driven wake on every committed outbox row when the consumer's database is PostgreSQL. Falls back to polling cleanly when the LISTEN connection is unreachable.</Description>
     <PackageTags>guard;outbox;postgres;npgsql;listen;notify;push;dispatch;entity-framework-core;efcore</PackageTags>
-    <PackageReadmeFile>docs/README.md</PackageReadmeFile>
-    <PackageIcon>docs/logo.png</PackageIcon>
-    <RepositoryUrl>https://github.com/tunahanaliozturk/OrionGuard</RepositoryUrl>
-    <RepositoryType>git</RepositoryType>
-    <PackageProjectUrl>https://github.com/tunahanaliozturk/OrionGuard</PackageProjectUrl>
-    <PackageLicenseExpression>MIT</PackageLicenseExpression>
   </PropertyGroup>
 
   <ItemGroup>

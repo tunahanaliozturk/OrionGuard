@@ -1,23 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-    <LangVersion>latest</LangVersion>
-    <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <NoWarn>CS1591;NU1900</NoWarn>
     <PackageId>OrionGuard.SchemaExport</PackageId>
     <Version>6.7.0</Version>
-    <Authors>Tunahan Ali Ozturk</Authors>
     <Description>Exports the OrionGuard validation attributes on a model as a JSON Schema (draft 2020-12) document or a TypeScript interface, so a frontend consumes the rules instead of re-writing them by hand. Rules OrionGuard cannot express in the artifact are listed rather than dropped.</Description>
     <PackageTags>guard;validation;json-schema;typescript;codegen;schema;export;contract</PackageTags>
-    <PackageReadmeFile>docs/README.md</PackageReadmeFile>
-    <PackageIcon>docs/logo.png</PackageIcon>
-    <RepositoryUrl>https://github.com/tunahanaliozturk/OrionGuard</RepositoryUrl>
-    <RepositoryType>git</RepositoryType>
-    <PackageProjectUrl>https://github.com/tunahanaliozturk/OrionGuard</PackageProjectUrl>
-    <PackageLicenseExpression>MIT</PackageLicenseExpression>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Moongazing.OrionGuard\Moongazing.OrionGuard.csproj" />

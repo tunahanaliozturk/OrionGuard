@@ -1,23 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-    <LangVersion>latest</LangVersion>
-    <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <NoWarn>CS1591;NU1900</NoWarn>
     <PackageId>OrionGuard.EntityFrameworkCore</PackageId>
     <Version>6.7.0</Version>
-    <Authors>Tunahan Ali Ozturk</Authors>
     <Description>EF Core integration for OrionGuard. Provides a SaveChanges interceptor that dispatches domain events from AggregateRoot&lt;TId&gt; instances after commit (Inline mode) or via a transactional outbox (Outbox mode) consumed by a hosted background worker. Includes W3C trace context propagation across the outbox boundary.</Description>
     <PackageTags>guard;validation;ddd;domain-events;outbox;entity-framework-core;efcore;aggregate-root</PackageTags>
-    <PackageReadmeFile>docs/README.md</PackageReadmeFile>
-    <PackageIcon>docs/logo.png</PackageIcon>
-    <RepositoryUrl>https://github.com/tunahanaliozturk/OrionGuard</RepositoryUrl>
-    <RepositoryType>git</RepositoryType>
-    <PackageProjectUrl>https://github.com/tunahanaliozturk/OrionGuard</PackageProjectUrl>
-    <PackageLicenseExpression>MIT</PackageLicenseExpression>
   </PropertyGroup>
 
   <!-- EF Core 10 only supports net10.0, so net8.0/net9.0 stay on the latest EF Core 9 patch. -->

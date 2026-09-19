@@ -1,15 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
 	<PropertyGroup>
-		<TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
-		<ImplicitUsings>enable</ImplicitUsings>
-		<Nullable>enable</Nullable>
-		<LangVersion>latest</LangVersion>
-		<GenerateDocumentationFile>true</GenerateDocumentationFile>
 		<EnableNETAnalyzers>true</EnableNETAnalyzers>
 		<AnalysisLevel>latest-recommended</AnalysisLevel>
 		<EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
-		<TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-		<NoWarn>CS1591;NU1900</NoWarn>
 	</PropertyGroup>
 
 	<PropertyGroup>
@@ -17,7 +10,6 @@
 
 		<PackageId>OrionGuard</PackageId>
 		<Version>6.7.0</Version>
-		<Authors>Tunahan Ali Ozturk</Authors>
 		<Company>Tunahan Ali Ozturk</Company>
 		<GeneratePackageOnBuild>false</GeneratePackageOnBuild>
 		<IncludeContentInPack>true</IncludeContentInPack>
@@ -27,12 +19,12 @@
 			universal format guards, GeneratedRegex (NativeAOT-ready), 14-language localization,
 			rate limit guards, Result pattern, and ASP.NET Core / MediatR / OpenTelemetry ecosystem packages.
 		</Description>
+		<!--
+			The core package has always shipped the licence text as a file rather than an SPDX
+			expression, so clear the repo-wide expression: NuGet rejects a package that carries both.
+		-->
+		<PackageLicenseExpression />
 		<PackageLicenseFile>docs/LICENSE.txt</PackageLicenseFile>
-		<PackageReadmeFile>docs/README.md</PackageReadmeFile>
-		<PackageIcon>docs/logo.png</PackageIcon>
-		<RepositoryUrl>https://github.com/tunahanaliozturk/OrionGuard</RepositoryUrl>
-		<RepositoryType>git</RepositoryType>
-		<PackageProjectUrl>https://github.com/tunahanaliozturk/OrionGuard</PackageProjectUrl>
 		<PackageTags>guard;validation;fluent;exceptions;.NET;input-validation;guard-clauses;defensive-programming;security;localization;format-validation;nativeaot;source-generator;aspnetcore;mediatr</PackageTags>
 		<PackageReleaseNotes>
 v6.5.5 - Outbox operator mutation surface

@@ -1,14 +1,16 @@
 <Project>
   <!--
-    Repo-wide settings every project inherits uniformly. This repository sets other build
-    properties per-csproj.
+    Repo-wide settings every project inherits uniformly - tests, benchmarks, demo and templates
+    included. The compiler settings and packaging metadata shared by the shipped packages live in
+    src/Directory.Build.props, which imports this file; they are scoped there because a test or
+    benchmark project must not inherit package metadata or the multi-targeting set.
 
     NuGetAuditMode=all audits the whole transitive dependency graph, not just direct references
     (the default), so a vulnerable transitive package is flagged at restore time. Advisories
     (NU1901-1904) are downgraded to warnings via WarningsNotAsErrors so a newly-disclosed
     upstream CVE surfaces loudly without turning CI red on an external event with no code
-    change - remove that property to make advisories hard build errors instead. The per-csproj
-    NoWarn lines no longer suppress NU1901-1904, so the advisories are visible.
+    change - remove that property to make advisories hard build errors instead. The NoWarn lines
+    no longer suppress NU1901-1904, so the advisories are visible.
   -->
   <PropertyGroup>
     <NuGetAuditMode>all</NuGetAuditMode>
