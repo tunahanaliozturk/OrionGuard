@@ -16,13 +16,17 @@ using Moongazing.OrionGuard.EntityFrameworkCore.Outbox;
 /// </summary>
 public static class OutboxDashboardEndpointRouteBuilderExtensions
 {
-    // CORS-safelisted request headers (a cross-site page may set them without a preflight) and headers the
-    // browser adds to every request by itself. Neither can serve as the mutation header.
+    // The CORS-safelisted request headers, which a cross-site page may set itself without a preflight, and
+    // the Fetch standard's forbidden request headers, which the browser controls and can attach on its own
+    // (DNT, for one). Neither kind can serve as the mutation header, because a cross-site request can carry
+    // it without the host's CORS policy ever being consulted.
     private static readonly HashSet<string> HeadersSentWithoutPreflight = new(StringComparer.OrdinalIgnoreCase)
     {
         "Accept", "Accept-Language", "Content-Language", "Content-Type", "Range",
-        "Accept-Charset", "Accept-Encoding", "Connection", "Content-Length", "Cookie", "Host",
-        "Origin", "Priority", "Referer", "User-Agent",
+        "Accept-Charset", "Accept-Encoding", "Access-Control-Request-Headers", "Access-Control-Request-Method",
+        "Connection", "Content-Length", "Cookie", "Cookie2", "Date", "DNT", "Expect", "Host", "Keep-Alive",
+        "Origin", "Permissions-Policy", "Priority", "Referer", "Set-Cookie", "TE", "Trailer",
+        "Transfer-Encoding", "Upgrade", "Via", "User-Agent",
     };
 
     /// <summary>
