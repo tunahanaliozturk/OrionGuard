@@ -291,7 +291,7 @@ public sealed class Money : ValueObject
 
     public Money(decimal amount, string currency)
     {
-        Ensure.That(amount).GreaterThanOrEqualTo(0);
+        Ensure.That(amount).NotNegative();
         Amount = amount; Currency = currency;
     }
 

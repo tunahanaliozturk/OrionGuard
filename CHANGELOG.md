@@ -22,11 +22,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `OrionGuard.Outbox.SqlServerBroker`: `Microsoft.Data.SqlClient` 5.2.2 → **7.1.0**.
   - `OrionGuard.Generators` / `OrionGuard.OpenApi`: `Microsoft.CodeAnalysis.CSharp` 4.8.0 → **5.9.0**. The
     generators now need Roslyn 5.9, i.e. **.NET SDK 10.0.400 or newer**; older SDKs (including every .NET 8
-    and .NET 9 SDK) report `CS9057` and skip the generators.
+    and .NET 9 SDK) report `CS9057` and skip the generators. The `OrionGuard.Migration` tool moves to the same
+    Roslyn version; it runs on the .NET 10 runtime, so it is unaffected.
   - `OrionGuard.Grpc` (`Grpc.AspNetCore.Server` 2.83.0), `OrionGuard.Hangfire` (`Hangfire.Core` 1.8.25,
     `Newtonsoft.Json` 13.0.4), `OrionGuard.OpenTelemetry` (`OpenTelemetry.Api` 1.19.0).
   - `OrionGuard.MediatR` stays on MediatR **12.4.1**, the last Apache-2.0 release; MediatR 13+ requires a
     commercial license key.
+- **Every package's NuGet README was rewritten against the current code.** Each snippet was compiled against
+  the sources, and claims that were no longer true were removed or corrected: Swagger's registration call and
+  attribute names, gRPC's status code (`InvalidArgument`), OpenTelemetry's instrument names and registration,
+  Blazor's hosting support (not WebAssembly), the Dashboard's endpoints and authorization defaults, and the
+  localization count (14 languages). Known defects found along the way are listed as known issues in the
+  affected READMEs until they are fixed. The Blazor and Generators package descriptions were corrected too.
 - Test and benchmark tooling: xUnit 2.9.3, `xunit.runner.visualstudio` 4.0.0, `Microsoft.NET.Test.Sdk` 18.10.1,
   coverlet 10.0.1, BenchmarkDotNet 0.15.8.
 

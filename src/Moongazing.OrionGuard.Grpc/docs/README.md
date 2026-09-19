@@ -1,12 +1,6 @@
 # OrionGuard.Grpc
 
-gRPC integration for [**OrionGuard**](https://github.com/tunahanaliozturk/OrionGuard). Adds a server-side interceptor that validates every incoming protobuf message with your OrionGuard validators before the service method runs.
-
-## What this package adds
-
-- **`OrionGuardInterceptor`** — a `grpc-dotnet` `Interceptor` that resolves `IValidator<TRequest>` from DI and runs it against every unary, client-streaming, server-streaming, and duplex call.
-- **Status code translation** — a validation failure becomes `Status.FailedPrecondition` (`FAILED_PRECONDITION`, numeric `9`) with structured trailers carrying the field errors.
-- **DI helper** — `AddOrionGuardGrpc()` registers the interceptor singleton and scans your assemblies for validators.
+A grpc-dotnet server interceptor for [OrionGuard](https://github.com/tunahanaliozturk/OrionGuard). It validates incoming request messages with your `IValidator<TRequest>` registrations and rejects invalid ones with `StatusCode.InvalidArgument`.
 
 ## Install
 
@@ -14,34 +8,72 @@ gRPC integration for [**OrionGuard**](https://github.com/tunahanaliozturk/OrionG
 dotnet add package OrionGuard.Grpc
 ```
 
-Requires `Grpc.AspNetCore` in your application. The core `OrionGuard` package is brought in transitively.
+The package depends on `Grpc.AspNetCore.Server`, and the core `OrionGuard` package is installed as a dependency. Keep using `Grpc.AspNetCore` (or `Grpc.Tools` and `Google.Protobuf`) for code generation.
 
 ## Quick start
 
 ```csharp
+using Moongazing.OrionGuard.DependencyInjection;
 using Moongazing.OrionGuard.Grpc;
 
 builder.Services.AddOrionGuardGrpc();
+builder.Services.AddValidator<CreateUserRequest, CreateUserRequestValidator>();
+builder.Services.AddGrpc(options => options.Interceptors.Add<OrionGuardInterceptor>());
 
-builder.Services.AddGrpc(options =>
+// CreateUserRequest is the protobuf-generated message.
+public sealed class CreateUserRequestValidator : AbstractValidator<CreateUserRequest>
 {
-    options.Interceptors.Add<OrionGuardInterceptor>();
-});
-
-// Any IValidator<TRequest> registered in DI is applied automatically:
-public sealed class CreateUserValidator : AbstractValidator<CreateUserRequest>
-{
-    public CreateUserValidator()
+    public CreateUserRequestValidator()
     {
-        RuleFor(x => x.Email, "Email", p => p.NotEmpty().Email());
+        RuleFor(x => x.Email, nameof(CreateUserRequest.Email), p => p.NotEmpty().Email());
     }
+}
+```
+
+`AddOrionGuardGrpc()` only registers `OrionGuardInterceptor` as a singleton. You still add the interceptor in `AddGrpc` and register each validator yourself, because the package does not scan assemblies.
+
+## Behaviour
+
+- For unary and server-streaming calls, the request is validated before the service method runs.
+- For client-streaming and duplex calls, each incoming message is validated as the service reads it (`MoveNext`). The call fails at the first invalid message, and messages read before it have already been processed.
+- The interceptor calls the synchronous `IValidator<TRequest>.Validate`, so `RuleForAsync` rules do not run.
+- Messages whose type has no registered validator pass through.
+- The interceptor is a singleton and resolves validators from the root service provider. Validators must not be registered as scoped, and must not depend on scoped services. `AddValidator` registers them as transient.
+
+## Error format
+
+A failed validation throws `RpcException` with:
+
+- status `InvalidArgument` (code 3)
+- status detail: the error messages joined with `"; "`
+- one trailer, `validation-errors-json`, holding a JSON array such as `[{"ParameterName":"Email","Message":"Email must be a valid email."}]`
+
+Reading it on the client:
+
+```csharp
+using Grpc.Core;
+
+try
+{
+    await client.CreateUserAsync(request);
+}
+catch (RpcException ex) when (ex.StatusCode == StatusCode.InvalidArgument)
+{
+    string? errorsJson = ex.Trailers.GetValue("validation-errors-json");
 }
 ```
 
 ## Targets
 
-.NET 8.0, .NET 9.0, .NET 10.0.
+- `net8.0`, `net9.0`, `net10.0`
+- `Grpc.AspNetCore.Server` 2.83.0 or later
+
+## Documentation
+
+- [Repository and full documentation](https://github.com/tunahanaliozturk/OrionGuard)
+- [Changelog](https://github.com/tunahanaliozturk/OrionGuard/blob/master/CHANGELOG.md)
+- Related packages: [OrionGuard](https://www.nuget.org/packages/OrionGuard), [OrionGuard.OpenTelemetry](https://www.nuget.org/packages/OrionGuard.OpenTelemetry)
 
 ## License
 
-MIT. See the [main repository](https://github.com/tunahanaliozturk/OrionGuard) for full docs, CHANGELOG, and samples.
+MIT. See [LICENSE.txt](https://github.com/tunahanaliozturk/OrionGuard/blob/master/src/Moongazing.OrionGuard/docs/LICENSE.txt).

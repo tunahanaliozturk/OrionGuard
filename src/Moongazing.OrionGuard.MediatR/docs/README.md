@@ -1,12 +1,6 @@
 # OrionGuard.MediatR
 
-MediatR integration for [**OrionGuard**](https://github.com/tunahanaliozturk/OrionGuard) — runs your OrionGuard validators automatically inside the MediatR pipeline before each request handler.
-
-## What this package adds
-
-- **`ValidationBehavior<TRequest, TResponse>`** — a MediatR pipeline behavior that locates any `IValidator<TRequest>` registered in DI and executes it before the handler.
-- **`AddOrionGuardMediatR(...)`** — a service-collection extension that registers the behavior and scans the supplied assemblies for validators.
-- **CQRS-friendly** — zero reflection overhead after the first request thanks to MediatR's own DI resolution.
+MediatR 12 integration for [OrionGuard](https://github.com/tunahanaliozturk/OrionGuard). It adds a pipeline behavior that runs every `IValidator<TRequest>` before the request handler, and a domain-event dispatcher that publishes OrionGuard domain events as MediatR notifications.
 
 ## Install
 
@@ -14,32 +8,73 @@ MediatR integration for [**OrionGuard**](https://github.com/tunahanaliozturk/Ori
 dotnet add package OrionGuard.MediatR
 ```
 
-Requires MediatR in your application; the core `OrionGuard` package is brought in transitively.
+Use MediatR 12.x, the last Apache-2.0 licensed line. The package is built against MediatR 12.4.1; MediatR 13 and later are not supported. The core `OrionGuard` package is installed as a dependency.
 
 ## Quick start
 
 ```csharp
+using MediatR;
+using Moongazing.OrionGuard.DependencyInjection;
 using Moongazing.OrionGuard.MediatR;
 
+builder.Services.AddMediatR(cfg => cfg.RegisterServicesFromAssemblyContaining<Program>());
 builder.Services.AddOrionGuardMediatR(typeof(Program).Assembly);
 
-// Any IValidator<TRequest> is executed automatically before its handler:
+public sealed record CreateUserCommand(string Email, string Password) : IRequest<Guid>;
+
 public sealed class CreateUserValidator : AbstractValidator<CreateUserCommand>
 {
     public CreateUserValidator()
     {
-        RuleFor(x => x.Email, "Email", p => p.NotEmpty().Email());
-        RuleFor(x => x.Password, "Password", p => p.NotEmpty().MinLength(8));
+        RuleFor(x => x.Email, nameof(CreateUserCommand.Email), p => p.NotEmpty().Email());
+        RuleFor(x => x.Password, nameof(CreateUserCommand.Password), p => p.Length(8, 128));
     }
 }
 ```
 
-When validation fails, the pipeline short-circuits with a `ValidationException` carrying the full `GuardResult` — you can convert it to `ProblemDetails` with the companion `OrionGuard.AspNetCore` package.
+## Validation behavior
+
+- `AddOrionGuardMediatR(params Assembly[] assemblies)` registers `ValidationBehavior<,>` as an open-generic transient `IPipelineBehavior<,>`. It also registers every non-abstract `IValidator<T>` implementation found in the given assemblies as transient. It does not call `AddMediatR`, so register MediatR yourself.
+- `ValidationBehavior<TRequest, TResponse>` resolves all `IValidator<TRequest>` services and runs their `ValidateAsync` concurrently, so both synchronous rules and `RuleForAsync` rules run. The results are combined into one.
+- If any error is found, it throws `AggregateValidationException` (namespace `Moongazing.OrionGuard.Core`) with every error in `Errors`, and the handler is not called. Requests without a validator pass straight through.
+- In ASP.NET Core, the exception handler in [OrionGuard.AspNetCore](https://www.nuget.org/packages/OrionGuard.AspNetCore) turns `AggregateValidationException` into a `ValidationProblemDetails` response with status 422 by default.
+
+## Domain events through MediatR
+
+```csharp
+using MediatR;
+using Moongazing.OrionGuard.DependencyInjection;
+using Moongazing.OrionGuard.Domain.Events;
+using Moongazing.OrionGuard.MediatR.DomainEvents;
+
+builder.Services.AddOrionGuardDomainEvents();
+builder.Services.AddOrionGuardMediatRDomainEvents();
+
+// Opt in per event: implement INotification alongside the OrionGuard base record.
+public sealed record OrderPlaced(Guid OrderId) : DomainEventBase, INotification;
+
+public sealed class SendOrderConfirmation : INotificationHandler<OrderPlaced>
+{
+    public Task Handle(OrderPlaced notification, CancellationToken cancellationToken) => Task.CompletedTask;
+}
+```
+
+- `AddOrionGuardMediatRDomainEvents()` removes any existing `IDomainEventDispatcher` registration and registers `MediatRDomainEventDispatcher` as scoped. Every dispatch through `IDomainEventDispatcher` is then published with MediatR's `IPublisher.Publish`. This includes the dispatch done by the OrionGuard.EntityFrameworkCore save-changes interceptor.
+- Each event must implement `INotification`. Otherwise `DispatchAsync` throws `InvalidOperationException`.
+- A batch of events is published one at a time, in order.
+- With OpenTelemetry, the order must be `AddOrionGuardDomainEvents()`, then `AddOrionGuardMediatRDomainEvents()`, then `WithOpenTelemetryDomainEvents()`. Calling the MediatR bridge after the OpenTelemetry decorator throws `InvalidOperationException`, because the bridge would otherwise remove the decorator.
 
 ## Targets
 
-.NET 8.0, .NET 9.0, .NET 10.0.
+- `net8.0`, `net9.0`, `net10.0`
+- `MediatR` 12.x (built against 12.4.1)
+
+## Documentation
+
+- [Repository and full documentation](https://github.com/tunahanaliozturk/OrionGuard)
+- [Changelog](https://github.com/tunahanaliozturk/OrionGuard/blob/master/CHANGELOG.md)
+- Related packages: [OrionGuard.AspNetCore](https://www.nuget.org/packages/OrionGuard.AspNetCore) (maps validation exceptions to HTTP responses), [OrionGuard.OpenTelemetry](https://www.nuget.org/packages/OrionGuard.OpenTelemetry) (validator and domain-event telemetry), [OrionGuard.EntityFrameworkCore](https://www.nuget.org/packages/OrionGuard.EntityFrameworkCore) (dispatches domain events on `SaveChanges`)
 
 ## License
 
-MIT. See the [main repository](https://github.com/tunahanaliozturk/OrionGuard) for full docs, CHANGELOG, and samples.
+MIT. See [LICENSE.txt](https://github.com/tunahanaliozturk/OrionGuard/blob/master/src/Moongazing.OrionGuard/docs/LICENSE.txt).

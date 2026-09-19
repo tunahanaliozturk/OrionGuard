@@ -1,8 +1,6 @@
 # OrionGuard.Locks.Redis
 
-Redis backend for OrionGuard's outbox `IDistributedLock`.
-
-A bridge package that lets consumers using `OrionGuard.EntityFrameworkCore`'s outbox dispatcher coordinate across replicas through Redis instead of the default DB-backed `SkipLockedDistributedLock`.
+Redis-backed `IDistributedLock` for the outbox in `OrionGuard.EntityFrameworkCore`, part of [OrionGuard](https://github.com/tunahanaliozturk/OrionGuard). It bridges OrionGuard's lock contract to an [OrionLock](https://github.com/tunahanaliozturk/OrionLock) Redis provider, so outbox replicas coordinate through Redis instead of the `OrionGuard_OutboxLocks` database table.
 
 ## Install
 
@@ -10,37 +8,71 @@ A bridge package that lets consumers using `OrionGuard.EntityFrameworkCore`'s ou
 dotnet add package OrionGuard.Locks.Redis
 ```
 
-Adds a transitive dependency on `OrionLock.Redis` (>= 0.2.3) and `OrionGuard.EntityFrameworkCore` (>= 6.5.0).
+`OrionGuard.EntityFrameworkCore` and `OrionLock.Redis` are installed as dependencies.
 
-## Use
+## Quick start
 
-Connection-string form:
-
-```csharp
-services.AddOrionGuardEfCore<AppDbContext>(opts => opts
-    .UseOutbox()
-    .UseOrionLockRedis("localhost:6379", o => o.KeyPrefix = "myapp:outbox:"));
-```
-
-Shared multiplexer form (recommended when other parts of the app already use Redis):
+Connection-string form. The package creates a singleton `IConnectionMultiplexer`:
 
 ```csharp
-services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect("localhost:6379"));
+using Moongazing.OrionGuard.EntityFrameworkCore;
+using Moongazing.OrionGuard.Locks.Redis;
 
-services.AddOrionGuardEfCore<AppDbContext>(opts => opts
+builder.Services.AddOrionGuardEfCore<AppDbContext>(o => o
     .UseOutbox()
-    .UseOrionLockRedis(o => o.KeyPrefix = "myapp:outbox:"));
+    .UseOrionLockRedis("localhost:6379,abortConnect=false", redis => redis.KeyPrefix = "myapp:outbox:"));
 ```
 
-## What it does
+Shared-multiplexer form, for applications that already register one:
 
-Implements OrionGuard's `IDistributedLock` over OrionLock's raw `IDistributedLockProvider` (the single-attempt primitive `Moongazing.OrionLock.Redis.RedisLockProvider`). `TryAcquireAsync` returns `null` immediately on contention; disposing the handle issues an owner-checked release (Lua compare-and-delete on Redis). No blocking-acquire retry, no watchdog renewal, no reentrancy — OrionGuard's outbox dispatcher already polls on its own cadence and tolerates lease loss by design.
+```csharp
+using Moongazing.OrionGuard.EntityFrameworkCore;
+using Moongazing.OrionGuard.Locks.Redis;
+using StackExchange.Redis;
 
-## Trade-offs vs the default `SkipLockedDistributedLock`
+builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
+    ConnectionMultiplexer.Connect("localhost:6379,abortConnect=false"));
 
-- **Pros**: removes the `OrionGuard_OutboxLocks` row write/update per polling cycle from the primary database. Useful when the primary DB is hot or read-replicated.
-- **Cons**: introduces Redis as a hard dependency for outbox dispatch. If Redis is unreachable, the dispatcher polls but never acquires; outbox messages still safely accumulate (they are written by the same transaction that mutates aggregate state).
+builder.Services.AddOrionGuardEfCore<AppDbContext>(o => o
+    .UseOutbox()
+    .UseOrionLockRedis(redis => redis.KeyPrefix = "myapp:outbox:"));
+```
+
+The `OrionGuard_OutboxLocks` table and its migration are not needed with this package.
+
+## How it works
+
+`UseOrionLockRedis` replaces the registered `IDistributedLock` with `OrionLockBridgeDistributedLock`, which sits on OrionLock's `IDistributedLockProvider` (`RedisLockProvider`). It covers both the outbox dispatcher and the archival worker.
+
+- **Acquire.** One `SET key token NX PX` with a new owner token per attempt. On contention it returns `null` at once, and the worker tries again on its next poll. There is no blocking retry, no watchdog renewal, and no reentrancy.
+- **Lease.** The lease is `OutboxOptions.LockLeaseDuration` (default 30 s) for the dispatcher and `OutboxArchivalOptions.LockLeaseDuration` (default 5 min) for archival. It is not renewed: if a batch runs longer, another replica can take the lock and dispatch the same rows. Delivery stays at least once, so handlers must be idempotent.
+- **Release.** Disposing the handle runs an owner-checked compare-and-delete (Lua), so a lease that another replica has already taken over is left alone. Release errors are swallowed and the lease expires on its own.
+- **Keys.** `RedisLockOptions.KeyPrefix` (default `orionlock:`) plus the lock key, for example `orionlock:orion_guard_outbox_dispatcher`. `RedisLockOptions.Database` defaults to -1, the connection's default database.
+
+Registration uses `TryAdd` for `IConnectionMultiplexer`, `RedisLockOptions`, and `IDistributedLockProvider`. If your application already registers any of these (for example through OrionLock's own `AddOrionLock(...).UseRedis(...)`), the existing registration is used and the matching argument here is ignored.
+
+## Failure behavior
+
+- **At startup.** With the connection-string form, `ConnectionMultiplexer.Connect` runs when the hosted services are created. With StackExchange.Redis's default `abortConnect=true`, an unreachable server throws and the host does not start. Add `abortConnect=false`, as above, to start anyway and let the multiplexer reconnect in the background.
+- **At runtime.** If Redis is unreachable, the acquire call throws; the worker catches it and tries again on the next poll. Outbox rows keep accumulating in the database, since they are written in the same transaction as your aggregates, and are dispatched once Redis is back.
+
+## Compared with SkipLockedDistributedLock
+
+- Removes the lock-row `UPDATE`/`INSERT` from the application database on every poll.
+- Makes Redis a hard dependency for outbox dispatch and archival.
+
+## Targets
+
+- `net8.0`, `net9.0`, `net10.0`
+- `OrionLock.Redis` 2.0.0, which brings `OrionLock` 2.0.0 and `StackExchange.Redis` 2.8.16 or later
+- `OrionGuard.EntityFrameworkCore` of the same version (6.7.0), which uses EF Core 9.0.20 on net8.0/net9.0 and EF Core 10.0.12 on net10.0
+
+## Documentation
+
+- [Repository and full documentation](https://github.com/tunahanaliozturk/OrionGuard)
+- [Changelog](https://github.com/tunahanaliozturk/OrionGuard/blob/master/CHANGELOG.md)
+- Related packages: [OrionGuard.EntityFrameworkCore](https://www.nuget.org/packages/OrionGuard.EntityFrameworkCore) (outbox and the `IDistributedLock` contract), [OrionLock.Redis](https://www.nuget.org/packages/OrionLock.Redis) (the Redis provider)
 
 ## License
 
-MIT.
+MIT. See [LICENSE.txt](https://github.com/tunahanaliozturk/OrionGuard/blob/master/src/Moongazing.OrionGuard/docs/LICENSE.txt).
