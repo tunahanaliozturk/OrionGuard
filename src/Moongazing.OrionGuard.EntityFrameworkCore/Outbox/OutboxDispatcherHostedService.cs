@@ -30,8 +30,10 @@ namespace Moongazing.OrionGuard.EntityFrameworkCore.Outbox;
 /// Each row is dispatched in a DI scope of its own. A handler that writes through the scoped
 /// <see cref="DbContext"/> has those writes committed together with the row's processed stamp; if the handler
 /// throws, or its writes cannot be saved, they are discarded and the failure is recorded on the row, where it
-/// counts towards <see cref="OutboxOptions.MaxRetries"/>. Row updates are conditional on the state the row was
-/// read in, so a replay or discard made while the row is being dispatched is not overwritten.
+/// counts towards <see cref="OutboxOptions.MaxRetries"/>. Every row update, success included, is conditional on
+/// the state the row was read in (unprocessed, same <see cref="OutboxMessage.RetryCount"/> and
+/// <see cref="OutboxMessage.Error"/>), so a replay or discard made while the row is being dispatched is not
+/// overwritten; a dispatch that loses to one also rolls back its handler's writes.
 /// </para>
 /// </remarks>
 public sealed class OutboxDispatcherHostedService : BackgroundService
@@ -303,7 +305,7 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
         if (!marked)
         {
             logger?.LogInformation(
-                "Outbox row {RowId} was dispatched, but meanwhile it had been processed or discarded elsewhere; its state was left as found.",
+                "Outbox row {RowId} was dispatched, but meanwhile it had been replayed, discarded or processed elsewhere; its state was left as found and the handler's database writes were rolled back.",
                 row.Id);
             return true;
         }
@@ -357,7 +359,7 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
             row, row.RetryCount, isTerminal: true, new InvalidOperationException(reason), cancellationToken).ConfigureAwait(false);
 
         var deadLettered = new RowState(row.RetryCount, reason, UtcNow());
-        if (await TryUpdateRowAsync(db, row, deadLettered, matchRetryCount: true, cancellationToken).ConfigureAwait(false))
+        if (await TryUpdateRowAsync(db, row, deadLettered, cancellationToken).ConfigureAwait(false))
         {
             OutboxDispatcherDiagnostics.RecordDeadLetter(deadLetterType!);
         }
@@ -378,7 +380,7 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
         // Dead-lettering keeps Error and RetryCount for operators; stamping ProcessedOnUtc takes the row out of
         // the unprocessed query.
         var failed = new RowState(attempt, error, isTerminal ? UtcNow() : null);
-        if (!await TryUpdateRowAsync(db, row, failed, matchRetryCount: true, cancellationToken).ConfigureAwait(false))
+        if (!await TryUpdateRowAsync(db, row, failed, cancellationToken).ConfigureAwait(false))
         {
             logger?.LogInformation(
                 "Outbox row {RowId} failed, but meanwhile it had been replayed, discarded or processed elsewhere; its state was left as found.",
@@ -421,13 +423,14 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
         return deadLetterType;
     }
 
-    // The handler's writes, if any, and the processed stamp commit together or not at all.
+    // The handler's writes, if any, and the processed stamp commit together or not at all: when the row was
+    // replayed, discarded or finished elsewhere meanwhile, this dispatch does not count, and neither do its writes.
     private static async Task<bool> MarkProcessedAsync(DbContext db, OutboxMessage row, DateTime processedOnUtc, CancellationToken cancellationToken)
     {
         var processed = new RowState(row.RetryCount, Error: null, processedOnUtc);
         if (!db.ChangeTracker.HasChanges() || !db.Database.IsRelational())
         {
-            return await TryUpdateRowAsync(db, row, processed, matchRetryCount: false, cancellationToken).ConfigureAwait(false);
+            return await TryUpdateRowAsync(db, row, processed, cancellationToken).ConfigureAwait(false);
         }
 
         // Inside the execution strategy so a retrying strategy (EnableRetryOnFailure) accepts the transaction;
@@ -437,27 +440,33 @@ public sealed class OutboxDispatcherHostedService : BackgroundService
             {
                 await using var transaction = await db.Database.BeginTransactionAsync(token).ConfigureAwait(false);
                 await db.SaveChangesAsync(acceptAllChangesOnSuccess: false, token).ConfigureAwait(false);
-                var updated = await TryUpdateRowAsync(db, row, processed, matchRetryCount: false, token).ConfigureAwait(false);
+                if (!await TryUpdateRowAsync(db, row, processed, token).ConfigureAwait(false))
+                {
+                    await transaction.RollbackAsync(token).ConfigureAwait(false);
+                    return false;
+                }
                 await transaction.CommitAsync(token).ConfigureAwait(false);
-                return updated;
+                return true;
             },
             cancellationToken).ConfigureAwait(false);
-        db.ChangeTracker.AcceptAllChanges();
+        if (marked)
+        {
+            db.ChangeTracker.AcceptAllChanges();
+        }
         return marked;
     }
 
-    // Writes the row's next state only if the row is still in the state it was read in (unprocessed, and for
-    // failures the same RetryCount), so a dashboard replay or discard, or another replica, made meanwhile wins.
-    private static async Task<bool> TryUpdateRowAsync(
-        DbContext db, OutboxMessage row, RowState next, bool matchRetryCount, CancellationToken cancellationToken)
+    // Writes the row's next state only if the row is still in the state it was read in (unprocessed, same
+    // RetryCount and Error), so a dashboard replay or discard, or another replica's update, made meanwhile wins.
+    // ponytail: without a version column a replay that restores exactly the state read (a first attempt's
+    // RetryCount 0 and no error) is indistinguishable from no change; add a rowversion in a major release.
+    private static async Task<bool> TryUpdateRowAsync(DbContext db, OutboxMessage row, RowState next, CancellationToken cancellationToken)
     {
         var id = row.Id;
         var readRetryCount = row.RetryCount;
-        var query = db.Set<OutboxMessage>().Where(m => m.Id == id && m.ProcessedOnUtc == null);
-        if (matchRetryCount)
-        {
-            query = query.Where(m => m.RetryCount == readRetryCount);
-        }
+        var readError = row.Error;
+        var query = db.Set<OutboxMessage>().Where(m =>
+            m.Id == id && m.ProcessedOnUtc == null && m.RetryCount == readRetryCount && m.Error == readError);
 
         if (db.Database.IsRelational())
         {

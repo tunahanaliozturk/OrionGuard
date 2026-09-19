@@ -98,9 +98,16 @@ public sealed class SkipLockedDistributedLock : IDistributedLock
                 }
                 catch (Exception ex) when (ex is DbException or DbUpdateException)
                 {
-                    // Raw SQL surfaces the provider's DbException (a unique-key violation) when a concurrent
-                    // caller won the INSERT race: genuine contention.
+                    // A replica that loses the INSERT race gets the provider's unique-key violation, but so many
+                    // other failures surface as a DbException (a key longer than the column, a constraint or
+                    // trigger, a transient fault) that only the outcome tells them apart: the race was lost exactly
+                    // when the winner's row now exists. Checked after the rollback, outside the transaction, because
+                    // PostgreSQL refuses further commands in a transaction that has failed.
                     await tx.RollbackAsync(cancellationToken).ConfigureAwait(false);
+                    if (!await LockRowExistsAsync(db, lockKey, cancellationToken).ConfigureAwait(false))
+                    {
+                        throw;
+                    }
                     OutboxDispatcherDiagnostics.RecordLockContended();
                     return null;
                 }
@@ -156,6 +163,9 @@ public sealed class SkipLockedDistributedLock : IDistributedLock
             // table dropped between acquire and release — nothing to clean up.
         }
     }
+
+    private static Task<bool> LockRowExistsAsync(DbContext db, string lockKey, CancellationToken cancellationToken)
+        => db.Set<OutboxLock>().AsNoTracking().AnyAsync(x => x.LockKey == lockKey, cancellationToken);
 
     // Every provider names the missing table in its error (PostgreSQL: relation "x" does not exist; SQL Server:
     // Invalid object name 'x'; SQLite: no such table: x; MySQL: Table 'db.x' doesn't exist), so an unrelated

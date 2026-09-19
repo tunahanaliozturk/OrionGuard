@@ -196,18 +196,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A dashboard replay or discard is no longer undone by an in-flight dispatch.** The dispatcher wrote a row's whole
   state back after dispatching, overwriting a replay or discard made meanwhile (a replayed row could end up
   dead-lettered), and the dashboard's read-then-write could re-queue a row the dispatcher had just finished. Both sides
-  now use conditional updates on the row's expected state; replaying a row that was processed successfully in the
-  meantime returns 409. No schema change is needed. The dashboard's replay and discard now need a relational EF Core
-  provider.
+  now use conditional updates on the row's expected state. Every dispatcher update, the successful one included, only
+  applies while the row is still unprocessed with the `RetryCount` and `Error` it was read with, so a replay made while
+  its handler runs wins: the row stays queued for the replayed delivery, and that attempt's handler writes are rolled
+  back rather than applied twice. Replaying a row that was processed successfully in the meantime returns 409. No
+  schema change is needed. The dashboard's replay and discard now need a relational EF Core provider.
 - **`OrionGuard.Outbox.PostgresNotify` and `OrionGuard.Outbox.SqlServerBroker` no longer break the dispatcher on
   shutdown.** Stopping the listener completed its wake channel; when it stopped before the dispatcher, the Postgres
   signal faulted the dispatcher and the Service Broker signal made it poll in a tight loop. The channel is no longer
   completed, and waits fall back to the polling interval.
 - **The Service Broker listener wakes the dispatcher only when a message arrived.** `SELECT @h` returns a row even when
   `WAITFOR` times out, so every timeout (every 30 seconds by default) woke the dispatcher; a NULL handle is now ignored.
-- **`SkipLockedDistributedLock` reports a lost INSERT race as contention.** Raw SQL surfaces the provider's
-  `DbException`, which the `DbUpdateException` handler never caught, so the losing replica threw instead of returning
-  null and recording `lock_contended`.
+- **`SkipLockedDistributedLock` reports a lost INSERT race as contention, and only that.** Raw SQL surfaces the
+  provider's `DbException`, which the `DbUpdateException` handler never caught, so the losing replica threw instead of
+  returning null and recording `lock_contended`. A failed INSERT now counts as contention only when the winning
+  replica's lock row exists afterwards; any other failure (a lock key longer than its column, a constraint or trigger
+  error, a transient fault) propagates, so the dispatcher logs it as a failed poll instead of idling silently as a
+  standby.
 - **`SkipLockedDistributedLock` works on PostgreSQL.** Its raw SQL used unquoted names, which PostgreSQL folds to lower
   case, so it never found the `"OrionGuard_OutboxLocks"` table and outbox dispatch never started. The table, schema and
   column names now come from the `OutboxLock` mapping in the model and are quoted by the provider (renamed tables and

@@ -50,6 +50,18 @@ public class SkipLockedDistributedLockMappingTests
         await using var connection = new SqliteConnection("Filename=:memory:");
         await connection.OpenAsync();
         await using var serviceProvider = BuildServices<LockingTestDbContext>(connection, new ConcurrentInsertWinsInterceptor());
+        // The winning replica's row, committed by the time this caller's INSERT fails on the duplicate key.
+        await using (var winner = new LockingTestDbContext(new DbContextOptionsBuilder<LockingTestDbContext>().UseSqlite(connection).Options))
+        {
+            winner.Locks.Add(new OutboxLock
+            {
+                LockKey = "k",
+                HolderId = Guid.NewGuid(),
+                AcquiredOnUtc = DateTime.UtcNow,
+                ExpiresOnUtc = DateTime.UtcNow.AddMinutes(5),
+            });
+            await winner.SaveChangesAsync();
+        }
         var @lock = new SkipLockedDistributedLock(serviceProvider.GetRequiredService<IServiceScopeFactory>(), NullLogger<SkipLockedDistributedLock>.Instance);
 
         // Raw SQL surfaces the provider's own DbException (here SqliteException), never a DbUpdateException.

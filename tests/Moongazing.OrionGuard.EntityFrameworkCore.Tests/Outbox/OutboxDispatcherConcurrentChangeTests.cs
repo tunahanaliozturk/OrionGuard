@@ -68,6 +68,70 @@ public class OutboxDispatcherConcurrentChangeTests
         Assert.Equal("earlier failure", stored.Error);   // the discard's record of what failed survives
     }
 
+    [Fact]
+    public async Task ProcessBatch_RowReplayedWhileItsDispatchSucceeds_KeepsTheReplay()
+    {
+        var entered = new SemaphoreSlim(0);
+        var release = new SemaphoreSlim(0);
+        await using var serviceProvider = OutboxTestServices.Build(_ => new RecordingDispatcher(async (_, _) =>
+        {
+            entered.Release();
+            await release.WaitAsync();
+        }));
+        var row = OutboxTestServices.Row(new OrderShipped(Guid.NewGuid()));
+        row.RetryCount = 2;
+        row.Error = "earlier failure";
+        await OutboxTestServices.SeedAsync(serviceProvider, row);
+        var worker = OutboxTestServices.Worker(serviceProvider);
+
+        var batch = worker.ProcessBatchAsync(default);
+        await entered.WaitAsync();
+        await UpdateAsync(serviceProvider, row.Id, m => { m.RetryCount = 0; m.Error = null; m.ProcessedOnUtc = null; });   // the replay
+        release.Release();
+        await batch;
+
+        // The replay asked for another delivery, so the row stays queued instead of being marked processed with
+        // the state read before the replay.
+        var stored = Assert.Single(await OutboxTestServices.RowsAsync(serviceProvider));
+        Assert.Null(stored.ProcessedOnUtc);
+        Assert.Equal(0, stored.RetryCount);
+        Assert.Null(stored.Error);
+    }
+
+    [Fact]
+    public async Task ProcessBatch_RowReplayedWhileAHandlerWithWritesSucceeds_KeepsTheReplayAndRollsBackTheWrites()
+    {
+        var entered = new SemaphoreSlim(0);
+        var release = new SemaphoreSlim(0);
+        await using var serviceProvider = OutboxTestServices.Build(scope =>
+        {
+            var db = scope.GetRequiredService<TestDbContext>();
+            return new RecordingDispatcher(async (_, _) =>
+            {
+                entered.Release();
+                await release.WaitAsync();
+                db.Orders.Add(new Order(Guid.NewGuid()));
+            });
+        });
+        var row = OutboxTestServices.Row(new OrderShipped(Guid.NewGuid()));
+        row.RetryCount = 1;
+        row.Error = "earlier failure";
+        await OutboxTestServices.SeedAsync(serviceProvider, row);
+        var worker = OutboxTestServices.Worker(serviceProvider);
+
+        var batch = worker.ProcessBatchAsync(default);
+        await entered.WaitAsync();
+        await UpdateAsync(serviceProvider, row.Id, m => { m.RetryCount = 0; m.Error = null; m.ProcessedOnUtc = null; });   // the replay
+        release.Release();
+        await batch;
+
+        var stored = Assert.Single(await OutboxTestServices.RowsAsync(serviceProvider));
+        Assert.Null(stored.ProcessedOnUtc);
+        Assert.Equal(0, stored.RetryCount);
+        // The replayed dispatch will write again; keeping this attempt's writes would apply them twice.
+        Assert.Equal(0, await OutboxTestServices.OrderCountAsync(serviceProvider));
+    }
+
     private static async Task UpdateAsync(IServiceProvider serviceProvider, Guid id, Action<OutboxMessage> change)
     {
         await using var scope = serviceProvider.CreateAsyncScope();
