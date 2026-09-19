@@ -1,4 +1,4 @@
-# OrionGuard Benchmarks
+﻿# OrionGuard Benchmarks
 
 Latest run: 2026-05 on Intel Core i7-7820HQ CPU @ 2.90 GHz (Kaby Lake, 4 physical / 8 logical cores), Windows 11 22H2, .NET 10.0.5 (X64 RyuJIT AVX2), BenchmarkDotNet 0.14.0.
 
@@ -246,7 +246,7 @@ Interpretation: with a synchronously-completing rule, OrionGuard's reusable vali
 
 Findings for the performance work, worst first, each checked against `42ba486`. Every one of them is visible in the tables above.
 
-1. **`NestedValidator` compiles an expression on every call** (`Core/NestedValidator.cs`; `Property`, `Nested` and `Collection` each call `selector.Compile()` - still three sites). 24 compiles per 10-line order, ~1 ms, 119 - 125 KB, and the cost does not fall when the data is valid. `ObjectValidator` and now `FluentRuleBuilder` both solve this with `AccessorCache<T, TProperty>`; routing `NestedValidator` through the same cache should collapse (b) by two orders of magnitude. This is the last per-call `Compile()` left in the library.
+1. **`NestedValidator` compiles an expression on every call** (`Core/NestedValidator.cs`; `Property`, `Nested` and `Collection` each call `selector.Compile()` - still three sites). 24 compiles per 10-line order, ~1 ms, 119 - 125 KB, and the cost does not fall when the data is valid. `ObjectValidator` and now `FluentRuleBuilder` both solve this with `AccessorCache<T, TProperty>`; routing `NestedValidator` through the same cache should collapse (b) by two orders of magnitude. `Core/CrossPropertyValidator.cs` compiles both of its selectors per call too, in all five rules, so `Validate.CrossProperties` pays the same cost on a smaller scale.
 2. **`Validate.For` rebuilds its selector expression trees on every call.** The accessors are cached, but the trees themselves are not: the C# compiler constructs five `Expression<Func<...>>` (including `Expression.Property`'s reflection lookup) per validation, which is most of the 1.6 us / 3.8 KB. An overload taking `Func<T, TProperty>` plus `[CallerArgumentExpression]` (or an explicit name, as the DI `AbstractValidator` already does) would give the inline API a no-expression path.
 3. **There is no non-throwing fail-fast.** `Validate.ForStrict` is 4.0x slower than FluentValidation's `CascadeMode.Stop` purely because of the exception. A `StopOnFirstError` mode that returns a `GuardResult` would be the cheapest rejection path in the table.
 4. **`GuardResult.Success()` allocates a new result and a new empty `List` every call.** On a fully valid DTO that is 100 % of `AbstractValidator`'s allocation (64 B). `_issues` is never mutated after construction, so a cached singleton is possible.
