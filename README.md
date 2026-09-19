@@ -164,6 +164,7 @@ if (result.IsInvalid)
 | `OrionGuard.EntityFrameworkCore` | `dotnet add package OrionGuard.EntityFrameworkCore` | EF Core SaveChanges interceptor + transactional outbox |
 | `OrionGuard.Locks.Redis` | `dotnet add package OrionGuard.Locks.Redis` | Redis backend for the outbox `IDistributedLock` |
 | `OrionGuard.Testing` | `dotnet add package OrionGuard.Testing` | DomainEventCapture + InMemoryDispatcher + assertions |
+| `OrionGuard.Templates` | `dotnet new install OrionGuard.Templates` | `dotnet new` project templates: `orionguard-webapi`, `orionguard-outbox` |
 
 New in v6.5.0: `OrionGuard.Locks.Redis` bridges OrionGuard's v6.4 `IDistributedLock` primitive to the standalone [OrionLock](https://github.com/tunahanaliozturk/OrionLock) Redis backend, so multi-instance outbox dispatchers can coordinate through Redis instead of the default `OrionGuard_OutboxLocks` DB table. One call on the EF Core options: `opts.UseOrionLockRedis("localhost:6379")`. See the [CHANGELOG](CHANGELOG.md#650---2026-06-01) for migration notes.
 

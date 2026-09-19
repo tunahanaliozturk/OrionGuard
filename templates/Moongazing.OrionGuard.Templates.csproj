@@ -1,0 +1,47 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!--
+      A template pack ships no assembly. The SDK still needs a TargetFramework to evaluate the
+      project, so netstandard2.0 is picked as the cheapest one to restore; the build output is
+      excluded from the package and every file under projects/ is packed verbatim under content/,
+      which is where "dotnet new" looks for .template.config folders.
+    -->
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <PackageType>Template</PackageType>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <IncludeContentInPack>true</IncludeContentInPack>
+    <ContentTargetFolders>content</ContentTargetFolders>
+    <!-- The template sources are not compiled here: they are compiled after instantiation. -->
+    <EnableDefaultItems>false</EnableDefaultItems>
+    <!--
+      NU5128 fires because the package has no lib/ or ref/ folder, which is exactly what a template
+      pack is. NU1900 is kept only for the private-feed-unreachable case; NU1901-NU1904 stay visible.
+    -->
+    <NoWarn>NU5128;NU1900</NoWarn>
+
+    <PackageId>OrionGuard.Templates</PackageId>
+    <!-- Tracks the OrionGuard version the templates scaffold against. -->
+    <Version>6.7.0</Version>
+    <Authors>Tunahan Ali Ozturk</Authors>
+    <Company>Tunahan Ali Ozturk</Company>
+    <Description>dotnet new templates for OrionGuard. "orionguard-webapi" scaffolds a minimal API wired with OrionGuard validation, the ASP.NET Core integration and the health check. "orionguard-outbox" adds EF Core with the transactional outbox and its dispatcher hosted service.</Description>
+    <PackageTags>guard;validation;dotnet-new;template;templates;aspnetcore;minimal-api;outbox;efcore;domain-events</PackageTags>
+    <PackageReadmeFile>docs/README.md</PackageReadmeFile>
+    <PackageIcon>docs/logo.png</PackageIcon>
+    <RepositoryUrl>https://github.com/tunahanaliozturk/OrionGuard</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageProjectUrl>https://github.com/tunahanaliozturk/OrionGuard</PackageProjectUrl>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="projects\**\*" Exclude="projects\**\bin\**;projects\**\obj\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="docs\README.md" Pack="true" PackagePath="docs/" />
+    <None Include="docs\logo.png" Pack="true" PackagePath="docs/" />
+  </ItemGroup>
+
+</Project>

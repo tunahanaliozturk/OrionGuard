@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="OrionGuard.AspNetCore" Version="6.7.0" />
+    <PackageReference Include="OrionGuard.EntityFrameworkCore" Version="6.7.0" />
+<!--#if (database == "sqlite") -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.12" />
+<!--#endif -->
+<!--#if (database == "sqlserver") -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.12" />
+<!--#endif -->
+<!--#if (database == "postgres") -->
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
+<!--#endif -->
+  </ItemGroup>
+
+</Project>
