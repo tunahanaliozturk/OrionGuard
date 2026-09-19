@@ -1,9 +1,9 @@
 # OrionGuard.Migration
 
 A `dotnet tool` that migrates [FluentValidation](https://fluentvalidation.net/) validators to
-OrionGuard. It reads your C# sources with Roslyn, finds classes deriving from
-`AbstractValidator<T>`, and rewrites their `RuleFor(...)` chains onto the OrionGuard
-`FluentStyleValidator<T>` compatibility surface shipped in the core `OrionGuard` package.
+[OrionGuard](https://github.com/tunahanaliozturk/OrionGuard). It reads your C# sources with Roslyn,
+finds classes deriving from `AbstractValidator<T>`, and rewrites their `RuleFor(...)` chains onto
+the OrionGuard `FluentStyleValidator<T>` compatibility surface shipped in the core `OrionGuard` package.
 
 The tool is deliberately conservative. Anything it cannot translate safely is left exactly as it
 was, marked with a `// TODO: OrionGuard migration - ...` comment, and listed in a final report. It
@@ -12,11 +12,27 @@ everything else is reported and left untouched rather than mistranslated.
 
 ## Install
 
+As a local tool, invoked as `dotnet orionguard`:
+
+```bash
+dotnet new tool-manifest   # once per repository, if it has no tool manifest yet
+dotnet tool install OrionGuard.Migration
+```
+
+Or as a global tool, invoked as `orionguard` (drop the `dotnet` prefix from the commands below):
+
 ```bash
 dotnet tool install -g OrionGuard.Migration
 ```
 
-## Use
+The migrated validators compile against the core `OrionGuard` package, so add it to each project
+you migrate:
+
+```bash
+dotnet add package OrionGuard
+```
+
+## Quick start
 
 ```bash
 # Preview the changes without writing anything (default).
@@ -33,7 +49,8 @@ dotnet orionguard migrate ./src --apply --include "*Validator.cs"
 ```
 
 If neither `--report` nor `--apply` is given the tool defaults to `--report`, so a bare invocation
-never writes to disk.
+never writes to disk. `--dry-run` is an alias for `--report`, and `--include` defaults to `*.cs`.
+Run `dotnet orionguard --help` for the full usage.
 
 ## What it does
 
@@ -92,9 +109,12 @@ one-to-one equivalent on the compatibility builder:
 - `Cascade(...)`
 - `ScalePrecision(...)` / `PrecisionScale(...)`
 - `MustAsync(...)`
-- `SetValidator(...)`, `RuleForEach(...)`, `Include(...)`, `ChildRules(...)`, `DependentRules(...)`, `Custom(...)`
+- `SetValidator(...)`, `InjectValidator(...)`, `RuleForEach(...)`, `Include(...)`, `ChildRules(...)`,
+  `DependentRules(...)`, `Custom(...)`
 - Overloads whose argument shape is not translated (for example `EmailAddress(mode)`, the
-  `WithMessage(Func<T, string>)` factory, or `Must` with a context argument)
+  `WithMessage(Func<T, string>)` factory, `Must` with a context argument, or the member-comparison
+  (lambda) overloads of `Equal`, `NotEqual`, `GreaterThan`, `GreaterThanOrEqualTo`, `LessThan`, and
+  `LessThanOrEqualTo`)
 - Any custom or unrecognised rule extension method
 
 ## Exit codes
@@ -102,3 +122,21 @@ one-to-one equivalent on the compatibility builder:
 - `0` migration completed; nothing needs manual follow-up.
 - `1` migration ran but at least one construct needs manual follow-up.
 - `2` usage error (bad arguments or a path that does not exist).
+
+## Requirements
+
+- .NET 10 runtime to run the tool (it targets `net10.0`).
+- The projects you migrate need the core `OrionGuard` package, which targets `net8.0`, `net9.0`,
+  and `net10.0`.
+
+## Documentation
+
+- [OrionGuard README](https://github.com/tunahanaliozturk/OrionGuard#readme), including the
+  FluentValidation migration section
+- [CHANGELOG](https://github.com/tunahanaliozturk/OrionGuard/blob/master/CHANGELOG.md)
+- Related packages: [OrionGuard](https://www.nuget.org/packages/OrionGuard) (provides
+  `FluentStyleValidator<T>` in `Moongazing.OrionGuard.Compatibility`)
+
+## License
+
+MIT. See [LICENSE.txt](https://github.com/tunahanaliozturk/OrionGuard/blob/master/src/Moongazing.OrionGuard/docs/LICENSE.txt).

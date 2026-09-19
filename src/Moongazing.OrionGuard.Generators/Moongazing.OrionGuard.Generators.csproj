@@ -10,7 +10,7 @@
     <PackageId>OrionGuard.Generators</PackageId>
     <Version>6.7.0</Version>
     <Authors>Tunahan Ali Ozturk</Authors>
-    <Description>Source generator for OrionGuard. Generates [GenerateValidator] validators, [StronglyTypedId&lt;TValue&gt;] strongly-typed id types (EF Core ValueConverter, System.Text.Json JsonConverter, TypeConverter companions), and supports NativeAOT-compatible reflection-free workflows.</Description>
+    <Description>Source generator for OrionGuard. Generates reflection-free, NativeAOT-compatible [GenerateValidator] validators and ships the OG0001 analyzer. The [StronglyTypedId&lt;TValue&gt;] generator is deprecated in favour of OrionKey and is removed in v7.0.0. Requires .NET SDK 10.0.400 or newer.</Description>
     <PackageTags>guard;validation;source-generator;roslyn;nativeaot;codegen;ddd;strongly-typed-id</PackageTags>
     <PackageReadmeFile>docs/README.md</PackageReadmeFile>
     <PackageIcon>docs/logo.png</PackageIcon>
