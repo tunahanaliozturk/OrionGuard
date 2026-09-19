@@ -5,6 +5,37 @@ All notable changes to OrionGuard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **Dependencies refreshed across the solution.** Package versions are bumped in the release PR.
+  - `Microsoft.Extensions.*` → **10.0.12** in every shipped package, including net8.0/net9.0 targets.
+  - `OrionGuard.EntityFrameworkCore`: EF Core **10.0.12** on net10.0, **9.0.20** on net8.0/net9.0
+    (EF Core 10 only supports net10.0).
+  - `OrionGuard.Swagger`: `Swashbuckle.AspNetCore.SwaggerGen` 6.6.2 → **10.2.3** (Microsoft.OpenApi 2.x,
+    OpenAPI 3.1 schema model). `OrionGuardSchemaFilter` now implements `Apply(IOpenApiSchema, ...)`;
+    `[NotNull]` removes the `null` type flag instead of setting `Nullable`, `[Range]` writes invariant
+    string bounds, and `[Positive]` sets `exclusiveMinimum: 0`. Consumers must be on Swashbuckle 10.
+  - `OrionGuard.Locks.Redis`: `OrionLock.Redis` 0.2.3 → **2.0.0**.
+  - `OrionGuard.Outbox.PostgresNotify`: `Npgsql` 8.0.5 → **10.0.3**.
+  - `OrionGuard.Outbox.SqlServerBroker`: `Microsoft.Data.SqlClient` 5.2.2 → **7.1.0**.
+  - `OrionGuard.Generators` / `OrionGuard.OpenApi`: `Microsoft.CodeAnalysis.CSharp` 4.8.0 → **5.9.0**. The
+    generators now need Roslyn 5.9, i.e. **.NET SDK 10.0.400 or newer**; older SDKs (including every .NET 8
+    and .NET 9 SDK) report `CS9057` and skip the generators.
+  - `OrionGuard.Grpc` (`Grpc.AspNetCore.Server` 2.83.0), `OrionGuard.Hangfire` (`Hangfire.Core` 1.8.25,
+    `Newtonsoft.Json` 13.0.4), `OrionGuard.OpenTelemetry` (`OpenTelemetry.Api` 1.19.0).
+  - `OrionGuard.MediatR` stays on MediatR **12.4.1**, the last Apache-2.0 release; MediatR 13+ requires a
+    commercial license key.
+- Test and benchmark tooling: xUnit 2.9.3, `xunit.runner.visualstudio` 4.0.0, `Microsoft.NET.Test.Sdk` 18.10.1,
+  coverlet 10.0.1, BenchmarkDotNet 0.15.8.
+
+### Security
+
+- `Testcontainers.Redis` 4.0.0 → 4.15.0 in the Redis lock tests drops the transitive `SSH.NET` 2023.0.0
+  ([GHSA-mggc-4xg6-vcxf](https://github.com/advisories/GHSA-mggc-4xg6-vcxf),
+  [GHSA-q939-rpr3-3284](https://github.com/advisories/GHSA-q939-rpr3-3284), High). Test only.
+
 ## [6.8.1] - 2026-07-21
 
 ### Security

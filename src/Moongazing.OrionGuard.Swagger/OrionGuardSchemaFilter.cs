@@ -1,5 +1,6 @@
-using Microsoft.OpenApi.Models;
+using Microsoft.OpenApi;
 using Swashbuckle.AspNetCore.SwaggerGen;
+using System.Globalization;
 using System.Reflection;
 using Moongazing.OrionGuard.Attributes;
 
@@ -11,9 +12,10 @@ namespace Moongazing.OrionGuard.Swagger;
 /// </summary>
 public sealed class OrionGuardSchemaFilter : ISchemaFilter
 {
-    public void Apply(OpenApiSchema schema, SchemaFilterContext context)
+    public void Apply(IOpenApiSchema schema, SchemaFilterContext context)
     {
-        if (context.Type is null) return;
+        // Microsoft.OpenApi 2.x hands filters the read-only interface; only concrete schemas are mutable.
+        if (context.Type is null || schema is not OpenApiSchema target || target.Properties is null) return;
 
         var properties = context.Type.GetProperties(BindingFlags.Public | BindingFlags.Instance);
 
@@ -21,7 +23,8 @@ public sealed class OrionGuardSchemaFilter : ISchemaFilter
         {
             var propertyName = System.Text.Json.JsonNamingPolicy.CamelCase.ConvertName(property.Name);
 
-            if (!schema.Properties.TryGetValue(propertyName, out var propertySchema))
+            // $ref property schemas (OpenApiSchemaReference) point at shared components and must not be mutated.
+            if (!target.Properties.TryGetValue(propertyName, out var candidate) || candidate is not OpenApiSchema propertySchema)
                 continue;
 
             var attributes = property.GetCustomAttributes<ValidationAttribute>();
@@ -31,8 +34,10 @@ public sealed class OrionGuardSchemaFilter : ISchemaFilter
                 switch (attribute)
                 {
                     case NotNullAttribute:
-                        schema.Required.Add(propertyName);
-                        propertySchema.Nullable = false;
+                        (target.Required ??= new HashSet<string>()).Add(propertyName);
+                        // OpenAPI 3.1 models nullability as a "null" type flag instead of a Nullable property.
+                        if (propertySchema.Type is { } type)
+                            propertySchema.Type = type & ~JsonSchemaType.Null;
                         break;
 
                     case NotEmptyAttribute:
@@ -45,8 +50,9 @@ public sealed class OrionGuardSchemaFilter : ISchemaFilter
                         break;
 
                     case RangeAttribute rangeAttr:
-                        propertySchema.Minimum = (decimal)rangeAttr.Minimum;
-                        propertySchema.Maximum = (decimal)rangeAttr.Maximum;
+                        // Bounds are strings in Microsoft.OpenApi 2.x; "R" keeps the double round-trippable.
+                        propertySchema.Minimum = rangeAttr.Minimum.ToString("R", CultureInfo.InvariantCulture);
+                        propertySchema.Maximum = rangeAttr.Maximum.ToString("R", CultureInfo.InvariantCulture);
                         break;
 
                     case EmailAttribute:
@@ -58,8 +64,8 @@ public sealed class OrionGuardSchemaFilter : ISchemaFilter
                         break;
 
                     case PositiveAttribute:
-                        propertySchema.Minimum = 0;
-                        propertySchema.ExclusiveMinimum = true;
+                        // JSON Schema 2020-12: exclusiveMinimum carries the bound itself, not a boolean flag.
+                        propertySchema.ExclusiveMinimum = "0";
                         break;
                 }
             }

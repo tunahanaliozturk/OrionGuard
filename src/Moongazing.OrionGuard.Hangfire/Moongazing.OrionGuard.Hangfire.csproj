@@ -33,14 +33,14 @@
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Hangfire.Core" Version="1.8.22" />
+    <PackageReference Include="Hangfire.Core" Version="1.8.25" />
     <!--
       Pin Newtonsoft.Json above the transitive 11.0.1 that Hangfire.Core drags in. 11.0.1 carries
       GHSA-5crp-9r3c-p9vr (High: StackOverflow/DoS on deeply nested JSON, fixed in 13.0.1). 13.0.3 is
       compatible with Hangfire 1.8.x. This direct reference resolves the advisory at the source instead of
       muting the NU1903 diagnostic.
     -->
-    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
     <ProjectReference Include="..\Moongazing.OrionGuard\Moongazing.OrionGuard.csproj" />
   </ItemGroup>
   <ItemGroup>
