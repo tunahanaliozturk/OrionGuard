@@ -12,11 +12,13 @@ public static class AdvancedStringGuards
     #region Credit Card
 
     /// <summary>
-    /// Validates that the string is a valid credit card number using Luhn algorithm.
+    /// Validates that the string is a credit card number: 12 to 19 ASCII digits after spaces and dashes are
+    /// removed, passing the Luhn check.
     /// </summary>
     public static void AgainstInvalidCreditCard(this string value, string parameterName)
     {
-        if (string.IsNullOrWhiteSpace(value) || !IsValidLuhn(value.Replace(" ", "").Replace("-", "")))
+        var cleaned = value?.Replace(" ", "").Replace("-", "");
+        if (string.IsNullOrWhiteSpace(cleaned) || cleaned.Length is < 12 or > 19 || !IsValidLuhn(cleaned))
         {
             throw new ArgumentException($"{parameterName} is not a valid credit card number.", parameterName);
         }
@@ -48,12 +50,11 @@ public static class AdvancedStringGuards
 
     private static bool IsValidLuhn(string number)
     {
-        // Manual digit scan avoids the per-call delegate + enumerator allocation that
-        // number.All(char.IsDigit) incurs on this per-request financial hot path.
-        // char.IsDigit semantics are preserved exactly (Unicode decimal digits included).
+        // ASCII only: the arithmetic below maps a digit with c - '0', which is meaningless for the
+        // other Unicode decimal digits char.IsDigit accepts (Arabic-Indic, fullwidth, ...).
         foreach (char c in number)
         {
-            if (!char.IsDigit(c)) return false;
+            if (!char.IsAsciiDigit(c)) return false;
         }
 
         int sum = 0;
@@ -175,23 +176,39 @@ public static class AdvancedStringGuards
     #region XML
 
     /// <summary>
-    /// Validates that the string is valid XML.
+    /// Validates that the string is a well-formed XML document. A document with a DOCTYPE is rejected:
+    /// DTD processing is prohibited and no external resource is resolved, so validating hostile XML cannot
+    /// expand entities (billion laughs) or fetch files or URLs (XXE).
     /// </summary>
     public static void AgainstInvalidXml(this string value, string parameterName)
     {
-        if (string.IsNullOrWhiteSpace(value))
+        if (string.IsNullOrWhiteSpace(value) || !IsWellFormedXml(value))
         {
             throw new ArgumentException($"{parameterName} is not valid XML.", parameterName);
         }
+    }
+
+    private static readonly XmlReaderSettings SafeXmlReaderSettings = new()
+    {
+        DtdProcessing = DtdProcessing.Prohibit,
+        XmlResolver = null,
+    };
+
+    internal static bool IsWellFormedXml(string? value)
+    {
+        if (value is null) return false;
 
         try
         {
-            var doc = new XmlDocument();
-            doc.LoadXml(value);
+            using var reader = XmlReader.Create(new StringReader(value), SafeXmlReaderSettings);
+            while (reader.Read())
+            {
+            }
+            return true;
         }
         catch (XmlException)
         {
-            throw new ArgumentException($"{parameterName} is not valid XML.", parameterName);
+            return false;
         }
     }
 
@@ -200,20 +217,14 @@ public static class AdvancedStringGuards
     #region Base64
 
     /// <summary>
-    /// Validates that the string is valid Base64.
+    /// Validates that the string is valid Base64, exactly as <see cref="Convert.FromBase64String(string)"/>
+    /// would accept it (whitespace is ignored).
     /// </summary>
     public static void AgainstInvalidBase64(this string value, string parameterName)
     {
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            throw new ArgumentException($"{parameterName} is not valid Base64.", parameterName);
-        }
-
-        try
-        {
-            Convert.FromBase64String(value);
-        }
-        catch (FormatException)
+        // Every 4 input characters decode to at most 3 bytes, so this buffer is always large enough.
+        if (string.IsNullOrWhiteSpace(value) ||
+            !Convert.TryFromBase64String(value, new byte[value.Length / 4 * 3], out _))
         {
             throw new ArgumentException($"{parameterName} is not valid Base64.", parameterName);
         }

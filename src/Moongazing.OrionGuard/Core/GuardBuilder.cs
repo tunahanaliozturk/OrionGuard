@@ -37,7 +37,7 @@ public sealed class GuardBuilder<T> : IFluentGuardStep<T>
 
     public IFluentGuardStep<T> Matches(string pattern)
     {
-        if (Value is string str && !RegexCache.IsMatch(str, pattern))
+        if (Value is string str && !Utilities.FormatRules.IsMatch(RegexCache.GetOrCreate(pattern), str))
             ThrowHelper.ThrowRegexMismatch(ParameterName, pattern);
         return this;
     }

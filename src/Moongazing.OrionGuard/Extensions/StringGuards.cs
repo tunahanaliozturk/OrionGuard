@@ -134,7 +134,7 @@ public static class StringGuards
     /// </summary>
     public static void AgainstRegexMismatch(this string value, string pattern, string parameterName)
     {
-        if (!RegexCache.IsMatch(value, pattern))
+        if (!Utilities.FormatRules.IsMatch(RegexCache.GetOrCreate(pattern), value))
         {
             throw new ArgumentException($"{parameterName} does not match the required pattern.", parameterName);
         }
@@ -180,8 +180,7 @@ public static class StringGuards
     /// <param name="parameterName">The parameter name for error messages.</param>
     public static void AgainstInvalidEmail(this string email, string parameterName)
     {
-        if (string.IsNullOrWhiteSpace(email) ||
-            !Utilities.GeneratedRegexPatterns.Email().IsMatch(email))
+        if (string.IsNullOrWhiteSpace(email) || !Utilities.FormatRules.IsEmail(email))
         {
             throw new InvalidEmailException(parameterName);
         }
@@ -201,21 +200,30 @@ public static class StringGuards
         }
     }
     /// <summary>
-    /// Validates that the provided string is contain white spaces.
+    /// Throws if the string contains any whitespace character (<see cref="char.IsWhiteSpace(char)"/>:
+    /// space, tab, CR, LF, and the Unicode space and separator characters).
     /// </summary>
-    /// <param name="value"></param>
-    /// <param name="parameterName"></param>
     /// <exception cref="ArgumentException"></exception>
     public static void AgainstContainingWhitespace(this string value, string parameterName)
     {
-        if (value.Contains(' '))
+        foreach (char c in value)
         {
-            throw new ArgumentException($"{parameterName} must not contain whitespace.", parameterName);
+            if (char.IsWhiteSpace(c))
+            {
+                throw new ArgumentException($"{parameterName} must not contain whitespace.", parameterName);
+            }
         }
     }
+
+    /// <summary>
+    /// Throws unless the string is non-empty and every character appears in
+    /// <paramref name="allowedCharacters"/>. Each character of the set is literal: <c>-</c>, <c>]</c>
+    /// and <c>^</c> are characters, not range or class syntax.
+    /// </summary>
     public static void AgainstCharactersOutsideSet(this string value, string allowedCharacters, string parameterName)
     {
-        if (!RegexCache.IsMatch(value, $"^[{System.Text.RegularExpressions.Regex.Escape(allowedCharacters)}]+$"))
+        ArgumentNullException.ThrowIfNull(value);
+        if (value.Length == 0 || value.AsSpan().IndexOfAnyExcept(allowedCharacters) >= 0)
         {
             throw new ArgumentException($"{parameterName} must only contain characters from the set '{allowedCharacters}'.", parameterName);
         }
@@ -260,8 +268,7 @@ public static class StringGuards
     }
     public static void AgainstInvalidUrl(this string value, string parameterName)
     {
-        if (!Uri.TryCreate(value, UriKind.Absolute, out var uriResult) ||
-            !(uriResult.Scheme == Uri.UriSchemeHttp || uriResult.Scheme == Uri.UriSchemeHttps))
+        if (!Utilities.FormatRules.IsHttpUrl(value))
         {
             throw new ArgumentException($"{parameterName} must be a valid URL.", parameterName);
         }

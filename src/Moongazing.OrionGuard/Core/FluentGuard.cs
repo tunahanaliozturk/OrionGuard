@@ -212,7 +212,7 @@ public sealed class FluentGuard<T>
     {
         if (!_shouldValidate) return this;
 
-        if (_value is string str && !RegexCache.IsMatch(str, pattern))
+        if (_value is string str && !Utilities.FormatRules.IsMatch(RegexCache.GetOrCreate(pattern), str))
         {
             AddError(message ?? $"{_parameterName} does not match the required pattern.", "PATTERN");
         }
@@ -226,7 +226,7 @@ public sealed class FluentGuard<T>
     {
         if (!_shouldValidate) return this;
 
-        if (_value is string str && !Utilities.GeneratedRegexPatterns.Email().IsMatch(str))
+        if (_value is string str && !Utilities.FormatRules.IsEmail(str))
         {
             AddError(message ?? $"{_parameterName} must be a valid email address.", "INVALID_EMAIL");
         }
@@ -234,13 +234,14 @@ public sealed class FluentGuard<T>
     }
 
     /// <summary>
-    /// Validates string is a valid URL.
+    /// Validates string is an absolute http or https URL. Other schemes (<c>javascript:</c>,
+    /// <c>data:</c>, <c>file:</c>, ...) fail, matching <c>Guard.AgainstInvalidUrl</c>.
     /// </summary>
     public FluentGuard<T> Url(string? message = null)
     {
         if (!_shouldValidate) return this;
 
-        if (_value is string str && !Uri.TryCreate(str, UriKind.Absolute, out _))
+        if (_value is string str && !Utilities.FormatRules.IsHttpUrl(str))
         {
             AddError(message ?? $"{_parameterName} must be a valid URL.", "URL");
         }

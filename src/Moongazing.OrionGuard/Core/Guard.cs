@@ -133,15 +133,13 @@ public static class Guard
 
     public static void AgainstInvalidEmail(string email, string parameterName)
     {
-        if (string.IsNullOrWhiteSpace(email) ||
-            !Utilities.GeneratedRegexPatterns.Email().IsMatch(email))
+        if (string.IsNullOrWhiteSpace(email) || !Utilities.FormatRules.IsEmail(email))
             ThrowHelper.ThrowInvalidEmail(parameterName);
     }
 
     public static void AgainstInvalidUrl(string value, string parameterName)
     {
-        if (!Uri.TryCreate(value, UriKind.Absolute, out var uriResult) ||
-            !(uriResult.Scheme == Uri.UriSchemeHttp || uriResult.Scheme == Uri.UriSchemeHttps))
+        if (!Utilities.FormatRules.IsHttpUrl(value))
             ThrowHelper.ThrowInvalidUrl(parameterName);
     }
 
@@ -237,14 +235,8 @@ public static class Guard
 
     public static void AgainstInvalidXml(string xmlContent, string parameterName)
     {
-        try
-        {
-            System.Xml.Linq.XDocument.Parse(xmlContent);
-        }
-        catch (Exception)
-        {
+        if (!Extensions.AdvancedStringGuards.IsWellFormedXml(xmlContent))
             ThrowHelper.ThrowInvalidXml(parameterName);
-        }
     }
 
     /// <summary>
@@ -262,9 +254,15 @@ public static class Guard
         }
     }
 
+    /// <summary>
+    /// Throws unless <paramref name="value"/> is non-empty and every character appears in
+    /// <paramref name="allowedCharacters"/>. Each character of the set is literal: <c>-</c>, <c>]</c>
+    /// and <c>^</c> are characters, not range or class syntax.
+    /// </summary>
     public static void AgainstCharactersOutsideSet(string value, string allowedCharacters, string parameterName)
     {
-        if (!RegexCache.IsMatch(value, $"^[{Regex.Escape(allowedCharacters)}]+$"))
+        ArgumentNullException.ThrowIfNull(value);
+        if (value.Length == 0 || value.AsSpan().IndexOfAnyExcept(allowedCharacters) >= 0)
         {
             throw new CharactersOutsideSetException(parameterName);
         }

@@ -127,7 +127,7 @@ public sealed class FluentRuleBuilder<T, TProperty>
         _rules.Add(instance =>
         {
             var value = _accessor(instance);
-            if (value is string s && !string.IsNullOrWhiteSpace(s) && !GeneratedRegexPatterns.Email().IsMatch(s))
+            if (value is string s && !string.IsNullOrWhiteSpace(s) && !FormatRules.IsEmail(s))
             {
                 return new ValidationError(_propertyName, $"'{_propertyName}' is not a valid email address.", "INVALID_EMAIL");
             }
@@ -146,7 +146,7 @@ public sealed class FluentRuleBuilder<T, TProperty>
         _rules.Add(instance =>
         {
             var value = _accessor(instance);
-            if (value is string s && !string.IsNullOrWhiteSpace(s) && !RegexCache.GetOrCreate(pattern).IsMatch(s))
+            if (value is string s && !string.IsNullOrWhiteSpace(s) && !FormatRules.IsMatch(RegexCache.GetOrCreate(pattern), s))
             {
                 return new ValidationError(_propertyName, $"'{_propertyName}' is not in the correct format.", "PATTERN");
             }

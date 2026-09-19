@@ -97,7 +97,7 @@ sequenceDiagram
 | gRPC interceptor | Yes | - | - | - |
 | SignalR hub filter | Yes | - | - | - |
 | OpenTelemetry | Yes | - | - | - |
-| Security guards (SQL/XSS) | Yes | - | - | - |
+| Injection heuristics (SQL/XSS) | Yes | - | - | - |
 | Dynamic JSON rules | Yes | - | - | - |
 | Span-based (zero alloc) | Yes | - | - | - |
 | 14 languages | Yes | 20+ | - | - |
@@ -127,7 +127,8 @@ Ensure.That(age).InRange(18, 120);
 FastGuard.NotNullOrEmpty(name, nameof(name));
 FastGuard.Email(email, nameof(email));
 
-// Security — O(1) FrozenSet lookups
+// Heuristic screening for obvious payloads; not a substitute for parameterized
+// queries and output encoding (see Security Guards below)
 userInput.AgainstSqlInjection(nameof(userInput));
 userInput.AgainstXss(nameof(userInput));
 
@@ -190,12 +191,32 @@ Ensure.That(age)
 
 ### Security Guards
 
+The injection guards are **heuristics, not a defence**. They are denylists: they turn away input that
+contains a known attack token, they miss payloads written in forms they do not list, and they reject some
+ordinary text. Use them to reject obviously hostile input early and to flag it in logs. The protection
+always belongs at the sink:
+
+| Risk | Heuristic guard | Actual defence |
+|---|---|---|
+| SQL injection | `AgainstSqlInjection` | Parameterized queries (ADO.NET parameters, EF Core, Dapper) |
+| XSS | `AgainstXss` | Contextual output encoding (Razor/Blazor encode by default), Content-Security-Policy, an HTML sanitizer for markup |
+| Command injection | `AgainstCommandInjection` | `ProcessStartInfo.ArgumentList` without a shell, allow-listed arguments |
+| LDAP injection | `AgainstLdapInjection` | RFC 4515 escaping for filters, RFC 4514 for DNs |
+| XXE | `AgainstXxe` | `XmlReaderSettings { DtdProcessing = Prohibit, XmlResolver = null }` |
+
 ```csharp
-userInput.AgainstSqlInjection(nameof(userInput));     // 28 SQL patterns
-userInput.AgainstXss(nameof(userInput));               // 28 XSS vectors
-filePath.AgainstPathTraversal(nameof(filePath));       // Encoded variants
-command.AgainstCommandInjection(nameof(command));      // Shell metacharacters
-userInput.AgainstInjection(nameof(userInput));         // All combined
+userInput.AgainstSqlInjection(nameof(userInput));      // Heuristic: SQL keywords, comments, tautologies
+userInput.AgainstXss(nameof(userInput));                // Heuristic: script tags, event handlers, js: URLs
+command.AgainstCommandInjection(nameof(command));       // Heuristic: shell metacharacters, leading '-'
+userInput.AgainstInjection(nameof(userInput));          // Heuristic: the checks above, tuned for free text
+```
+
+The path and redirect guards decide from the structure of the value instead:
+
+```csharp
+fileName.AgainstPathTraversal(nameof(fileName));        // Rejects "..", rooted/UNC paths, encoded variants
+var fullPath = fileName.AgainstPathEscape(uploadRoot, nameof(fileName)); // Resolved path, inside uploadRoot
+returnUrl.AgainstOpenRedirect(nameof(returnUrl), "example.com");        // Local path or allow-listed host
 ```
 
 ### International Guards (NEW in v6.0)

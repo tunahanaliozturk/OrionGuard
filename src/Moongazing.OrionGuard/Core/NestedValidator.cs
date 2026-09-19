@@ -345,7 +345,7 @@ public sealed class PropertyValidationBuilder<TProperty>
     /// </summary>
     public PropertyValidationBuilder<TProperty> Email()
     {
-        if (_value is string s && !string.IsNullOrWhiteSpace(s) && !GeneratedRegexPatterns.Email().IsMatch(s))
+        if (_value is string s && !string.IsNullOrWhiteSpace(s) && !FormatRules.IsEmail(s))
             _errors.Add(new ValidationError(_path, $"{_path} must be a valid email.", "INVALID_EMAIL"));
         return this;
     }

@@ -654,6 +654,11 @@ Compatible with NativeAOT `PublishAot=true` -- no reflection, no runtime compila
 
 Injection detection at application boundaries. Every pattern set uses `FrozenSet<string>` for O(1) membership checks.
 
+> **These are heuristics, not a defence.** The injection guards are denylists: they miss payloads written in
+> forms they do not list and reject some ordinary text. Keep parameterized queries, contextual output encoding,
+> `ProcessStartInfo.ArgumentList` without a shell, LDAP escaping and DTD-prohibited XML parsing in place; the
+> guards only turn away obvious payloads early. Pattern counts below are from v6.0 and have since grown.
+
 ### Threat Coverage
 
 | Guard | Threat | Pattern Count | Technique |
@@ -669,7 +674,7 @@ Injection detection at application boundaries. Every pattern set uses `FrozenSet
 | `AgainstInjection` | **All of the above combined** | 95+ | Single-call composite guard |
 
 ```csharp
-// At the API boundary -- one call catches everything
+// At the API boundary -- one call screens for the common payload shapes (heuristic)
 userInput.AgainstInjection(nameof(userInput));
 
 // Or granular when you need specificity
@@ -682,7 +687,7 @@ ldapFilter.AgainstLdapInjection(nameof(ldapFilter));
 
 ### Design Decision: Why Reject, Not Sanitize?
 
-OrionGuard *rejects* rather than *sanitizes*. Sanitization (stripping tags, escaping quotes) is lossy and error-prone -- different contexts require different escaping. Guard clauses enforce the invariant "this input is safe" and throw if it isn't. Output encoding remains the responsibility of the rendering layer (Razor, JSON serializer, etc.), which is the correct architectural boundary.
+OrionGuard *rejects* rather than *sanitizes*. Sanitization (stripping tags, escaping quotes) is lossy and error-prone -- different contexts require different escaping. Guard clauses reject input that matches a known-bad shape and throw; they cannot prove that input is safe. Output encoding remains the responsibility of the rendering layer (Razor, JSON serializer, etc.), which is the correct architectural boundary.
 
 ---
 

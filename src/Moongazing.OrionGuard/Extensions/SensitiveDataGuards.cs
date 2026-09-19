@@ -1,15 +1,23 @@
+using System.Text.RegularExpressions;
+
 namespace Moongazing.OrionGuard.Extensions;
 
 /// <summary>
 /// Guards for detecting sensitive/PII data that should not appear in logs,
 /// API responses, or unencrypted storage. Helps with GDPR, KVKK, PCI-DSS compliance.
 /// </summary>
-public static class SensitiveDataGuards
+/// <remarks>
+/// Detection is best-effort: each guard recognizes the formats it documents and nothing else. A value that
+/// passes may still carry sensitive data in another format, so treat these guards as a safety net in front
+/// of logs and storage, not as proof that a value is clean.
+/// </remarks>
+public static partial class SensitiveDataGuards
 {
     private const int MinCardDigits = 13;
     private const int MaxCardDigits = 19;
 
-    // Common credit card BIN prefixes (kept as a small static list since StartsWith checks are O(k))
+    // Common credit card BIN prefixes (kept as a small static list since StartsWith checks are O(k)).
+    // Mastercard's 2221-2720 range is checked numerically in HasKnownCardPrefix.
     private static readonly string[] CardPrefixes =
     [
         "4",                               // Visa
@@ -17,54 +25,76 @@ public static class SensitiveDataGuards
         "34", "37",                        // Amex
         "6011", "65",                      // Discover
         "35",                              // JCB
-        "30", "36", "38"                   // Diners
+        "30", "36", "38",                  // Diners
+        "62"                               // UnionPay
     ];
 
     /// <summary>
+    /// Bare tokens that grant access on their own: a JWT (three base64url segments, the first starting with
+    /// <c>eyJ</c>, i.e. <c>{"</c>), GitHub tokens (<c>ghp_</c>, <c>gho_</c>, <c>ghs_</c>, <c>ghu_</c>,
+    /// <c>ghr_</c>, <c>github_pat_</c>) and Stripe live secret and restricted keys (<c>sk_live_</c>,
+    /// <c>rk_live_</c>). Each alternative starts only at a token boundary, so the scan stays linear.
+    /// </summary>
+    [GeneratedRegex(
+        @"(?<![A-Za-z0-9_-])(?:eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*|gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{20,}|[sr]k_live_[A-Za-z0-9]{10,})",
+        RegexOptions.None, 1000)]
+    private static partial Regex AccessToken();
+
+    /// <summary>
     /// Validates that a string does not contain a credit card number pattern.
-    /// Detects 13-19 digit sequences that match a known BIN prefix and pass the Luhn check.
-    /// Use this to prevent logging/storing raw card numbers (PCI-DSS).
+    /// Detects 13-19 digit sequences, written without separators or with single spaces or dashes between
+    /// digit groups (<c>4111 1111 1111 1111</c>, <c>4111-1111-1111-1111</c>), that match a known BIN prefix
+    /// (Visa, Mastercard including 2221-2720, Amex, Discover, JCB, Diners, UnionPay) and pass the Luhn check.
+    /// Use this to prevent logging/storing raw card numbers (PCI-DSS). Detection is best-effort.
     /// </summary>
     /// <remarks>
-    /// Span-based zero-allocation scan: the input is walked once using
-    /// <see cref="ReadOnlySpan{T}"/>, and each candidate digit sequence is validated in-place
-    /// via a stack buffer (<c>stackalloc</c>). No <see cref="System.Text.StringBuilder"/> or
-    /// intermediate <see cref="List{T}"/> is allocated on the happy path.
+    /// A candidate starts at the beginning of a digit group and ends at the end of a group, so a card number
+    /// is found even when other numbers sit next to it (<c>Ref 12 4111 1111 1111 1111 12/25</c>). Each start
+    /// examines at most 19 digits, so the scan is linear and allocation-free (<c>stackalloc</c> buffer).
     /// </remarks>
     public static void AgainstContainsCreditCardNumber(this string value, string parameterName)
     {
         if (string.IsNullOrWhiteSpace(value)) return;
 
-        ReadOnlySpan<char> input = value.AsSpan();
-        Span<char> buffer = stackalloc char[MaxCardDigits];
-
-        int start = 0;
-        while (start < input.Length)
+        if (ContainsCardNumber(value.AsSpan()))
         {
-            // Skip to the next digit run
-            while (start < input.Length && !char.IsDigit(input[start]))
-                start++;
+            throw new ArgumentException(
+                $"{parameterName} contains what appears to be a credit card number. Mask or encrypt before storing.",
+                parameterName);
+        }
+    }
 
-            // Collect consecutive digits into the stack buffer, capped at MaxCardDigits
-            int len = 0;
-            while (start < input.Length && char.IsDigit(input[start]))
-            {
-                if (len < MaxCardDigits)
-                    buffer[len++] = input[start];
-                start++;
-            }
+    private static bool ContainsCardNumber(ReadOnlySpan<char> input)
+    {
+        Span<char> digits = stackalloc char[MaxCardDigits];
 
-            if (len >= MinCardDigits && len <= MaxCardDigits)
+        for (int start = 0; start < input.Length; start++)
+        {
+            bool startsGroup = char.IsAsciiDigit(input[start]) && (start == 0 || !char.IsAsciiDigit(input[start - 1]));
+            if (!startsGroup) continue;
+
+            int count = 0;
+            for (int i = start; i < input.Length && count < MaxCardDigits; i++)
             {
-                ReadOnlySpan<char> candidate = buffer[..len];
-                if (HasKnownCardPrefix(candidate) && IsValidLuhn(candidate))
+                char c = input[i];
+                if (char.IsAsciiDigit(c))
                 {
-                    throw new ArgumentException(
-                        $"{parameterName} contains what appears to be a credit card number. Mask or encrypt before storing.",
-                        parameterName);
+                    digits[count++] = c;
+                    bool endsGroup = i + 1 == input.Length || !char.IsAsciiDigit(input[i + 1]);
+                    if (endsGroup && count >= MinCardDigits &&
+                        HasKnownCardPrefix(digits[..count]) && IsValidLuhn(digits[..count]))
+                    {
+                        return true;
+                    }
+                }
+                else if (c is not (' ' or '-') || i + 1 == input.Length || !char.IsAsciiDigit(input[i + 1]))
+                {
+                    // Only a single space or dash between two digits continues a card number.
+                    break;
                 }
             }
         }
+        return false;
     }
 
     /// <summary>
@@ -84,8 +114,11 @@ public static class SensitiveDataGuards
     }
 
     /// <summary>
-    /// Validates that a string does not contain a private key or secret pattern.
-    /// Detects PEM keys, AWS keys, Azure keys, JWT secrets, etc.
+    /// Validates that a string does not contain a private key or secret pattern. Detects PEM private key
+    /// headers, AWS access key ids (<c>AKIA</c>), Azure storage account keys (<c>AccountKey=</c>),
+    /// <c>Bearer</c> tokens, bare JWTs, GitHub tokens (<c>ghp_</c>, <c>gho_</c>, <c>ghs_</c>, <c>ghu_</c>,
+    /// <c>ghr_</c>, <c>github_pat_</c>) and Stripe live keys (<c>sk_live_</c>, <c>rk_live_</c>).
+    /// Detection is best-effort: other secret formats pass.
     /// </summary>
     public static void AgainstContainsSecret(this string value, string parameterName)
     {
@@ -121,6 +154,13 @@ public static class SensitiveDataGuards
         {
             throw new ArgumentException(
                 $"{parameterName} contains a Bearer token.",
+                parameterName);
+        }
+
+        if (AccessToken().IsMatch(value))
+        {
+            throw new ArgumentException(
+                $"{parameterName} contains what appears to be an access token or API key.",
                 parameterName);
         }
     }
@@ -177,12 +217,15 @@ public static class SensitiveDataGuards
             if (digits.StartsWith(prefix.AsSpan(), StringComparison.Ordinal))
                 return true;
         }
-        return false;
+
+        // Mastercard 2-series: 2221-2720.
+        int firstFour = (digits[0] - '0') * 1000 + (digits[1] - '0') * 100 + (digits[2] - '0') * 10 + (digits[3] - '0');
+        return firstFour is >= 2221 and <= 2720;
     }
 
     /// <summary>
     /// Luhn checksum validation on a digit span. Assumes all elements are ASCII digits;
-    /// the caller guarantees this by using <see cref="char.IsDigit(char)"/> during extraction.
+    /// the caller guarantees this by using <see cref="char.IsAsciiDigit(char)"/> during extraction.
     /// </summary>
     private static bool IsValidLuhn(ReadOnlySpan<char> digits)
     {

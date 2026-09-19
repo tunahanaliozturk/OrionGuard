@@ -9,7 +9,7 @@ public static class GuardProfiles
         Guard.For(value, parameterName)
              .NotNull()
              .NotEmpty()
-             .Matches(@"^[^@\s]+@[^@\s]+\.[^@\s]+$");
+             .Matches(Utilities.GeneratedRegexPatterns.EmailPattern);
     }
 
     public static void Password(string value, string parameterName)
@@ -18,7 +18,7 @@ public static class GuardProfiles
              .NotNull()
              .NotEmpty()
              .Length(8, 100)
-             .Matches(@"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])");
+             .Matches(@"^(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[@$!%*?&])");
     }
 
     public static void Username(string value, string parameterName)
@@ -27,13 +27,13 @@ public static class GuardProfiles
              .NotNull()
              .NotEmpty()
              .Length(3, 30)
-             .Matches(@"^[a-zA-Z0-9_]+$");
+             .Matches(@"^[a-zA-Z0-9_]+\z");
     }
 
     public static void PhoneNumber(string value, string parameterName)
     {
         Guard.For(value, parameterName)
              .NotNull()
-             .Matches(@"^\+?[1-9]\d{1,14}$"); // E.164 format
+             .Matches(@"^\+?[1-9][0-9]{1,14}\z"); // E.164 format
     }
 }

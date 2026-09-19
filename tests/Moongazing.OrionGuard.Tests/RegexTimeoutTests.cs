@@ -1,13 +1,18 @@
 using System.Text.RegularExpressions;
 using Moongazing.OrionGuard.Attributes;
 using Moongazing.OrionGuard.Compatibility;
+using Moongazing.OrionGuard.Core;
+using Moongazing.OrionGuard.DynamicRules;
+using Moongazing.OrionGuard.Exceptions;
+using Moongazing.OrionGuard.Extensions;
 
 namespace Moongazing.OrionGuard.Tests;
 
 /// <summary>
 /// User-supplied patterns run against untrusted input, so every regex a validator evaluates
-/// must carry a match timeout. A catastrophic-backtracking pattern has to fail fast with
-/// <see cref="RegexMatchTimeoutException"/> instead of pinning the calling thread.
+/// must carry a match timeout. A catastrophic-backtracking pattern has to fail fast instead of
+/// pinning the calling thread. APIs that return a result report the timed-out value as invalid;
+/// throwing guards throw their own validation exception, never <see cref="RegexMatchTimeoutException"/>.
 /// </summary>
 public class RegexTimeoutTests
 {
@@ -20,23 +25,67 @@ public class RegexTimeoutTests
     private static readonly TimeSpan Bound = TimeSpan.FromSeconds(15);
 
     [Fact]
-    public void RegexAttribute_ShouldTimeOut_WhenPatternBacktracksCatastrophically()
+    public void RegexAttribute_ShouldReportInvalid_WhenPatternBacktracksCatastrophically()
     {
         var attribute = new RegexAttribute(CatastrophicPattern);
 
-        var exception = RunBounded(() => attribute.IsValid(HostileInput));
+        var isValid = RunBounded(() => attribute.IsValid(HostileInput));
 
-        Assert.IsType<RegexMatchTimeoutException>(exception);
+        Assert.False(isValid);
     }
 
     [Fact]
-    public void FluentStyleValidatorMatches_ShouldTimeOut_WhenPatternBacktracksCatastrophically()
+    public void FluentStyleValidatorMatches_ShouldReportError_WhenPatternBacktracksCatastrophically()
     {
         var validator = new CatastrophicPatternValidator();
 
-        var exception = RunBounded(() => validator.Validate(new Input(HostileInput)));
+        var result = RunBounded(() => validator.Validate(new Input(HostileInput)));
 
-        Assert.IsType<RegexMatchTimeoutException>(exception);
+        Assert.False(result.IsValid);
+    }
+
+    [Fact]
+    public void EnsureAccumulateMatches_ShouldReportError_WhenPatternBacktracksCatastrophically()
+    {
+        var result = RunBounded(() => Ensure.Accumulate(HostileInput, "value").Matches(CatastrophicPattern).ToResult());
+
+        Assert.False(result.IsValid);
+        Assert.Equal("PATTERN", Assert.Single(result.Errors).ErrorCode);
+    }
+
+    [Fact]
+    public void DynamicValidatorRegex_ShouldReportError_WhenPatternBacktracksCatastrophically()
+    {
+        var validator = DynamicValidator.FromJson(
+            """{"Name":"r","Rules":[{"PropertyName":"Value","RuleType":"Regex","Parameters":{"Pattern":"^(a+)+$"}}]}""");
+
+        var result = RunBounded(() => validator.Validate(new Input(HostileInput)));
+
+        Assert.False(result.IsValid);
+    }
+
+    [Fact]
+    public void EnsureThatMatches_ShouldThrowGuardException_WhenPatternBacktracksCatastrophically()
+    {
+        var exception = RunBounded(() => Record.Exception(() => Ensure.That(HostileInput).Matches(CatastrophicPattern)));
+
+        Assert.IsType<GuardException>(exception);
+    }
+
+    [Fact]
+    public void GuardForMatches_ShouldThrowRegexMismatchException_WhenPatternBacktracksCatastrophically()
+    {
+        var exception = RunBounded(() => Record.Exception(() => Guard.For(HostileInput, "value").Matches(CatastrophicPattern)));
+
+        Assert.IsType<RegexMismatchException>(exception);
+    }
+
+    [Fact]
+    public void AgainstRegexMismatch_ShouldThrowArgumentException_WhenPatternBacktracksCatastrophically()
+    {
+        var exception = RunBounded(() => Record.Exception(() => HostileInput.AgainstRegexMismatch(CatastrophicPattern, "value")));
+
+        Assert.IsType<ArgumentException>(exception);
     }
 
     [Fact]
@@ -48,12 +97,12 @@ public class RegexTimeoutTests
         Assert.False(attribute.IsValid("tr"));
     }
 
-    private static Exception? RunBounded(Action action)
+    private static TResult RunBounded<TResult>(Func<TResult> action)
     {
         var task = Task.Run(action);
         var finished = Task.WaitAny(new Task[] { task }, Bound) == 0;
         Assert.True(finished, $"Regex evaluation did not finish within {Bound.TotalSeconds}s; the match timeout is missing.");
-        return task.Exception?.InnerException;
+        return task.GetAwaiter().GetResult();
     }
 
     private sealed record Input(string Value);

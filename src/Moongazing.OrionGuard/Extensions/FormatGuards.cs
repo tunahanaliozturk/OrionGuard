@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Collections.Frozen;
 using System.Globalization;
 using Moongazing.OrionGuard.Core;
@@ -76,7 +77,9 @@ public static class FormatGuards
     }
 
     /// <summary>
-    /// Validates that a string is a valid hostname (RFC 1123).
+    /// Validates that a string is a valid hostname (RFC 1123): ASCII letters, digits and hyphens only.
+    /// Internationalized names must be passed in their ASCII (punycode, <c>xn--</c>) form, which also keeps
+    /// look-alike Unicode hosts (Cyrillic <c>а</c> for Latin <c>a</c>) out.
     /// </summary>
     public static void AgainstInvalidHostname(this string value, string parameterName)
     {
@@ -100,7 +103,7 @@ public static class FormatGuards
 
             foreach (var c in label)
             {
-                if (!char.IsLetterOrDigit(c) && c != '-')
+                if (!char.IsAsciiLetterOrDigit(c) && c != '-')
                 {
                     throw new ArgumentException($"{parameterName} is not a valid hostname.", parameterName);
                 }
@@ -199,8 +202,11 @@ public static class FormatGuards
         {
             TimeZoneInfo.FindSystemTimeZoneById(value);
         }
-        catch (TimeZoneNotFoundException)
+        catch (Exception)
         {
+            // The lookup is not limited to TimeZoneNotFoundException: on Windows, an id such as
+            // "Pacific Standard Time\Dynamic DST" reaches a registry subkey and throws
+            // InvalidTimeZoneException or NullReferenceException. Every failure means "not a valid id".
             throw new ArgumentException($"{parameterName} is not a valid time zone identifier.", parameterName);
         }
     }
@@ -255,16 +261,17 @@ public static class FormatGuards
         }
 
         // Each segment must be valid Base64URL
-        foreach (var part in parts)
+        for (int i = 0; i < parts.Length; i++)
         {
-            if (part.Length == 0 && parts[2] != part) // Signature can be empty for unsecured JWTs
+            var part = parts[i];
+            if (part.Length == 0 && i != 2) // Only the signature may be empty (unsecured JWT)
             {
                 throw new ArgumentException($"{parameterName} is not a valid JWT.", parameterName);
             }
 
             foreach (var c in part)
             {
-                if (!char.IsLetterOrDigit(c) && c != '-' && c != '_' && c != '=')
+                if (!char.IsAsciiLetterOrDigit(c) && c != '-' && c != '_' && c != '=')
                 {
                     throw new ArgumentException($"{parameterName} is not a valid JWT.", parameterName);
                 }
@@ -272,8 +279,28 @@ public static class FormatGuards
         }
     }
 
+    // Keys used by the ADO.NET providers for SQL Server, PostgreSQL, MySQL, SQLite and Oracle, by OLE DB and
+    // ODBC, and by Azure Storage, Service Bus, Event Hubs and App Configuration connection strings.
+    private static readonly FrozenSet<string> RecognizedConnectionStringKeys = new[]
+    {
+        "Server", "Data Source", "DataSource", "Host", "Hostname", "Address", "Addr", "Network Address",
+        "Port", "Database", "Initial Catalog", "Dbq", "Filename", "Mode",
+        "User ID", "UserID", "User", "Uid", "Username", "User Name", "Password", "Pwd",
+        "Integrated Security", "Trusted_Connection", "Persist Security Info", "Encrypt",
+        "TrustServerCertificate", "Trust Server Certificate", "SSL Mode", "SslMode", "Connection Timeout",
+        "Connect Timeout", "Timeout", "Command Timeout", "Pooling", "Min Pool Size", "Max Pool Size", "Application Name", "ApplicationIntent",
+        "MultipleActiveResultSets", "AttachDbFilename", "Search Path", "Provider", "Driver", "Dsn",
+        "DefaultEndpointsProtocol", "AccountName", "AccountKey", "EndpointSuffix", "BlobEndpoint",
+        "QueueEndpoint", "TableEndpoint", "FileEndpoint", "SharedAccessSignature", "Endpoint",
+        "SharedAccessKeyName", "SharedAccessKey", "EntityPath", "Id", "Secret",
+    }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
+
     /// <summary>
-    /// Validates that a string is a valid connection string (contains at least one key=value pair with a recognized key).
+    /// Validates that a string is a valid connection string: at least one <c>key=value</c> pair whose key is
+    /// recognized by a common ADO.NET provider (SQL Server, PostgreSQL, MySQL, SQLite, Oracle), OLE DB/ODBC,
+    /// or an Azure SDK connection string (Storage, Service Bus, Event Hubs, App Configuration). Keys compare
+    /// case-insensitively. URI-style strings (<c>mongodb://...</c>) and Redis configuration strings
+    /// (<c>host:6379,password=...</c>) are not <c>key=value;</c> connection strings and are rejected.
     /// </summary>
     public static void AgainstInvalidConnectionString(this string value, string parameterName)
     {
@@ -296,7 +323,7 @@ public static class FormatGuards
             if (eqIndex > 0 && eqIndex < pair.Length - 1)
             {
                 var key = pair[..eqIndex].Trim();
-                if (key.Length > 0)
+                if (RecognizedConnectionStringKeys.Contains(key))
                 {
                     hasValidPair = true;
                     break;
@@ -310,8 +337,13 @@ public static class FormatGuards
         }
     }
 
+    private static readonly SearchValues<char> Base64Alphabet =
+        SearchValues.Create("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=");
+
     /// <summary>
-    /// Validates that a string looks like a valid Base64-encoded value (not empty, valid chars, correct padding).
+    /// Validates that a string is a valid Base64-encoded value: ASCII Base64 alphabet only, length a multiple
+    /// of 4, and padding that <see cref="Convert.FromBase64String(string)"/> accepts. Surrounding whitespace
+    /// is ignored; whitespace inside the value is not.
     /// </summary>
     public static void AgainstInvalidBase64String(this string value, string parameterName)
     {
@@ -321,17 +353,11 @@ public static class FormatGuards
         }
 
         var span = value.AsSpan().Trim();
-        if (span.Length % 4 != 0)
+        if (span.Length % 4 != 0 ||
+            span.ContainsAnyExcept(Base64Alphabet) ||
+            !Convert.TryFromBase64Chars(span, new byte[span.Length / 4 * 3], out _))
         {
             throw new ArgumentException($"{parameterName} is not a valid Base64 string.", parameterName);
-        }
-
-        foreach (var c in span)
-        {
-            if (!char.IsLetterOrDigit(c) && c != '+' && c != '/' && c != '=')
-            {
-                throw new ArgumentException($"{parameterName} is not a valid Base64 string.", parameterName);
-            }
         }
     }
 

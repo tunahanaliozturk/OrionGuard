@@ -279,4 +279,77 @@ public class FormatGuardsTests
     }
 
     #endregion
+
+    #region Confirmed bypasses
+
+    [Theory]
+    [InlineData("exаmple.com")] // Cyrillic 'а' (U+0430) in place of Latin 'a'
+    [InlineData("bücher.de")]
+    public void AgainstInvalidHostname_ShouldThrow_WhenHostnameHasNonAsciiLetters(string value)
+    {
+        Assert.Throws<ArgumentException>(() => value.AgainstInvalidHostname("host"));
+    }
+
+    [Fact]
+    public void AgainstInvalidHostname_ShouldNotThrow_WhenInternationalNameIsPunycode()
+    {
+        var ex = Record.Exception(() => "xn--bcher-kva.de".AgainstInvalidHostname("host"));
+        Assert.Null(ex);
+    }
+
+    [Theory]
+    [InlineData("ÄÄÄÄ")] // "ÄÄÄÄ": letters, but not Base64
+    [InlineData("A=BC")]
+    [InlineData("====")]
+    [InlineData("QQ=A")]
+    public void AgainstInvalidBase64String_ShouldThrow_WhenConvertWouldReject(string value)
+    {
+        Assert.Throws<ArgumentException>(() => value.AgainstInvalidBase64String("b64"));
+        Assert.Throws<FormatException>(() => Convert.FromBase64String(value));
+    }
+
+    [Theory]
+    [InlineData("..")]
+    [InlineData("header..")]
+    [InlineData(".payload.")]
+    public void AgainstInvalidJwtFormat_ShouldThrow_WhenHeaderOrPayloadIsEmpty(string value)
+    {
+        Assert.Throws<ArgumentException>(() => value.AgainstInvalidJwtFormat("token"));
+    }
+
+    [Fact]
+    public void AgainstInvalidJwtFormat_ShouldNotThrow_WhenOnlySignatureIsEmpty()
+    {
+        var unsecured = "eyJhbGciOiJub25lIn0.eyJzdWIiOiIxIn0.";
+        var ex = Record.Exception(() => unsecured.AgainstInvalidJwtFormat("token"));
+        Assert.Null(ex);
+    }
+
+    [Theory]
+    [InlineData("a=b")]
+    [InlineData("foo=bar;baz=qux")]
+    public void AgainstInvalidConnectionString_ShouldThrow_WhenNoKeyIsRecognized(string value)
+    {
+        Assert.Throws<ArgumentException>(() => value.AgainstInvalidConnectionString("connStr"));
+    }
+
+    [Theory]
+    [InlineData("server=localhost;database=app;user id=sa;password=x")]
+    [InlineData("DefaultEndpointsProtocol=https;AccountName=acct;AccountKey=a2V5;EndpointSuffix=core.windows.net")]
+    [InlineData("Endpoint=sb://ns.servicebus.windows.net/;SharedAccessKeyName=root;SharedAccessKey=a2V5")]
+    [InlineData("Data Source=app.db")]
+    public void AgainstInvalidConnectionString_ShouldNotThrow_WhenKeyIsRecognized(string value)
+    {
+        var ex = Record.Exception(() => value.AgainstInvalidConnectionString("connStr"));
+        Assert.Null(ex);
+    }
+
+    [Theory]
+    [InlineData("Pacific Standard Time\\Dynamic DST")]
+    public void AgainstInvalidTimeZoneId_ShouldThrowArgumentException_WhenLookupFailsInAnyWay(string value)
+    {
+        Assert.Throws<ArgumentException>(() => value.AgainstInvalidTimeZoneId("tz"));
+    }
+
+    #endregion
 }
