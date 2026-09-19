@@ -134,6 +134,17 @@ public class FileUploadGuardsTests
     }
 
     [Fact]
+    public void AgainstMaliciousContentStream_ShouldThrow_WhenMarkerLiesBeforeTheCurrentPosition()
+    {
+        // A header sniffer already read past the payload; the scan must still start at byte zero.
+        using var stream = new MemoryStream(PngWithPayloadAt(100, "<?php"));
+        stream.Position = 5000;
+
+        Assert.Throws<ArgumentException>(() => stream.AgainstMaliciousContent(".png", "file", 1024 * 1024));
+        Assert.Equal(5000, stream.Position);
+    }
+
+    [Fact]
     public void AgainstMaliciousContentStream_ShouldThrow_WhenStreamExceedsScanLimit()
     {
         using var stream = new MemoryStream(new byte[2048]);

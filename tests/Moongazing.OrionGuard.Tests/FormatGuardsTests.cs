@@ -240,6 +240,7 @@ public class FormatGuardsTests
     [InlineData("Server=localhost;Database=mydb")]
     [InlineData("Host=db.example.com;Port=5432;Database=app")]
     [InlineData("Data Source=.;Initial Catalog=TestDb;Integrated Security=True")]
+    [InlineData("UseDevelopmentStorage=true")]
     public void AgainstInvalidConnectionString_ShouldNotThrow_WhenValid(string value)
     {
         var ex = Record.Exception(() => value.AgainstInvalidConnectionString("connStr"));

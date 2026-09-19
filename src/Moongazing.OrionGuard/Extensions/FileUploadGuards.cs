@@ -252,6 +252,10 @@ public static class FileUploadGuards
         var chunk = new byte[81920];
         try
         {
+            // An earlier reader (a header sniffer, another validator) may have advanced the stream; a marker
+            // or an MZ header before the current position must still be scanned.
+            if (fileStream.CanSeek) fileStream.Position = 0;
+
             int read;
             while ((read = fileStream.Read(chunk, 0, chunk.Length)) > 0)
             {

@@ -291,7 +291,7 @@ public static class FormatGuards
         "Connect Timeout", "Timeout", "Command Timeout", "Pooling", "Min Pool Size", "Max Pool Size", "Application Name", "ApplicationIntent",
         "MultipleActiveResultSets", "AttachDbFilename", "Search Path", "Provider", "Driver", "Dsn",
         "DefaultEndpointsProtocol", "AccountName", "AccountKey", "EndpointSuffix", "BlobEndpoint",
-        "QueueEndpoint", "TableEndpoint", "FileEndpoint", "SharedAccessSignature", "Endpoint",
+        "QueueEndpoint", "TableEndpoint", "FileEndpoint", "SharedAccessSignature", "Endpoint", "UseDevelopmentStorage",
         "SharedAccessKeyName", "SharedAccessKey", "EntityPath", "Id", "Secret",
     }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
 
