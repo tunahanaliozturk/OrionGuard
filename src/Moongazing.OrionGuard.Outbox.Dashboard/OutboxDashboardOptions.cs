@@ -65,6 +65,26 @@ public sealed class OutboxDashboardOptions
     public bool EnableMutations { get; set; } = true;
 
     /// <summary>
+    /// Require the <see cref="MutationHeaderName"/> header, with any non-empty value, on
+    /// <c>POST /{id}/replay</c> and <c>POST /{id}/discard</c>; a request without it gets 400.
+    /// Default <see langword="true"/>. The endpoints take no body, so without this check a page on another
+    /// origin could send them with the operator's cookies as a cross-origin request the browser does not
+    /// preflight. A custom header forces the preflight, which fails unless the host's CORS policy allows
+    /// that origin and header. Set <see langword="false"/> only when every caller authenticates with a
+    /// header (for example a bearer token) rather than a cookie.
+    /// </summary>
+    public bool RequireMutationHeader { get; set; } = true;
+
+    /// <summary>
+    /// Name of the header required by <see cref="RequireMutationHeader"/>. Default
+    /// <c>X-OrionGuard-Dashboard</c>. It must be a custom header: CORS-safelisted headers
+    /// (<c>Accept</c>, <c>Content-Type</c>, ...) and headers the browser adds itself (<c>Cookie</c>,
+    /// <c>Origin</c>, <c>Sec-*</c>, ...) are rejected when the dashboard is mapped, because a cross-site
+    /// page gets them onto a request without a preflight.
+    /// </summary>
+    public string MutationHeaderName { get; set; } = "X-OrionGuard-Dashboard";
+
+    /// <summary>
     /// Optional audit hook invoked after every successful replay / discard. The dashboard
     /// itself never writes audit rows so consumers stay in control of storage shape and
     /// retention. Throwing from the hook does NOT roll back the mutation; the database

@@ -61,6 +61,7 @@ public partial class InstallOrionGuardOutboxBroker : Migration
 - `Create(tableName = "OrionGuard_Outbox", queueName = "OrionGuardOutboxQueue", serviceName = "OrionGuardOutboxService", contractName = "OrionGuardOutboxContract", messageTypeName = "OrionGuardOutboxRowInserted")` creates the message type, contract, queue, and service if they do not exist, plus an `AFTER INSERT` trigger named `orionguard_outbox_broker_notify`. The trigger opens a dialog from the service to itself, sends one message, and ends the conversation.
 - `Drop(...)` takes the same parameters and removes the trigger and the Service Broker objects.
 - For custom names, pass them to both methods and set `SqlServerBrokerOptions.QueueName` to the same queue.
+- Every name must be a plain identifier: 1 to 128 ASCII letters, digits or underscores, not starting with a digit. Anything else, including a schema-qualified `schema.table`, throws `ArgumentException`, because the names are spliced into DDL and into the string that `EXEC` runs. The table is resolved in the default schema of the user that runs the SQL.
 - The trigger name is fixed and only created when missing, so the helper supports one outbox table per database, and running `Create` again does not update an existing trigger.
 
 ## Options
