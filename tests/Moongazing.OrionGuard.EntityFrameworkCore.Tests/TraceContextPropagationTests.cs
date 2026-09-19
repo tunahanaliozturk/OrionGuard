@@ -57,6 +57,72 @@ public class TraceContextPropagationTests
     }
 
     [Fact]
+    public async Task OutboxRow_HierarchicalActivityId_IsNotStoredAsTraceParent()
+    {
+        // A legacy Request-Id parent makes the activity hierarchical; its id is not a traceparent and here runs to
+        // 90+ characters, past the 64-character column, which on SQL Server or PostgreSQL failed the whole save.
+        await using var serviceProvider = OutboxTestServices.Build(_ => new RecordingDispatcher());
+        await using var scope = serviceProvider.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<TestDbContext>();
+
+        var activity = new Activity("Microsoft.AspNetCore.Hosting.HttpRequestIn");
+        activity.SetParentId("|" + new string('a', 80) + ".");
+        activity.Start();
+        try
+        {
+            Assert.Equal(ActivityIdFormat.Hierarchical, activity.IdFormat);
+            var order = new Order(Guid.NewGuid());
+            db.Orders.Add(order);
+            order.Ship();
+            await db.SaveChangesAsync();
+        }
+        finally
+        {
+            activity.Stop();
+        }
+
+        var row = await db.OutboxMessages.AsNoTracking().SingleAsync();
+        Assert.Null(row.TraceParent);
+        Assert.Null(row.TraceState);
+    }
+
+    [Fact]
+    public async Task OutboxRow_TraceStateLongerThanItsColumn_KeepsWholeMembersThatFit()
+    {
+        using var listener = new ActivityListener
+        {
+            ShouldListenTo = s => s.Name == "TraceStateTest",
+            Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllData,
+        };
+        ActivitySource.AddActivityListener(listener);
+        await using var serviceProvider = OutboxTestServices.Build(_ => new RecordingDispatcher());
+        await using var scope = serviceProvider.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<TestDbContext>();
+
+        // 20 members of 24 characters: 499 characters, within the W3C limit of 512 but past the 256-character column.
+        var members = Enumerable.Range(0, 20).Select(i => $"vendor{i:D2}=" + new string('x', 15)).ToArray();
+        var parent = ActivityContext.Parse(
+            "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01", string.Join(",", members));
+        using var source = new ActivitySource("TraceStateTest");
+        using (source.StartActivity("request", ActivityKind.Server, parent))
+        {
+            var order = new Order(Guid.NewGuid());
+            db.Orders.Add(order);
+            order.Ship();
+            await db.SaveChangesAsync();
+        }
+
+        var row = await db.OutboxMessages.AsNoTracking().SingleAsync();
+        Assert.NotNull(row.TraceParent);
+        Assert.NotNull(row.TraceState);
+        Assert.True(row.TraceState!.Length <= 256, $"tracestate has {row.TraceState.Length} characters");
+        // Whole members, the leftmost ones, in order.
+        var kept = row.TraceState.Split(',');
+        Assert.Equal(members.Take(kept.Length), kept);
+        Assert.Equal(10, kept.Length);
+    }
+
+    [Fact]
     public async Task OutboxWorker_RestoresParentTraceContext_WhenDispatchingRow()
     {
         var capturedActivities = new List<Activity>();

@@ -15,6 +15,10 @@
          transitively by EntityFrameworkCore.Sqlite. Test/probe only - no shipped package refs SQLite. -->
     <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.12" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.12" />
+    <!-- SkipLockedDistributedLock SQL is generated per provider; these supply the real SQL Server and
+         PostgreSQL identifier quoting. No connection is ever opened. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.12" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
     <!-- Override transitive Microsoft.Data.Sqlite.Core because the locally cached 9.0.0 PACKAGE.md is filesystem-corrupt and undeletable (chkdsk needed). 9.0.9 is the lowest patched 9.x build available locally. -->
     <PackageReference Include="Microsoft.Data.Sqlite.Core" Version="10.0.12" />
   </ItemGroup>

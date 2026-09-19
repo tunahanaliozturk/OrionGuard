@@ -200,4 +200,18 @@ public static class OutboxDispatcherDiagnostics
     /// for configuration/availability errors.
     /// </summary>
     public static void RecordLockContended() => LockContended.Add(1);
+
+    /// <summary>
+    /// Batch-level faults: a poll that failed outside any single row (the lock, the batch query, a missing
+    /// <c>DbContext</c> registration, an unreachable database). The worker logs each one and retries on the next
+    /// polling interval; a sustained rate means the dispatcher is running but delivering nothing. Per-row
+    /// failures are counted by <c>orionguard.outbox.dispatcher.errors</c> instead. Tagged <c>exception_type</c>.
+    /// </summary>
+    internal static readonly Counter<long> BatchFaults = Meter.CreateCounter<long>(
+        "orionguard.outbox.dispatcher.batch_faults", unit: "{faults}",
+        description: "Dispatcher polls that failed outside any single row and were retried on the next interval.");
+
+    /// <summary>Record one batch-level fault tagged with the exception type. Public for consumer-owned dispatchers.</summary>
+    public static void RecordBatchFault(string exceptionType)
+        => BatchFaults.Add(1, new System.Collections.Generic.KeyValuePair<string, object?>("exception_type", exceptionType));
 }

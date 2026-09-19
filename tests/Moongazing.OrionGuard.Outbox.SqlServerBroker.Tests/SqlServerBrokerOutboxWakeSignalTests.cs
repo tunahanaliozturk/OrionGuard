@@ -76,6 +76,24 @@ public sealed class SqlServerBrokerOutboxWakeSignalTests
     }
 
     [Fact]
+    public async Task WaitForNextTickAsync_after_the_listener_stopped_still_waits_for_the_polling_interval()
+    {
+        // The host stops hosted services in reverse order, so the listener can stop while the dispatcher
+        // still waits on it. A wait that returned at once there turned the dispatcher into a hot poll loop.
+        var signal = NewSignal();
+        await signal.StopAsync(CancellationToken.None);
+
+        var sw = Stopwatch.StartNew();
+        for (var i = 0; i < 3; i++)
+        {
+            await ((IOutboxWakeSignal)signal).WaitForNextTickAsync(TimeSpan.FromMilliseconds(100), CancellationToken.None);
+        }
+        sw.Stop();
+
+        Assert.InRange(sw.ElapsedMilliseconds, 250, 3000);
+    }
+
+    [Fact]
     public async Task External_cancellation_throws_OperationCanceledException()
     {
         IOutboxWakeSignal signal = NewSignal();

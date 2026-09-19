@@ -52,7 +52,7 @@ Routes are relative to `RoutePrefix` (default `/_orion/outbox`):
 | POST | `/{id:guid}/replay` | | Re-queue a failed or dead-lettered row |
 | POST | `/{id:guid}/discard` | | Mark an unprocessed row as processed without dispatching it |
 
-- `page` defaults to 1. `size` defaults to `DefaultPageSize` (25) and is clamped to `MaxPageSize` (100). Values below 1 fall back to the defaults.
+- `page` defaults to 1. `size` defaults to `DefaultPageSize` (25) and is clamped to `MaxPageSize` (100). Values below 1 fall back to the defaults. A page past the last one, however large, returns an empty `items`.
 - `sort` is `OldestFirst` (by `OccurredOnUtc`, the default), `NewestFirst`, or `MostRetries` (by `RetryCount` descending, then `OccurredOnUtc`), matched case-insensitively. Anything else falls back to `DefaultSort`.
 - `/failed` returns `page`, `size`, `total`, `totalPages`, `hasNextPage`, `hasPreviousPage`, `sort`, and `items`.
 - `/failed/cursor` returns `size`, `sort`, `items`, `nextCursor`, and `hasNextPage`. Pass `nextCursor` back as `cursor` for the next page. A valid cursor fixes the sort it was issued with, and `sort` is then ignored; an invalid cursor starts from the first page. The cursor is opaque but not signed.
@@ -68,8 +68,9 @@ A row is listed when `Error` is set and `RetryCount >= FailedRetryThreshold` (de
 
 ## Replay and discard
 
-- **Replay** sets `RetryCount` to 0 and clears `Error` and `ProcessedOnUtc`, so the dispatcher picks the row up on its next poll and runs every handler again. It returns 200 `{ id, action }`, 404 for an unknown id, and 409 with `error: "already-processed-success"` for a row that was processed without an error.
-- **Discard** stamps `ProcessedOnUtc` and keeps `Error` and `RetryCount`. It works on any unprocessed row, not only failed ones. It returns 200 `{ id, action }`, 200 with `note: "already processed"` if the row was already processed, and 404 for an unknown id. With `OutboxArchivalOptions.PreserveDeadLetters` on, a discarded row that has an `Error` is never archived.
+- **Replay** sets `RetryCount` to 0 and clears `Error` and `ProcessedOnUtc`, so the dispatcher picks the row up on its next poll and runs every handler again. It returns 200 `{ id, action }`, 404 for an unknown id, and 409 with `error: "already-processed-success"` for a row that was processed without an error, including one the dispatcher finished while the request was running.
+- **Discard** stamps `ProcessedOnUtc` and keeps `Error` and `RetryCount`. It works on any unprocessed row, not only failed ones. It returns 200 `{ id, action }`, 200 with `note: "already processed"` if the row was already processed (by the dispatcher, meanwhile or earlier, or by a previous discard), and 404 for an unknown id. With `OutboxArchivalOptions.PreserveDeadLetters` on, a discarded row that has an `Error` is never archived.
+- Both are a single conditional `UPDATE` (`ExecuteUpdate`) on the row's current state, and the dispatcher updates rows the same way, so a replay or discard is never undone by a dispatch that was in flight, and a dispatch that finished first is never overwritten. They therefore need a relational EF Core provider; the EF Core InMemory provider can serve the read endpoints only.
 - `OnMutation` (`Func<OutboxMutationEvent, Task>`) runs after each successful replay or discard is saved, with `Action` (`"replay"` or `"discard"`), `OutboxMessageId`, `HttpContext`, and `OccurredAtUtc`. It does not run for a 404, a 409, or an already-processed discard. If it throws, the request fails but the change stays saved.
 
 ## Options

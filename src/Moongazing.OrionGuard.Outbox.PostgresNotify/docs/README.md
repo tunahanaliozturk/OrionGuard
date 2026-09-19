@@ -14,15 +14,12 @@ dotnet add package OrionGuard.Outbox.PostgresNotify
 
 ```csharp
 using Moongazing.OrionGuard.EntityFrameworkCore;
-using Moongazing.OrionGuard.EntityFrameworkCore.Outbox.Locking;
 using Moongazing.OrionGuard.Outbox.PostgresNotify;
 
 builder.Services.AddPostgresNotifyOutboxWakeSignal(o =>
     o.ConnectionString = builder.Configuration.GetConnectionString("App"));
 
-builder.Services.AddOrionGuardEfCore<AppDbContext>(opts => opts
-    .UseOutbox()
-    .UseDistributedLock<NullDistributedLock>()); // single instance; see "Locking on PostgreSQL"
+builder.Services.AddOrionGuardEfCore<AppDbContext>(opts => opts.UseOutbox());
 ```
 
 Then install the trigger once, as shown below.
@@ -32,10 +29,11 @@ Then install the trigger once, as shown below.
 `AddPostgresNotifyOutboxWakeSignal` registers `PostgresNotifyOutboxWakeSignal` as the `IOutboxWakeSignal`, replacing the polling-only default whichever order you call it in, and as a hosted service.
 
 - The hosted service opens its own `NpgsqlConnection` (not one from your `DbContext` pool), runs `LISTEN "orionguard_outbox";`, and waits for notifications.
-- Each notification wakes the dispatcher. So does every `SaveChangesAsync` in the same process, which signals directly after the commit. Wake-ups coalesce: at most one is pending at a time.
+- Each notification wakes the dispatcher. So does every `SaveChanges`/`SaveChangesAsync` in the same process, which signals directly after the save. Wake-ups coalesce: at most one is pending at a time.
 - PostgreSQL delivers a notification only when the inserting transaction commits, so rolled-back inserts wake nothing.
 - A wake-up does not carry rows. The dispatcher still takes its lock and reads the table, so on several replicas every listener wakes but only the lock holder dispatches.
 - If the connection drops, the listener reconnects with a doubling delay (1 s up to 30 s by default). Until then the dispatcher falls back to `OutboxOptions.PollingInterval`, which bounds latency in every case.
+- Hosted services stop in reverse registration order, so on shutdown the listener can stop before the dispatcher. The dispatcher's remaining waits then simply last the polling interval until it stops too.
 
 ## Trigger installation
 
@@ -71,7 +69,7 @@ public partial class InstallOrionGuardOutboxNotify : Migration
 
 ## Locking on PostgreSQL
 
-The default outbox lock, `SkipLockedDistributedLock`, sends unquoted table and column names in raw SQL. PostgreSQL folds them to lower case, so they do not match the quoted `"OrionGuard_OutboxLocks"` table that EF Core creates, and the dispatcher never gets the lock. Until that changes, use [OrionGuard.Locks.Redis](https://www.nuget.org/packages/OrionGuard.Locks.Redis) for several replicas, or `NullDistributedLock` for a single instance as in the quick start.
+The default outbox lock, `SkipLockedDistributedLock`, works on PostgreSQL: it takes the lock table's name, schema and column names from your EF Core model and quotes them, so its SQL reaches the `"OrionGuard_OutboxLocks"` table EF Core creates (map it with `OutboxLockEntityTypeConfiguration` and apply the migration). A single instance can skip the table with `UseDistributedLock<NullDistributedLock>()`; [OrionGuard.Locks.Redis](https://www.nuget.org/packages/OrionGuard.Locks.Redis) is the alternative when Redis is already at hand.
 
 ## Targets
 

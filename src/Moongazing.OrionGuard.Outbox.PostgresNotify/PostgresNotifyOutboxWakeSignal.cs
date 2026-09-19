@@ -119,19 +119,15 @@ public sealed partial class PostgresNotifyOutboxWakeSignal :
         }
     }
 
-    /// <inheritdoc />
-    public override async Task StopAsync(CancellationToken cancellationToken)
-    {
-        wake.Writer.TryComplete();
-        await base.StopAsync(cancellationToken).ConfigureAwait(false);
-    }
+    // The wake channel is never completed on stop or dispose: the host stops hosted services in reverse order, so
+    // the dispatcher can still be waiting on it, and a completed channel faulted that wait and with it the
+    // dispatcher. After the listener stops, waits simply run to the polling interval.
 
     /// <inheritdoc />
-    async ValueTask IAsyncDisposable.DisposeAsync()
+    ValueTask IAsyncDisposable.DisposeAsync()
     {
-        wake.Writer.TryComplete();
-        await Task.CompletedTask.ConfigureAwait(false);
         base.Dispose();
+        return ValueTask.CompletedTask;
     }
 
     private void OnNotification(object sender, NpgsqlNotificationEventArgs args)

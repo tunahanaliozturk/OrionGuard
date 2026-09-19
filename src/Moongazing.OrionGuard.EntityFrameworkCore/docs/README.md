@@ -1,6 +1,6 @@
 # OrionGuard.EntityFrameworkCore
 
-EF Core integration for [OrionGuard](https://github.com/tunahanaliozturk/OrionGuard) domain events. A `SaveChangesAsync` interceptor collects the events raised by tracked aggregates and either dispatches them right after the save (Inline) or writes them to an outbox table in the same transaction, for a hosted worker to deliver (Outbox).
+EF Core integration for [OrionGuard](https://github.com/tunahanaliozturk/OrionGuard) domain events. A `SaveChanges` interceptor (synchronous and asynchronous) collects the events raised by tracked aggregates and either dispatches them right after the save (Inline) or writes them to an outbox table in the same transaction, for a hosted worker to deliver (Outbox).
 
 ## Install
 
@@ -52,7 +52,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
 }
 ```
 
-Register everything. Use the `(sp, options)` overload of `AddDbContext` so the interceptor resolves its collaborators from the context's own scope:
+Register everything. Use the `(sp, options)` overload of `AddDbContext` so the interceptor resolves its collaborators from the context's own scope (with `AddDbContextPool` or `AddDbContextFactory` the callback receives the root provider; that works too, and each Inline dispatch then runs in a new DI scope of its own):
 
 ```csharp
 using Microsoft.EntityFrameworkCore;
@@ -76,23 +76,25 @@ Then apply an EF Core migration for the two tables (see Schema and migrations be
 
 | | Inline | Outbox |
 | --- | --- | --- |
-| When handlers run | Inside `SaveChangesAsync`, after the save succeeds | In `OutboxDispatcherHostedService`, after the transaction commits |
+| When handlers run | Inside `SaveChanges`/`SaveChangesAsync`, after the save succeeds; inside your own `BeginTransaction`, when it commits | In `OutboxDispatcherHostedService`, after the transaction commits |
 | Where events live | Nowhere; they are dispatched from memory | One `OutboxMessage` row per event, written by the same `SaveChanges` as the aggregate |
-| A handler throws | The exception leaves `SaveChangesAsync`, the data is already saved, and the remaining events of that save are dropped | The row is retried on later polls, then dead-lettered |
+| A handler throws | The exception leaves `SaveChanges`/`SaveChangesAsync` (or the commit), the data is already saved, and the remaining events of that save are dropped | The row is retried on later polls, then dead-lettered |
 | Process dies after the save | Events are lost | Rows stay in the table and are delivered later |
 | Delivery | At most once | At least once |
 
-If you save inside your own `BeginTransaction`, Inline handlers run before your commit. In Inline mode a failed save leaves the events on the aggregates, so a retry picks them up. How handlers of one event are invoked is set by `AddOrionGuardDomainEvents(o => o.Mode = ...)`: `DispatchMode.SequentialFailFast` (default), `SequentialContinueOnError` (runs all, then throws `AggregateException`), or `Parallel`.
+If you save inside your own `Database.BeginTransaction()`, Inline events are held until that transaction commits (`Commit` or `CommitAsync`) and dropped if it rolls back or is disposed without a commit; a handler exception then leaves the commit call, after the data is committed. A synchronous `SaveChanges()` (or `Commit()`) dispatches on a thread-pool thread and blocks until the handlers finish, so prefer the async methods when handlers do I/O. In Inline mode a failed save leaves the events on the aggregates, so a retry picks them up. How handlers of one event are invoked is set by `AddOrionGuardDomainEvents(o => o.Mode = ...)`: `DispatchMode.SequentialFailFast` (default), `SequentialContinueOnError` (runs all, then throws `AggregateException`), or `Parallel`.
 
 ## Outbox delivery
 
-Each poll, the worker takes the distributed lock, reads up to `BatchSize` rows where `ProcessedOnUtc` is null ordered by `OccurredOnUtc`, resolves and deserializes each event (System.Text.Json), dispatches it through `IDomainEventDispatcher`, stamps `ProcessedOnUtc`, and saves after every row. It then waits for the next tick, so it handles one batch per poll unless a wake signal arrives.
+Each poll, the worker takes the distributed lock, reads up to `BatchSize` rows where `ProcessedOnUtc` is null ordered by `OccurredOnUtc`, resolves and deserializes each event (System.Text.Json), dispatches it through `IDomainEventDispatcher`, and stamps `ProcessedOnUtc`, one row at a time. When every row of a full batch left the queue it polls again straight away, so a backlog drains at full speed; after a partial or empty batch, or one with a failed row, it waits for the next tick (the polling interval, or earlier on a wake signal).
 
-- **Failure.** `RetryCount` is incremented and `Error` holds the exception text. Retries happen on later polls, with no backoff beyond the polling interval. When `RetryCount` reaches `MaxRetries`, `ProcessedOnUtc` is stamped and the row becomes a dead letter (`Error` stays set).
+- **Failure.** `RetryCount` is incremented and `Error` holds the exception text. Retries happen on later polls, with no backoff beyond the polling interval. When `RetryCount` reaches `MaxRetries`, `ProcessedOnUtc` is stamped and the row becomes a dead letter (`Error` stays set). An `OperationCanceledException` from a handler (an `HttpClient` timeout, for example) is an ordinary failure; only host shutdown stops the worker.
 - **Unresolvable rows** are dead-lettered on the first attempt, without retries, with an `Error` starting `TYPE_NOT_FOUND`, `TYPE_NOT_DOMAIN_EVENT`, or `DESERIALIZE_FAILED`.
 - **Duplicates.** A retry re-runs every handler of the event, including the ones that already succeeded. A crash or failed row update after a successful dispatch, or a batch that outlives `LockLeaseDuration` so another replica takes the lock, also re-delivers. Handlers must be idempotent.
 - **Ordering.** A failing row does not block the rows after it, so events can be handled out of order once retries happen.
-- **Shared scope.** A batch runs in one DI scope. A handler that injects your `DbContext` gets the instance the worker uses to update rows, so anything it leaves tracked is saved with the row update, even after the handler throws.
+- **Scope per row.** Each row is dispatched in a DI scope of its own. A handler that writes through your scoped `DbContext` has those writes committed in one transaction with the row's `ProcessedOnUtc` stamp. If the handler throws, its tracked writes are discarded. If they cannot be saved (a constraint violation, say), they are discarded too and the row is recorded as a failed attempt (`Error` starts "The event was dispatched, but saving ..."), which counts towards `MaxRetries` like any other failure.
+- **Concurrent changes.** Each row update, success included, is conditional on the state the row was read in (unprocessed, same `RetryCount` and `Error`), so a replay or discard made while the row is being dispatched (for example from [OrionGuard.Outbox.Dashboard](https://www.nuget.org/packages/OrionGuard.Outbox.Dashboard)), or a row another replica already finished, is left as it is. A dispatch that loses this way also rolls back its handler's database writes, so a replayed row's writes are applied once, by the replayed delivery. On providers without conditional updates (EF Core InMemory) the check and the update are separate steps.
+- **Failed polls.** A poll that fails outside any row (database unreachable, missing table or registration) is logged at Error, counted by `orionguard.outbox.dispatcher.batch_faults`, and retried after the polling interval.
 - **Observer.** Register `IOutboxRowFailureObserver` (`services.AddSingleton<IOutboxRowFailureObserver, MyObserver>()`) to be told about every failed attempt, transient or terminal. Observer exceptions are logged and ignored.
 
 ## Outbox options
@@ -117,7 +119,7 @@ Generate the migration with `dotnet ef migrations add` as usual. Reference DDL p
 
 ## Distributed lock
 
-Outbox mode registers `SkipLockedDistributedLock`: one lease row per key in `OrionGuard_OutboxLocks`, taken with a conditional `UPDATE`/`INSERT` in a transaction and confirmed by reading the holder back. A replica that loses skips that poll. If the table is missing, the lock logs one warning and the worker skips every poll, so rows accumulate until the migration is applied.
+Outbox mode registers `SkipLockedDistributedLock`: one lease row per key in `OrionGuard_OutboxLocks`, taken with a conditional `UPDATE`/`INSERT` in a transaction and confirmed by reading the holder back. A replica that loses skips that poll. Losing means another replica's row is there: any other failure of the `INSERT` (a key longer than the column, a constraint, a transient fault) is thrown, and the worker logs it as a failed poll. Its SQL takes the table, schema and column names from the `OutboxLock` mapping in your model (so a renamed table or a naming convention is honoured) and quotes them the way your provider does, which PostgreSQL needs for the mixed-case `"OrionGuard_OutboxLocks"`; values are always parameters. If `OutboxLock` is not mapped, or its table is missing, the lock logs one warning naming the cause and the worker skips every poll, so rows accumulate until the mapping and migration are in place.
 
 - `UseDistributedLock<NullDistributedLock>()` always acquires. Use it for a single instance; no lock table is needed.
 - `UseDistributedLock<TLock>()` plugs in any `IDistributedLock`. [OrionGuard.Locks.Redis](https://www.nuget.org/packages/OrionGuard.Locks.Redis) provides a Redis one.
@@ -141,7 +143,7 @@ builder.Services.AddOrionGuardEfCore<AppDbContext>(o => o
 
 ## Push wake-up
 
-The worker waits on an `IOutboxWakeSignal`. The default `NullOutboxWakeSignal` only polls. In Outbox mode `SaveChangesAsync` calls `SignalAsync` after the commit, so registering `ChannelOutboxWakeSignal` wakes a dispatcher in the same process immediately. For cross-process wake-ups use [OrionGuard.Outbox.PostgresNotify](https://www.nuget.org/packages/OrionGuard.Outbox.PostgresNotify) or [OrionGuard.Outbox.SqlServerBroker](https://www.nuget.org/packages/OrionGuard.Outbox.SqlServerBroker). `PollingInterval` stays the upper bound either way.
+The worker waits on an `IOutboxWakeSignal`. The default `NullOutboxWakeSignal` only polls. In Outbox mode `SaveChanges` and `SaveChangesAsync` call `SignalAsync` after the save (a synchronous save does not wait for a signal that completes asynchronously), so registering `ChannelOutboxWakeSignal` wakes a dispatcher in the same process immediately. For cross-process wake-ups use [OrionGuard.Outbox.PostgresNotify](https://www.nuget.org/packages/OrionGuard.Outbox.PostgresNotify) or [OrionGuard.Outbox.SqlServerBroker](https://www.nuget.org/packages/OrionGuard.Outbox.SqlServerBroker). `PollingInterval` stays the upper bound either way.
 
 ## Archival
 
@@ -158,38 +160,32 @@ builder.Services.AddOrionGuardEfCore<AppDbContext>(o => o
 | `OutboxArchivalOptions` | Default | Notes |
 | --- | --- | --- |
 | `RetentionPeriod` | 30 days | Rows processed longer ago than this are archived. |
-| `PollingInterval` | 1 hour | One batch per interval. |
-| `BatchSize` | 1000 | Rows per batch, so at most 24,000 rows a day at the defaults. |
+| `PollingInterval` | 1 hour | Wait after a partial or empty batch. A full batch is followed by the next one straight away. |
+| `BatchSize` | 1000 | Rows per batch. |
 | `PreserveDeadLetters` | `true` | Rows with `Error` set are never archived. |
 | `LockKey` / `LockLeaseDuration` | `orion_guard_outbox_archival` / 5 min | |
 
-`OutboxArchivalHostedService` deletes with `DeleteOutboxArchiver` unless you register an `IOutboxArchiver`: `CopyToTableOutboxArchiver<TArchiveRow>` copies rows into an archive entity mapped in your context and deletes them in one transaction, and `BlobOutboxArchiver` writes each batch as JSON Lines to an `IOutboxArchiveSink` and then deletes (if the delete fails, the batch is written again next time). Sinks: `LocalFileOutboxArchiveSink`, `RotatingFileOutboxArchiveSink`, `RetryingOutboxArchiveSink`, `CompositeOutboxArchiveSink`. Dead letters stay in the table for you to inspect, replay, or discard, for example with [OrionGuard.Outbox.Dashboard](https://www.nuget.org/packages/OrionGuard.Outbox.Dashboard).
+`OutboxArchivalHostedService` deletes with `DeleteOutboxArchiver` unless you register an `IOutboxArchiver`: `CopyToTableOutboxArchiver<TArchiveRow>` copies rows into an archive entity mapped in your context and deletes them in one transaction (run through the context's execution strategy, so it works with `EnableRetryOnFailure`), and `BlobOutboxArchiver` writes each batch as JSON Lines to an `IOutboxArchiveSink` and then deletes (if the delete fails, the batch is written again next time). Sinks: `LocalFileOutboxArchiveSink`, `RotatingFileOutboxArchiveSink`, `RetryingOutboxArchiveSink`, `CompositeOutboxArchiveSink`. Dead letters stay in the table for you to inspect, replay, or discard, for example with [OrionGuard.Outbox.Dashboard](https://www.nuget.org/packages/OrionGuard.Outbox.Dashboard).
 
 The only health check in the package watches archival:
 
 ```csharp
 using Moongazing.OrionGuard.EntityFrameworkCore.Outbox.Archival;
 
-builder.Services.AddSingleton(new OutboxArchivalHealthCheckOptions
-{
-    DegradedAfter = TimeSpan.FromHours(2),
-    UnhealthyAfter = TimeSpan.FromHours(3),
-});
 builder.Services.AddHealthChecks().AddCheck<OutboxArchivalHealthCheck>("outbox-archival");
 ```
 
-It reports how long ago this process last completed an archival batch. The defaults (5 and 15 minutes) are shorter than the default 1-hour `PollingInterval`, so raise them as above. A replica that never wins the archival lock reports Degraded.
+It reports how long ago this process last completed an archival batch: Degraded after two archival polling intervals and Unhealthy after three (2 and 3 hours at the default 1-hour `PollingInterval`), never below 5 and 15 minutes. Set `DegradedAfter` or `UnhealthyAfter` on a registered `OutboxArchivalHealthCheckOptions` to fix a threshold yourself; an explicit value always wins. A replica that never wins the archival lock reports Degraded.
 
 ## Observability
 
-- **Tracing.** Each outbox row stores the W3C `traceparent`/`tracestate` of `Activity.Current` at save time. The worker starts an `Outbox.Dispatch` activity (kind `Consumer`) on the `Moongazing.OrionGuard.DomainEvents` ActivitySource with that parent, so handlers run inside the original trace when that source is listened to. Subscribe with `AddSource("Moongazing.OrionGuard.DomainEvents")`.
-- **Metrics.** Meters `Moongazing.OrionGuard.Outbox.Dispatcher` and `Moongazing.OrionGuard.Outbox.Archival` (`OutboxDispatcherDiagnostics.MeterName`, `OutboxArchivalDiagnostics.MeterName`) cover queue lag, batch size, idle polls, errors, dead letters, lock contention, retries before success, dispatch duration, payload size, and archival batch size, duration, failures, and bytes written.
+- **Tracing.** Each outbox row stores the W3C `traceparent`/`tracestate` of `Activity.Current` at save time. The worker starts an `Outbox.Dispatch` activity (kind `Consumer`) on the `Moongazing.OrionGuard.DomainEvents` ActivitySource with that parent, so handlers run inside the original trace when that source is listened to. Subscribe with `AddSource("Moongazing.OrionGuard.DomainEvents")`. Trace data never fails a save: an activity with a non-W3C (hierarchical) id stores nothing, and a `tracestate` longer than its column keeps only the leading list members that fit, dropping members over 128 characters first.
+- **Metrics.** Meters `Moongazing.OrionGuard.Outbox.Dispatcher` and `Moongazing.OrionGuard.Outbox.Archival` (`OutboxDispatcherDiagnostics.MeterName`, `OutboxArchivalDiagnostics.MeterName`) cover queue lag, batch size, idle polls, errors, failed polls (`batch_faults`), dead letters, lock contention, retries before success, dispatch duration, payload size, rows enqueued per save, and archival batch size, duration, failures, and bytes written.
+- **Time.** The dispatcher, the archival worker and `SkipLockedDistributedLock` read the clock from a `TimeProvider` registered in DI, if there is one, and from `TimeProvider.System` otherwise.
 
 ## Known limitations
 
-- Only `SaveChangesAsync` is intercepted. A synchronous `SaveChanges()` neither dispatches (Inline) nor writes outbox rows (Outbox); the events stay on the aggregate.
-- `SkipLockedDistributedLock` sends raw SQL with unquoted names (`UPDATE OrionGuard_OutboxLocks SET HolderId = ...`). PostgreSQL folds those to lower case, so they miss the quoted `"OrionGuard_OutboxLocks"` table that EF Core creates; the lock treats that as a missing table and the worker never dispatches. Its tests run on SQLite only. On PostgreSQL, use OrionGuard.Locks.Redis, or `NullDistributedLock` for a single instance.
-- `CopyToTableOutboxArchiver` calls `SaveChangesAsync` inside its own transaction. With a retrying execution strategy (`EnableRetryOnFailure`), EF Core rejects that with `InvalidOperationException`, so every batch that has rows to move fails and is logged.
+- Inline mode can only wait for a commit that EF Core observes, that is one started with `Database.BeginTransaction()`. Inside an ambient `System.Transactions.TransactionScope`, or a transaction handed in with `Database.UseTransaction()`, events are still dispatched right after the save, before the commit, and one warning is logged per process. Use Outbox mode, or `Database.BeginTransaction()`, when handlers must not see uncommitted work.
 - NativeAOT: `ServiceProviderDomainEventDispatcher` (the default dispatcher) and `OutboxDispatcherHostedService` are marked `[RequiresUnreferencedCode]` and `[RequiresDynamicCode]`. Handlers are resolved with `MakeGenericType`, and rows are read back with `Type.GetType` and `JsonSerializer.Deserialize(string, Type)`. The outbox uses the default `JsonSerializerOptions` and has no hook for a `JsonSerializerContext`, so it depends on reflection-based serialization, which NativeAOT and trimmed apps turn off by default.
 
 ## Targets

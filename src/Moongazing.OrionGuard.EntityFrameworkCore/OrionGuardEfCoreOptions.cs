@@ -114,7 +114,8 @@ public sealed class OrionGuardEfCoreOptions
                 sp.GetRequiredService<IDistributedLock>(),
                 sp.GetService<Microsoft.Extensions.Logging.ILogger<OutboxArchivalHostedService>>(),
                 sp.GetService<IOutboxArchiver>(),
-                sp.GetRequiredService<OutboxArchivalState>()));
+                sp.GetRequiredService<OutboxArchivalState>(),
+                sp.GetService<TimeProvider>()));
         });
         return this;
     }

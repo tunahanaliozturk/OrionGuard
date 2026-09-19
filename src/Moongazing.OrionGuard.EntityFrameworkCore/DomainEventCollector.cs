@@ -4,16 +4,13 @@ using Moongazing.OrionGuard.Domain.Primitives;
 namespace Moongazing.OrionGuard.EntityFrameworkCore;
 
 /// <summary>
-/// Per-DbContext-scope buffer used by the interceptor to bridge SavingChanges and SavedChanges in
-/// Inline mode. Holds two kinds of state:
-/// <list type="bullet">
-/// <item><description>Live <see cref="IAggregateRoot"/> references registered at SavingChanges (events
-/// remain on the aggregate so an <see cref="Microsoft.EntityFrameworkCore.Storage.IExecutionStrategy"/>
-/// retry does not lose them).</description></item>
-/// <item><description>Pre-pulled <see cref="IDomainEvent"/> instances added directly via
-/// <see cref="Add"/> / <see cref="AddRange"/>.</description></item>
-/// </list>
-/// Outbox mode does not use this buffer; it writes rows to the DbContext directly.
+/// Scoped buffer of domain events that did not come from a tracked aggregate. In Inline mode the
+/// <see cref="DomainEventSaveChangesInterceptor"/> dispatches whatever was added here via <see cref="Add"/> /
+/// <see cref="AddRange"/> (or <see cref="TrackAggregate"/>) after the next successful save in the same DI
+/// scope, ahead of the aggregates' own events, and clears it when a save fails. Aggregates tracked by the
+/// DbContext are followed per DbContext instance by the interceptor itself, not through this buffer.
+/// The collector is not consulted when the DbContext is pooled or built by a factory, because the
+/// interceptor then has no request scope to resolve it from. Outbox mode does not use this buffer.
 /// </summary>
 public sealed class DomainEventCollector
 {

@@ -21,6 +21,7 @@ public sealed class OutboxArchivalHostedService : BackgroundService
     private readonly ILogger<OutboxArchivalHostedService>? logger;
     // v6.5.14: optional liveness mirror consumed by OutboxArchivalHealthCheck.
     private readonly OutboxArchivalState? state;
+    private readonly TimeProvider timeProvider;
 
     /// <summary>Initializes a new archival worker.</summary>
     /// <param name="options">Archival configuration.</param>
@@ -54,6 +55,26 @@ public sealed class OutboxArchivalHostedService : BackgroundService
         ILogger<OutboxArchivalHostedService>? logger,
         IOutboxArchiver? archiver,
         OutboxArchivalState? state)
+        : this(options, scopeFactory, distributedLock, logger, archiver, state, timeProvider: null)
+    {
+    }
+
+    /// <summary>Overload that also takes the clock used for the retention cutoff and the liveness timestamp.</summary>
+    /// <param name="options">Archival configuration.</param>
+    /// <param name="scopeFactory">Factory used to create per-batch DI scopes for resolving <see cref="DbContext"/>.</param>
+    /// <param name="distributedLock">Distributed lock used to coordinate archival across instances.</param>
+    /// <param name="logger">Optional logger.</param>
+    /// <param name="archiver">Archival strategy; <see langword="null"/> means <see cref="DeleteOutboxArchiver"/>.</param>
+    /// <param name="state">Optional liveness mirror read by <see cref="OutboxArchivalHealthCheck"/>.</param>
+    /// <param name="timeProvider">Clock; <see langword="null"/> means <see cref="TimeProvider.System"/>.</param>
+    public OutboxArchivalHostedService(
+        OutboxArchivalOptions options,
+        IServiceScopeFactory scopeFactory,
+        IDistributedLock distributedLock,
+        ILogger<OutboxArchivalHostedService>? logger,
+        IOutboxArchiver? archiver,
+        OutboxArchivalState? state,
+        TimeProvider? timeProvider)
     {
         this.options = options ?? throw new ArgumentNullException(nameof(options));
         this.scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
@@ -61,6 +82,9 @@ public sealed class OutboxArchivalHostedService : BackgroundService
         this.archiver = archiver ?? new DeleteOutboxArchiver();
         this.logger = logger;
         this.state = state;
+        this.timeProvider = timeProvider ?? TimeProvider.System;
+        // Lets the health check scale its default thresholds to how often batches are expected.
+        state?.UsePollingInterval(options.PollingInterval);
     }
 
     /// <summary>
@@ -83,9 +107,9 @@ public sealed class OutboxArchivalHostedService : BackgroundService
     /// <returns>The number of rows archived in this batch.</returns>
     public async Task<int> ArchiveBatchAsync(CancellationToken cancellationToken)
     {
-        var cutoff = DateTime.UtcNow - options.RetentionPeriod;
+        var cutoff = timeProvider.GetUtcNow().UtcDateTime - options.RetentionPeriod;
         await using var scope = scopeFactory.CreateAsyncScope();
-        var ctx = scope.ServiceProvider.GetRequiredService<DbContext>();
+        var db = scope.ServiceProvider.GetRequiredService<DbContext>();
 
         // v6.5.21: time the archiver round-trip (excluding the cheap DI scope/DbContext
         // resolution above). Records on EVERY cycle (success AND failure, zero-row
@@ -95,7 +119,7 @@ public sealed class OutboxArchivalHostedService : BackgroundService
         int archived;
         try
         {
-            archived = await archiver.ArchiveAsync(ctx, cutoff, options, cancellationToken).ConfigureAwait(false);
+            archived = await archiver.ArchiveAsync(db, cutoff, options, cancellationToken).ConfigureAwait(false);
         }
         finally
         {
@@ -115,7 +139,7 @@ public sealed class OutboxArchivalHostedService : BackgroundService
         // v6.5.14: record liveness regardless of whether rows were archived. A successful
         // call with archived == 0 still proves the worker reached the backend - exactly
         // what the OutboxArchivalHealthCheck needs to distinguish "stuck" from "idle".
-        state?.RecordSuccessfulBatch(DateTime.UtcNow);
+        state?.RecordSuccessfulBatch(timeProvider.GetUtcNow().UtcDateTime);
 
         return archived;
     }
@@ -131,40 +155,45 @@ public sealed class OutboxArchivalHostedService : BackgroundService
 
         while (!stoppingToken.IsCancellationRequested)
         {
+            var archivedFullBatch = false;
             try
             {
+                // Another instance owning the lease returns null: skip this cycle and do not archive.
                 await using var handle = await distributedLock.TryAcquireAsync(
                     options.LockKey,
                     options.LockLeaseDuration,
                     stoppingToken).ConfigureAwait(false);
 
-                if (handle is null)
+                if (handle is not null)
                 {
-                    // Why: another instance owns the lease. Sleep and retry — do not archive.
-                    await Task.Delay(options.PollingInterval, stoppingToken).ConfigureAwait(false);
-                    continue;
+                    archivedFullBatch = await ArchiveBatchAsync(stoppingToken).ConfigureAwait(false) >= options.BatchSize;
                 }
-
-                await ArchiveBatchAsync(stoppingToken).ConfigureAwait(false);
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
                 break;
             }
             catch (Exception ex)
             {
-                // v6.5.26: emit the archival failure counter so operators can alert on
-                // the rate. The v6.5.14 liveness gauge only proves the worker is
-                // running; this counter proves it is SUCCEEDING (or not).
+                // Any other failure, an OperationCanceledException from a timed-out sink included, is a failed
+                // batch: counted and logged, then retried. The liveness gauge only proves the worker runs; this
+                // counter proves it succeeds.
                 OutboxArchivalDiagnostics.RecordArchiveFailure(ex.GetType().Name);
                 logger?.LogError(ex, "Outbox archival batch failed.");
             }
 
+            // A full batch means more rows are probably past retention: archive again straight away instead of
+            // capping archival at BatchSize rows per PollingInterval.
+            if (archivedFullBatch)
+            {
+                continue;
+            }
+
             try
             {
-                await Task.Delay(options.PollingInterval, stoppingToken).ConfigureAwait(false);
+                await Task.Delay(options.PollingInterval, timeProvider, stoppingToken).ConfigureAwait(false);
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
                 break;
             }
