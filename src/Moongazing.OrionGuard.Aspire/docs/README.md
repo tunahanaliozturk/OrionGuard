@@ -1,64 +1,40 @@
-﻿# OrionGuard.Aspire
+# OrionGuard.Aspire
 
-Aspire integration for [OrionGuard](https://github.com/tunahanaliozturk/OrionGuard). One call, `builder.AddOrionGuardDefaults()`, subscribes the app's OpenTelemetry pipeline to every OrionGuard meter and activity source, so validation, domain-event, and EF Core outbox telemetry shows up in the Aspire dashboard's Metrics and Traces pages. It also registers the OrionGuard health checks for the packages the app uses.
-
-## Install
+One line in your Aspire ServiceDefaults project puts every OrionGuard meter, activity source and health check into the dashboard — no per-service wiring, no names to copy.
 
 ```bash
 dotnet add package OrionGuard.Aspire
 ```
 
-The package depends on `OrionGuard.OpenTelemetry`, `OpenTelemetry.Api.ProviderBuilderExtensions`, `Microsoft.Extensions.Diagnostics.HealthChecks`, and `Microsoft.Extensions.Hosting.Abstractions`. It does not depend on any Aspire package, because the dashboard reads the OTLP data your app already exports. It does not depend on ASP.NET Core or EF Core either: the health checks from `OrionGuard.AspNetCore` and `OrionGuard.EntityFrameworkCore` are picked up when your app references those packages.
-
-## Quick start
-
-Add one line to `AddServiceDefaults()` in your Aspire ServiceDefaults project (`Extensions.cs` from the `aspire-servicedefaults` template):
-
 ```csharp
+using Microsoft.Extensions.Hosting;
 using Moongazing.OrionGuard.Aspire;
 
-public static TBuilder AddServiceDefaults<TBuilder>(this TBuilder builder) where TBuilder : IHostApplicationBuilder
+public static class OrionGuardServiceDefaults
 {
-    builder.ConfigureOpenTelemetry();
-    builder.AddDefaultHealthChecks();
-    builder.AddOrionGuardDefaults();
-
-    builder.Services.AddServiceDiscovery();
-    builder.Services.ConfigureHttpClientDefaults(http =>
+    // In the ServiceDefaults project's AddServiceDefaults(), next to
+    // ConfigureOpenTelemetry() and AddDefaultHealthChecks().
+    public static TBuilder AddOrionGuard<TBuilder>(this TBuilder builder)
+        where TBuilder : IHostApplicationBuilder
     {
-        http.AddStandardResilienceHandler();
-        http.AddServiceDiscovery();
-    });
-
-    return builder;
+        builder.AddOrionGuardDefaults();
+        return builder;
+    }
 }
 ```
 
-Then, in each service, turn on the instrumentation for your validators after registering them:
+Validation, domain-event and EF Core outbox telemetry now show up on the Aspire dashboard's Metrics and Traces pages for every service that uses these defaults, and `/health` gains the OrionGuard checks the service's packages support.
+
+The package depends on `OrionGuard.OpenTelemetry`, `OpenTelemetry.Api.ProviderBuilderExtensions` and the health-check and hosting abstractions. It depends on no Aspire package — the dashboard reads the OTLP data your app already exports — and on neither ASP.NET Core nor EF Core: the checks from those packages are picked up only when your app references them.
+
+## Turn the instruments on where they are emitted
+
+`AddOrionGuardDefaults()` subscribes to OrionGuard's telemetry; it does not create it. Validator instrumentation is a decorator, so it still has to be applied after the validators exist:
 
 ```csharp
+using Microsoft.Extensions.DependencyInjection;
 using Moongazing.OrionGuard.DependencyInjection;
 using Moongazing.OrionGuard.OpenTelemetry;
-
-var builder = WebApplication.CreateBuilder(args);
-
-builder.AddServiceDefaults();
-
-builder.Services.AddOrionGuard();
-builder.Services.AddValidator<CreateOrder, CreateOrderValidator>();
-builder.Services.AddOrionGuardOpenTelemetry(); // once, after every validator is registered
-
-var app = builder.Build();
-
-app.MapDefaultEndpoints();
-
-app.MapPost("/orders", async (CreateOrder order, IValidator<CreateOrder> validator) =>
-{
-    var result = await validator.ValidateAsync(order);
-    return result.IsValid ? Results.Ok() : Results.BadRequest(result.Errors);
-});
-
-app.Run();
 
 public sealed record CreateOrder(string CustomerId, int Quantity);
 
@@ -70,91 +46,106 @@ public sealed class CreateOrderValidator : AbstractValidator<CreateOrder>
         RuleFor(x => x.Quantity > 0, "Quantity must be positive.", "Quantity");
     }
 }
+
+public static class OrderServiceSetup
+{
+    public static void Add(IServiceCollection services)
+    {
+        services.AddOrionGuard();
+        services.AddValidator<CreateOrder, CreateOrderValidator>();
+        services.AddOrionGuardOpenTelemetry(); // once, after every validator is registered
+    }
+}
 ```
 
-`AddOrionGuardDefaults()` only subscribes to OrionGuard's telemetry. The instruments themselves are turned on where they are emitted: `AddOrionGuardOpenTelemetry()` wraps the `IValidator<T>` registrations that already exist, and `WithOpenTelemetryDomainEvents()` wraps the registered `IDomainEventDispatcher`, which is why both are called after the registrations they wrap. The EF Core outbox records its metrics and spans without any extra call.
+`WithOpenTelemetryDomainEvents()` is the same story for the `IDomainEventDispatcher`. The EF Core outbox needs no extra call — it records its metrics and spans on its own.
 
-## Telemetry
+## What gets subscribed
 
-`AddOrionGuardDefaults()` subscribes the app's meter provider to `Moongazing.OrionGuard` and `Moongazing.OrionGuard.*`, and the app's tracer provider to the activity sources with the same names. The names come from `OrionGuardInstrumentation.MeterName` and `OrionGuardInstrumentation.ActivitySourceName`, and the wildcard covers the meters owned by packages this one does not reference.
+`AddOrionGuardDefaults()` subscribes the app's meter provider to `Moongazing.OrionGuard` and `Moongazing.OrionGuard.*`, and the tracer provider to the activity sources of the same names — the wildcard is what covers meters owned by packages this one does not reference.
 
 | Name | Meter | ActivitySource | Emitted by |
 | --- | --- | --- | --- |
-| `Moongazing.OrionGuard` | yes | yes | Validators wrapped by `AddOrionGuardOpenTelemetry()` (`OrionGuard.OpenTelemetry`) |
-| `Moongazing.OrionGuard.DomainEvents` | yes | yes | The dispatcher wrapped by `WithOpenTelemetryDomainEvents()`, and the `Outbox.Dispatch` spans of the EF Core outbox dispatcher |
-| `Moongazing.OrionGuard.Outbox.Dispatcher` | yes | no | The EF Core outbox dispatcher (`OutboxDispatcherDiagnostics.MeterName`) |
-| `Moongazing.OrionGuard.Outbox.Archival` | yes | no | Outbox archival, when enabled with `UseOutboxArchival()` (`OutboxArchivalDiagnostics.MeterName`) |
+| `Moongazing.OrionGuard` | yes | yes | Validators wrapped by `AddOrionGuardOpenTelemetry()` |
+| `Moongazing.OrionGuard.DomainEvents` | yes | yes | The dispatcher wrapped by `WithOpenTelemetryDomainEvents()`, and the outbox dispatcher's `Outbox.Dispatch` spans |
+| `Moongazing.OrionGuard.Outbox.Dispatcher` | yes | no | The EF Core outbox dispatcher |
+| `Moongazing.OrionGuard.Outbox.Archival` | yes | no | Outbox archival, once `UseOutboxArchival()` is on |
 
-The instrument names and tags are listed in the [OrionGuard.OpenTelemetry README](https://github.com/tunahanaliozturk/OrionGuard/blob/master/src/Moongazing.OrionGuard.OpenTelemetry/docs/README.md) and the [OrionGuard.EntityFrameworkCore README](https://github.com/tunahanaliozturk/OrionGuard/blob/master/src/Moongazing.OrionGuard.EntityFrameworkCore/docs/README.md).
+The subscription goes through `ConfigureOpenTelemetryMeterProvider` and `ConfigureOpenTelemetryTracerProvider`, so it extends the providers your app builds with `AddOpenTelemetry()` and never creates one. Exporters stay yours — the ServiceDefaults template's `ConfigureOpenTelemetry()` adds the OTLP exporter the Aspire dashboard reads. The order of `AddOrionGuardDefaults()` and `AddOpenTelemetry()` does not matter.
 
-The subscription is added through `ConfigureOpenTelemetryMeterProvider` and `ConfigureOpenTelemetryTracerProvider`, so it extends the providers your app creates with `AddOpenTelemetry()` and never creates one itself. The exporters are yours too: the ServiceDefaults template's `ConfigureOpenTelemetry()` adds the OTLP exporter that the Aspire dashboard reads. Without `AddOpenTelemetry()` in the app, the call collects nothing. The order of `AddOrionGuardDefaults()` and `AddOpenTelemetry()` does not matter.
+Instrument names and tags are listed in the [OrionGuard.OpenTelemetry](https://www.nuget.org/packages/OrionGuard.OpenTelemetry) and [OrionGuard.EntityFrameworkCore](https://www.nuget.org/packages/OrionGuard.EntityFrameworkCore) READMEs.
 
 ## Health checks
 
 | Name | Check | Added when | Default | Tags |
 | --- | --- | --- | --- | --- |
 | `orionguard` | `OrionGuardHealthCheck` | The app references `OrionGuard.AspNetCore` | on | `validation`, `orionguard` |
-| `orionguard-outbox-archival` | `OutboxArchivalHealthCheck` | The app references `OrionGuard.EntityFrameworkCore` and enables archival with `UseOutboxArchival()` | off | `outbox`, `orionguard` |
+| `orionguard-outbox-archival` | `OutboxArchivalHealthCheck` | The app references `OrionGuard.EntityFrameworkCore` and enables archival | off | `outbox`, `orionguard` |
 
-- `orionguard` reports `Degraded` when `AddOrionGuard()` was not called, and `Healthy` otherwise. With the default health endpoint options `Degraded` still answers `200`, so a missing `AddOrionGuard()` does not take a service out of rotation. Turn the check off with `DisableValidationHealthCheck`.
-- `orionguard-outbox-archival` reports `Degraded` before the archival worker's first batch or once the last batch is older than `DegradedAfter`, and `Unhealthy` once it is older than `UnhealthyAfter`. Turn it on with `EnableOutboxArchivalHealthCheck`. Thresholds you leave unset scale with the archival `PollingInterval` - two intervals for `Degraded`, three for `Unhealthy`, never below 5 and 15 minutes - so the default 1-hour interval gives 2 and 3 hours and the check does not flap between batches. Set them on an `OutboxArchivalHealthCheckOptions` singleton only to tighten them, as the [OrionGuard.EntityFrameworkCore README](https://github.com/tunahanaliozturk/OrionGuard/blob/master/src/Moongazing.OrionGuard.EntityFrameworkCore/docs/README.md) shows. It is off by default because it reports on a background maintenance job: once it is in the readiness report, archival falling behind takes the service out of rotation. Services that do not enable archival skip the check, so the option can be set once in ServiceDefaults.
-- The ServiceDefaults template's `MapDefaultEndpoints()` runs every check on `/health`, so both count toward readiness. Neither is tagged `live`, so `/alive` is unaffected.
-- The checks are added when the health check options are first read, after the app has registered everything. The order of `AddOrionGuardDefaults()` and `AddOrionGuardEfCore(...)` therefore does not matter.
-- A check the app already registered under the same name is kept and not added again, so calling `AddHealthChecks().AddOrionGuardCheck()` as well is harmless.
-- The names are available as `OrionGuardAspireExtensions.ValidationHealthCheckName` and `OrionGuardAspireExtensions.OutboxArchivalHealthCheckName`.
+`orionguard` reports `Degraded` when `AddOrionGuard()` was never called and `Healthy` otherwise; with the default endpoint options `Degraded` still answers 200, so a missing registration does not pull a service out of rotation.
 
-`AddOrionGuardDefaults()` calls `AddHealthChecks()`, so `HealthCheckService` is registered even in a worker service without the ServiceDefaults health checks.
+`orionguard-outbox-archival` is off by default on purpose: it reports on a background maintenance job, and once it counts towards readiness, archival falling behind takes the service out of rotation. Turn it on with `EnableOutboxArchivalHealthCheck`. Thresholds you leave unset scale with the archival `PollingInterval` — two intervals for `Degraded`, three for `Unhealthy`, never below 5 and 15 minutes — so the check does not flap between hourly batches. Services that do not enable archival skip it, which is why the option can be set once in ServiceDefaults.
+
+Both checks are added when the health-check options are first read, after the app has registered everything, so the order of `AddOrionGuardDefaults()` and `AddOrionGuardEfCore(...)` does not matter either. A check you already registered under the same name is kept rather than added twice, and the names are available as `OrionGuardAspireExtensions.ValidationHealthCheckName` and `OrionGuardAspireExtensions.OutboxArchivalHealthCheckName`.
+
+`AddOrionGuardDefaults()` calls `AddHealthChecks()`, so `HealthCheckService` exists even in a worker service with no ServiceDefaults health endpoints.
 
 ## Options
-
-Pass a callback to turn the health checks on or off:
 
 | Option | Default | Effect |
 | --- | --- | --- |
 | `DisableValidationHealthCheck` | `false` | `true` skips the `orionguard` check |
-| `EnableOutboxArchivalHealthCheck` | `false` | `true` adds the `orionguard-outbox-archival` check in services that enable archival |
+| `EnableOutboxArchivalHealthCheck` | `false` | `true` adds `orionguard-outbox-archival` in services that enable archival |
 
 ```csharp
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Moongazing.OrionGuard.Aspire;
 using Moongazing.OrionGuard.EntityFrameworkCore.Outbox.Archival;
 
-builder.AddOrionGuardDefaults(options =>
+public static class OrionGuardAspireOptionsSample
 {
-    options.DisableValidationHealthCheck = true;
-    options.EnableOutboxArchivalHealthCheck = true;
-});
+    public static void Configure(IHostApplicationBuilder builder)
+    {
+        builder.AddOrionGuardDefaults(options =>
+        {
+            options.DisableValidationHealthCheck = true;
+            options.EnableOutboxArchivalHealthCheck = true;
+        });
 
-// Archival polls once an hour by default, so allow more than an hour between batches.
-builder.Services.AddSingleton(new OutboxArchivalHealthCheckOptions
-{
-    DegradedAfter = TimeSpan.FromHours(2),
-    UnhealthyAfter = TimeSpan.FromHours(3),
-});
+        // Archival polls once an hour by default, so allow more than an hour between batches.
+        builder.Services.AddSingleton(new OutboxArchivalHealthCheckOptions
+        {
+            DegradedAfter = TimeSpan.FromHours(2),
+            UnhealthyAfter = TimeSpan.FromHours(3),
+        });
+    }
+}
 ```
 
-## Calling it more than once
+Calling `AddOrionGuardDefaults()` a second time registers nothing new, but its options callback still runs, after the earlier ones — so a service can override what its ServiceDefaults project configured.
 
-A second call registers nothing new. Its options callback is still applied, after the earlier ones, so a service can change a check that its ServiceDefaults project configured:
+## What this does not do
 
-```csharp
-using Moongazing.OrionGuard.Aspire;
-
-builder.AddServiceDefaults(); // calls builder.AddOrionGuardDefaults()
-builder.AddOrionGuardDefaults(options => options.DisableValidationHealthCheck = true);
-```
+- **It does not produce telemetry.** It only subscribes. Without `AddOrionGuardOpenTelemetry()` (validators) or `WithOpenTelemetryDomainEvents()` (the dispatcher), those meters and sources emit nothing and the dashboard pages stay empty; the outbox is the exception, since it instruments itself.
+- **It does not set up OpenTelemetry.** With no `AddOpenTelemetry()` in the app, the call collects nothing at all. It also adds no exporter — that is the ServiceDefaults template's job.
+- **It cannot see validators registered after `AddOrionGuardOpenTelemetry()`.** That is a decorator over what is already in the collection, so registration order matters even though this package's own order does not.
+- **It reads no Aspire API.** There is no dependency on an Aspire package and no resource, connection string or configuration is discovered; it is an OpenTelemetry and health-check wiring helper that happens to be exactly what an Aspire app needs.
+- **Neither check is tagged `live`**, so `/alive` is unaffected — and `orionguard` only reports whether the validation stack is wired up, not whether any validator works.
 
 ## Targets
 
-- `net8.0`, `net9.0`, `net10.0`
-- `OpenTelemetry.Api.ProviderBuilderExtensions` 1.19.0 or later, and an app that sets up OpenTelemetry with `OpenTelemetry.Extensions.Hosting` (`AddOpenTelemetry()`), as the Aspire ServiceDefaults template does
-- `AddOrionGuardDefaults` extends `IHostApplicationBuilder` and returns the builder type you call it on, like `AddServiceDefaults`
+`net8.0`, `net9.0`, `net10.0`; `OpenTelemetry.Api.ProviderBuilderExtensions` 1.x, plus an app that sets OpenTelemetry up with `OpenTelemetry.Extensions.Hosting` (`AddOpenTelemetry()`), as the Aspire ServiceDefaults template does. `AddOrionGuardDefaults` extends `IHostApplicationBuilder` and returns the builder type you called it on, like `AddServiceDefaults`.
+
+## With the rest of OrionGuard
+
+[OrionGuard.OpenTelemetry](https://www.nuget.org/packages/OrionGuard.OpenTelemetry) (the validation and domain-event instrumentation) · [OrionGuard.AspNetCore](https://www.nuget.org/packages/OrionGuard.AspNetCore) (the validation health check) · [OrionGuard.EntityFrameworkCore](https://www.nuget.org/packages/OrionGuard.EntityFrameworkCore) (the outbox and its archival health check)
 
 ## Documentation
 
 - [Repository and full documentation](https://github.com/tunahanaliozturk/OrionGuard)
 - [Changelog](https://github.com/tunahanaliozturk/OrionGuard/blob/master/CHANGELOG.md)
 - [Aspire service defaults](https://aspire.dev/get-started/csharp-service-defaults/)
-- Related packages: [OrionGuard.OpenTelemetry](https://www.nuget.org/packages/OrionGuard.OpenTelemetry) (the validation and domain-event instrumentation), [OrionGuard.AspNetCore](https://www.nuget.org/packages/OrionGuard.AspNetCore) (the validation health check), [OrionGuard.EntityFrameworkCore](https://www.nuget.org/packages/OrionGuard.EntityFrameworkCore) (the outbox and its archival health check)
 
 ## License
 

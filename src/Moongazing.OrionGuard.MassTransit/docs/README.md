@@ -1,49 +1,17 @@
 # OrionGuard.MassTransit
 
-MassTransit integration for [OrionGuard](https://github.com/tunahanaliozturk/OrionGuard). A consume filter validates every consumed message with its registered validators, so an invalid message faults before it reaches the consumer and ends up in the endpoint's `_error` queue.
-
-## Install
+Validates a message before your consumer sees it, so a malformed message faults in the pipe and lands in the endpoint's `_error` queue instead of half-processing.
 
 ```bash
 dotnet add package OrionGuard.MassTransit
 ```
 
-Use MassTransit 8.x, the last Apache-2.0 licensed line. The package is built against MassTransit 8.5.10; MassTransit 9 and later are commercially licensed and not supported. The core `OrionGuard` package is installed as a dependency. You choose the transport package yourself (`MassTransit.RabbitMQ`, `MassTransit.Azure.ServiceBus.Core`, and so on).
-
-## Quick start
-
-Register your validators in DI, then add the filter in the transport callback:
-
 ```csharp
 using MassTransit;
+using Microsoft.Extensions.DependencyInjection;
 using Moongazing.OrionGuard.DependencyInjection;
 using Moongazing.OrionGuard.MassTransit;
 
-builder.Services.AddOrionGuard();
-builder.Services.AddValidator<SubmitOrder, SubmitOrderValidator>();
-
-builder.Services.AddMassTransit(x =>
-{
-    x.AddConsumer<SubmitOrderConsumer>();
-
-    x.UsingRabbitMq((context, cfg) => // from MassTransit.RabbitMQ
-    {
-        cfg.UseMessageRetry(r =>
-        {
-            r.Interval(3, TimeSpan.FromSeconds(5));
-            // A validation failure is deterministic, so retrying it cannot succeed.
-            r.Ignore<MessageValidationException>();
-        });
-
-        cfg.UseOrionGuardValidation(context);
-        cfg.ConfigureEndpoints(context);
-    });
-});
-```
-
-A validator is an ordinary OrionGuard validator for the message type:
-
-```csharp
 public sealed record SubmitOrder(string OrderId, string CustomerEmail);
 
 public sealed class SubmitOrderValidator : AbstractValidator<SubmitOrder>
@@ -54,57 +22,102 @@ public sealed class SubmitOrderValidator : AbstractValidator<SubmitOrder>
         RuleFor(x => x.CustomerEmail, "CustomerEmail", p => p.NotEmpty().Email());
     }
 }
+
+public sealed class SubmitOrderConsumer : IConsumer<SubmitOrder>
+{
+    public Task Consume(ConsumeContext<SubmitOrder> context) => Task.CompletedTask;
+}
+
+public static class BusSetup
+{
+    public static void Add(IServiceCollection services)
+    {
+        services.AddOrionGuard();
+        services.AddValidator<SubmitOrder, SubmitOrderValidator>();
+
+        services.AddMassTransit(x =>
+        {
+            x.AddConsumer<SubmitOrderConsumer>();
+
+            x.UsingInMemory((context, cfg) => // or UsingRabbitMq, UsingAzureServiceBus, ...
+            {
+                cfg.UseMessageRetry(r =>
+                {
+                    r.Interval(3, TimeSpan.FromSeconds(5));
+                    // A validation failure is deterministic, so retrying it cannot succeed.
+                    r.Ignore<MessageValidationException>();
+                });
+
+                cfg.UseOrionGuardValidation(context);
+                cfg.ConfigureEndpoints(context);
+            });
+        });
+    }
+}
 ```
 
-`SubmitOrderConsumer.Consume` now only receives messages that passed validation.
+`SubmitOrderConsumer.Consume` now only receives messages that passed validation. An invalid one throws `MessageValidationException`, which carries every `ValidationError` from every validator in `Errors` plus the consumed `MessageType`; its `ToString()` appends one line per error. The core `OrionGuard` package comes along as a dependency; the transport package (`MassTransit.RabbitMQ`, `MassTransit.Azure.ServiceBus.Core`, ...) is your choice.
 
-## What this package adds
+## Where to put the filter
 
-- `OrionGuardConsumeFilter<TMessage>`: a MassTransit `IFilter<ConsumeContext<TMessage>>`. It runs every `IValidator<TMessage>` registered for the consumed message type, one after another. If any of them reports an error, it throws `MessageValidationException` and the consumer does not run.
-- `MessageValidationException`: carries every `ValidationError` from every validator in `Errors`, plus the consumed `MessageType`. Its `ToString()` appends one line per error.
-- `UseOrionGuardValidation(IRegistrationContext)` on `IConsumePipeConfigurator`: adds the filter as a scoped consume filter. Call it on the bus configurator to validate on every receive endpoint, or on one receive endpoint configurator to validate only there.
+`UseOrionGuardValidation(IRegistrationContext)` is an extension on `IConsumePipeConfigurator`. On the bus configurator it covers every receive endpoint; on one endpoint configurator it covers only that endpoint:
 
-Message types with no registered validator pass through unchanged.
+```csharp
+using MassTransit;
+using Moongazing.OrionGuard.MassTransit;
+
+public sealed record SubmitOrder(string OrderId);
+
+public sealed class SubmitOrderConsumer : IConsumer<SubmitOrder>
+{
+    public Task Consume(ConsumeContext<SubmitOrder> context) => Task.CompletedTask;
+}
+
+public static class OneEndpointOnly
+{
+    public static void Configure(IBusRegistrationContext context, IBusFactoryConfigurator cfg) =>
+        cfg.ReceiveEndpoint("submit-order", e =>
+        {
+            e.UseOrionGuardValidation(context);
+            e.ConfigureConsumer<SubmitOrderConsumer>(context);
+        });
+}
+```
 
 ## What happens to an invalid message
 
-The filter throws inside the consume pipe, so MassTransit handles the exception like any other consume fault:
+The filter throws inside the consume pipe, so MassTransit treats it as any other consume fault:
 
-1. A `UseMessageRetry` policy wraps the filter. Without `r.Ignore<MessageValidationException>()`, every retry validates the message again and fails the same way.
-2. When the message is not retried again, MassTransit moves it to the `<queue>_error` queue. The `MT-Fault-ExceptionType` header is `Moongazing.OrionGuard.MassTransit.MessageValidationException`, and `MT-Fault-Message` names the message type and the error count.
-3. MassTransit publishes a `ReceiveFault` event. It does not publish `Fault<TMessage>`, because no consumer ran.
+1. A `UseMessageRetry` policy wraps the filter. Without `r.Ignore<MessageValidationException>()` every retry re-validates and fails identically — the same call works in `UseDelayedRedelivery`, which takes the same configurator.
+2. When no retry is left, MassTransit moves the message to `<queue>_error`. `MT-Fault-ExceptionType` is `Moongazing.OrionGuard.MassTransit.MessageValidationException`, and `MT-Fault-Message` names the message type and the error count.
+3. MassTransit publishes `ReceiveFault`. It does not publish `Fault<TMessage>`, because no consumer ran.
 
-The same `r.Ignore<MessageValidationException>()` call works in `UseDelayedRedelivery`, which takes the same retry configurator.
+## How validators are resolved
 
-## One endpoint only
+`OrionGuardConsumeFilter<TMessage>` is a MassTransit scoped filter, created from the consume scope — the same scope the consumer comes from — so scoped validators and validators holding a scoped `DbContext` share the consumer's instances and are disposed with it. Every `IValidator<TMessage>` registered for the type runs, one after another, through `ValidateAsync` with `context.CancellationToken`.
 
-```csharp
-x.UsingRabbitMq((context, cfg) =>
-{
-    cfg.ReceiveEndpoint("submit-order", e =>
-    {
-        e.UseOrionGuardValidation(context);
-        e.ConfigureConsumer<SubmitOrderConsumer>(context);
-    });
-});
-```
+Validators are resolved for the *consumed* type, the `T` in `IConsumer<T>`, not for the runtime type of the deserialized object. That is what makes interface contracts work: MassTransit materializes `IOrderSubmitted` into a generated class, and a validator registered as `IValidator<IOrderSubmitted>` still applies.
 
-## Validation details
+## What this does not do
 
-- The filter is a MassTransit scoped filter. MassTransit creates it from the consume scope, the same scope the consumer is resolved from, so scoped validators and validators with scoped dependencies (a `DbContext`, for example) share the consumer's instances and are disposed with the scope.
-- It calls `ValidateAsync` with `context.CancellationToken`, so both synchronous rules and `RuleForAsync` rules run.
-- Validators are resolved for the consumed type, the `T` of `IConsumer<T>`, not for the runtime type of the message. MassTransit deserializes an interface contract into a generated class, so a validator registered as `IValidator<IOrderSubmitted>` still applies to a consumer of `IOrderSubmitted`.
+- **It does not validate what you publish or send.** This is a consume filter only; an invalid message is caught at the receiving end, after it has already been through the broker.
+- **A message type with no registered validator passes through**, silently. There is no assembly scanning here — register each validator with `AddValidator<T, TValidator>()`.
+- **It cannot tell the sender what was wrong.** The failure is a fault, not a reply; the errors reach the `_error` queue and your fault observers, not the publisher.
+- **Retries are not ignored for you.** Without `r.Ignore<MessageValidationException>()` a validation failure burns the whole retry budget before it dead-letters.
+- **MassTransit 8.x only.** MassTransit 9 moved to a commercial licence, so this package stays on the Apache-2.0 line and its package reference carries an upper bound below 9.0.0 — a solution that pulls MassTransit 9 fails restore rather than silently running on an unsupported major.
 
 ## Targets
 
-- `net8.0`, `net9.0`, `net10.0`
-- `MassTransit` `[8.5.10,9.0.0)`. MassTransit 9 moved to a commercial license, so this package stays on the Apache-2.0 8.x line, and the upper bound makes an application that pulls in MassTransit 9 fail restore instead of silently running against an unsupported major.
+`net8.0`, `net9.0`, `net10.0`; MassTransit 8.x.
+
+## With the rest of OrionGuard
+
+[OrionGuard](https://www.nuget.org/packages/OrionGuard) (validators and `AddValidator`) · [OrionGuard.MediatR](https://www.nuget.org/packages/OrionGuard.MediatR) (the same validation for in-process requests) · [OrionGuard.EntityFrameworkCore](https://www.nuget.org/packages/OrionGuard.EntityFrameworkCore) (publish events through a transactional outbox) · [OrionGuard.OpenTelemetry](https://www.nuget.org/packages/OrionGuard.OpenTelemetry)
 
 ## Documentation
 
 - [Repository and full documentation](https://github.com/tunahanaliozturk/OrionGuard)
 - [Changelog](https://github.com/tunahanaliozturk/OrionGuard/blob/master/CHANGELOG.md)
-- Related packages: [OrionGuard](https://www.nuget.org/packages/OrionGuard) (validators and `AddValidator`), [OrionGuard.MediatR](https://www.nuget.org/packages/OrionGuard.MediatR) (the same validation for in-process requests), [OrionGuard.OpenTelemetry](https://www.nuget.org/packages/OrionGuard.OpenTelemetry) (validation metrics and traces)
 
 ## License
 

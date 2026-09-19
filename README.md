@@ -18,7 +18,7 @@
 
 ---
 
-> **The 6.x line is current — latest v6.8.1.** 9 ecosystem packages, 14-language localization, Dynamic Rule Engine, source generators, ASP.NET Core / MediatR / Blazor / gRPC / SignalR integration, and much more. Recent: a FluentValidation migration codemod (v6.8.0 release) and an `OrionGuard.OpenTelemetry` 6.7.1 security bump (v6.8.1 release).
+> Guards, object validation, and DDD primitives in one core package, with integrations for ASP.NET Core, MediatR, MassTransit, Blazor, gRPC, SignalR, Hangfire, EF Core and OpenTelemetry — plus source generators, a transactional outbox, and validation messages in 14 languages.
 > [See what's new in the CHANGELOG.](CHANGELOG.md) · [What's coming next (12-month roadmap)](docs/ROADMAP.md)
 
 ---
@@ -52,7 +52,7 @@ flowchart LR
     class Throw,Return,PD out
 ```
 
-In an ASP.NET Core minimal-API endpoint the same pipeline is wrapped by the OrionGuard endpoint filter, which intercepts the request before the handler runs and short-circuits with a ProblemDetails payload when validation fails. The default status code is 422 (Unprocessable Entity), configurable per request via `OrionGuardEndpointFilterOptions.DefaultStatusCode`.
+In an ASP.NET Core minimal-API endpoint the same pipeline is wrapped by the OrionGuard endpoint filter, which intercepts the request before the handler runs and short-circuits with a ProblemDetails payload when validation fails. The default status code is 422, set by `OrionGuardAspNetCoreOptions.DefaultStatusCode`; a validator that returns `GuardResult.FailureWithStatus(...)` overrides it for that response.
 
 ```mermaid
 sequenceDiagram
@@ -145,28 +145,32 @@ if (result.IsInvalid)
 
 ## Ecosystem Packages
 
+Every package below ships from this repository. Install the core package plus whichever integrations you actually use; each one links to its own README on nuget.org.
+
 | Package | Install | Purpose |
 |---------|---------|---------|
-| `OrionGuard` | `dotnet add package OrionGuard` | Core validation library |
-| `OrionGuard.AspNetCore` | `dotnet add package OrionGuard.AspNetCore` | Middleware, filters, ProblemDetails, IOptions |
-| `OrionGuard.MediatR` | `dotnet add package OrionGuard.MediatR` | CQRS pipeline validation |
-| `OrionGuard.Generators` | `dotnet add package OrionGuard.Generators` | Compile-time source generator |
-| `OrionGuard.Swagger` | `dotnet add package OrionGuard.Swagger` | OpenAPI schema generation (validator to OpenAPI) |
-| `OrionGuard.OpenApi` | `dotnet add package OrionGuard.OpenApi` | OpenAPI-first validators (OpenAPI to validator) |
-| `OrionGuard.SchemaExport` | `dotnet add package OrionGuard.SchemaExport` | JSON Schema + TypeScript interfaces from your models |
-| `OrionGuard.OpenTelemetry` | `dotnet add package OrionGuard.OpenTelemetry` | Metrics & tracing |
-| `OrionGuard.Aspire` | `dotnet add package OrionGuard.Aspire` | One-call Aspire setup: OrionGuard telemetry in the dashboard + health checks |
-| `OrionGuard.Blazor` | `dotnet add package OrionGuard.Blazor` | EditForm validation |
-| `OrionGuard.Grpc` | `dotnet add package OrionGuard.Grpc` | Server interceptor |
-| `OrionGuard.SignalR` | `dotnet add package OrionGuard.SignalR` | Hub method validation |
-| `OrionGuard.Hangfire` | `dotnet add package OrionGuard.Hangfire` | Background job argument validation at enqueue time |
-| `OrionGuard.MassTransit` | `dotnet add package OrionGuard.MassTransit` | Consume filter that validates messages before the consumer (MassTransit 8.x) |
-| `OrionGuard.EntityFrameworkCore` | `dotnet add package OrionGuard.EntityFrameworkCore` | EF Core SaveChanges interceptor + transactional outbox |
-| `OrionGuard.Locks.Redis` | `dotnet add package OrionGuard.Locks.Redis` | Redis backend for the outbox `IDistributedLock` |
-| `OrionGuard.Testing` | `dotnet add package OrionGuard.Testing` | DomainEventCapture + InMemoryDispatcher + assertions |
-| `OrionGuard.Templates` | `dotnet new install OrionGuard.Templates` | `dotnet new` project templates: `orionguard-webapi`, `orionguard-outbox` |
-
-New in v6.5.0: `OrionGuard.Locks.Redis` bridges OrionGuard's v6.4 `IDistributedLock` primitive to the standalone [OrionLock](https://github.com/tunahanaliozturk/OrionLock) Redis backend, so multi-instance outbox dispatchers can coordinate through Redis instead of the default `OrionGuard_OutboxLocks` DB table. One call on the EF Core options: `opts.UseOrionLockRedis("localhost:6379")`. See the [CHANGELOG](CHANGELOG.md#650---2026-06-01) for migration notes.
+| [`OrionGuard`](https://www.nuget.org/packages/OrionGuard) | `dotnet add package OrionGuard` | Guards, object validation, and the DDD primitives everything else builds on |
+| [`OrionGuard.AspNetCore`](https://www.nuget.org/packages/OrionGuard.AspNetCore) | `dotnet add package OrionGuard.AspNetCore` | RFC 9457 ProblemDetails, Minimal API and MVC filters, options validation, health check |
+| [`OrionGuard.MediatR`](https://www.nuget.org/packages/OrionGuard.MediatR) | `dotnet add package OrionGuard.MediatR` | Validates a MediatR request or stream before its handler, plus a MediatR event dispatcher |
+| [`OrionGuard.MassTransit`](https://www.nuget.org/packages/OrionGuard.MassTransit) | `dotnet add package OrionGuard.MassTransit` | Consume filter that faults an invalid message before the consumer sees it |
+| [`OrionGuard.Blazor`](https://www.nuget.org/packages/OrionGuard.Blazor) | `dotnet add package OrionGuard.Blazor` | `EditForm` validation components for server-hosted Blazor |
+| [`OrionGuard.Grpc`](https://www.nuget.org/packages/OrionGuard.Grpc) | `dotnet add package OrionGuard.Grpc` | Server interceptor that rejects an invalid message with `InvalidArgument` |
+| [`OrionGuard.SignalR`](https://www.nuget.org/packages/OrionGuard.SignalR) | `dotnet add package OrionGuard.SignalR` | Hub filter that validates hub method arguments |
+| [`OrionGuard.Hangfire`](https://www.nuget.org/packages/OrionGuard.Hangfire) | `dotnet add package OrionGuard.Hangfire` | Rejects an invalid background job at enqueue time, not on a worker |
+| [`OrionGuard.Swagger`](https://www.nuget.org/packages/OrionGuard.Swagger) | `dotnet add package OrionGuard.Swagger` | Writes OrionGuard attribute constraints into Swashbuckle schemas |
+| [`OrionGuard.OpenApi`](https://www.nuget.org/packages/OrionGuard.OpenApi) | `dotnet add package OrionGuard.OpenApi` | Generates a validator from an OpenAPI 3 schema at build time |
+| [`OrionGuard.SchemaExport`](https://www.nuget.org/packages/OrionGuard.SchemaExport) | `dotnet add package OrionGuard.SchemaExport` | Exports a model's attribute rules as JSON Schema or a TypeScript interface |
+| [`OrionGuard.Generators`](https://www.nuget.org/packages/OrionGuard.Generators) | `dotnet add package OrionGuard.Generators` | `[GenerateValidator]` compile-time validators, no reflection |
+| [`OrionGuard.OpenTelemetry`](https://www.nuget.org/packages/OrionGuard.OpenTelemetry) | `dotnet add package OrionGuard.OpenTelemetry` | Metrics and spans for validation and domain-event dispatch |
+| [`OrionGuard.Aspire`](https://www.nuget.org/packages/OrionGuard.Aspire) | `dotnet add package OrionGuard.Aspire` | One call to put every OrionGuard meter, activity source and health check into an Aspire app |
+| [`OrionGuard.EntityFrameworkCore`](https://www.nuget.org/packages/OrionGuard.EntityFrameworkCore) | `dotnet add package OrionGuard.EntityFrameworkCore` | Dispatches domain events on `SaveChanges`, inline or through a transactional outbox |
+| [`OrionGuard.Outbox.Dashboard`](https://www.nuget.org/packages/OrionGuard.Outbox.Dashboard) | `dotnet add package OrionGuard.Outbox.Dashboard` | Authorized JSON endpoints to list, replay and discard failed outbox rows |
+| [`OrionGuard.Outbox.PostgresNotify`](https://www.nuget.org/packages/OrionGuard.Outbox.PostgresNotify) | `dotnet add package OrionGuard.Outbox.PostgresNotify` | Wakes the outbox dispatcher on PostgreSQL `LISTEN`/`NOTIFY` instead of polling |
+| [`OrionGuard.Outbox.SqlServerBroker`](https://www.nuget.org/packages/OrionGuard.Outbox.SqlServerBroker) | `dotnet add package OrionGuard.Outbox.SqlServerBroker` | Wakes the outbox dispatcher on SQL Server Service Broker instead of polling |
+| [`OrionGuard.Locks.Redis`](https://www.nuget.org/packages/OrionGuard.Locks.Redis) | `dotnet add package OrionGuard.Locks.Redis` | Redis lease for the outbox `IDistributedLock`, instead of a lock table |
+| [`OrionGuard.Testing`](https://www.nuget.org/packages/OrionGuard.Testing) | `dotnet add package OrionGuard.Testing` | Domain-event capture, an in-memory dispatcher, and runner-agnostic assertions |
+| [`OrionGuard.Migration`](https://www.nuget.org/packages/OrionGuard.Migration) | `dotnet tool install OrionGuard.Migration` | dotnet tool that rewrites FluentValidation validators onto OrionGuard |
+| [`OrionGuard.Templates`](https://www.nuget.org/packages/OrionGuard.Templates) | `dotnet new install OrionGuard.Templates` | `dotnet new` templates: `orionguard-webapi`, `orionguard-outbox` |
 
 ---
 

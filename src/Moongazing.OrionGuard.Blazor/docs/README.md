@@ -1,41 +1,10 @@
 # OrionGuard.Blazor
 
-Blazor `EditForm` validation components for [OrionGuard](https://github.com/tunahanaliozturk/OrionGuard). `<OrionGuardValidator />` validates the form model with OrionGuard attributes, and `<OrionGuardFluentValidator TModel="..." />` validates it with a registered `IValidator<TModel>`.
-
-## Install
+Runs your OrionGuard rules inside an `EditForm`, so the same validator the API uses also drives the form's field messages.
 
 ```bash
 dotnet add package OrionGuard.Blazor
 ```
-
-The core `OrionGuard` package is installed as a dependency.
-
-## Quick start
-
-Register the services and a validator in `Program.cs`:
-
-```csharp
-using Moongazing.OrionGuard.Blazor.Extensions;
-using Moongazing.OrionGuard.DependencyInjection;
-
-builder.Services.AddOrionGuardBlazor();
-builder.Services.AddValidator<SignUpModel, SignUpModelValidator>();
-
-public sealed class SignUpModel
-{
-    public string Email { get; set; } = "";
-}
-
-public sealed class SignUpModelValidator : AbstractValidator<SignUpModel>
-{
-    public SignUpModelValidator()
-    {
-        RuleFor(x => x.Email, nameof(SignUpModel.Email), p => p.NotEmpty().Email());
-    }
-}
-```
-
-Use the component inside an `EditForm`:
 
 ```razor
 @using Moongazing.OrionGuard.Blazor
@@ -56,42 +25,67 @@ Use the component inside an `EditForm`:
 }
 ```
 
-`AddOrionGuardBlazor()` only calls `AddOrionGuard()`. It does not register validators.
+Typing an invalid address and leaving the field puts the validator's message under that input; submitting with it invalid never calls `Save`. The core `OrionGuard` package comes along as a dependency.
 
-## Components
+The component resolves `IValidator<SignUpModel>` from DI, so register it:
 
-`<OrionGuardValidator />`
+```csharp
+using Microsoft.Extensions.DependencyInjection;
+using Moongazing.OrionGuard.Blazor.Extensions;
+using Moongazing.OrionGuard.DependencyInjection;
 
-- Validates `EditContext.Model` with `AttributeValidator`, using the attributes from `Moongazing.OrionGuard.Attributes`: `[NotNull]`, `[NotEmpty]`, `[Length]`, `[Email]`, `[Range]`, `[Regex]`, `[Positive]`.
-- Needs no DI registration.
-- Does not evaluate `System.ComponentModel.DataAnnotations` attributes. Use `<DataAnnotationsValidator />` for those.
+public sealed class SignUpModel
+{
+    public string Email { get; set; } = "";
+}
 
-`<OrionGuardFluentValidator TModel="..." />`
+public sealed class SignUpModelValidator : AbstractValidator<SignUpModel>
+{
+    public SignUpModelValidator()
+    {
+        RuleFor(x => x.Email, nameof(SignUpModel.Email), p => p.NotEmpty().Email());
+    }
+}
 
-- Injects `IValidator<TModel>`, so a validator for the model type must be registered.
-- Calls the synchronous `Validate(model)`, so `RuleForAsync` rules do not run. This is deliberate: `EditContext.Validate()` raises its validation events synchronously and returns the result at once, so an async rule could not finish before the form decides whether it is valid. If a form depends on async rules, inject `IValidator<TModel>` and await `ValidateAsync` in the submit handler.
+public static class BlazorSetup
+{
+    public static void Add(IServiceCollection services) =>
+        services
+            .AddOrionGuardBlazor()
+            .AddValidator<SignUpModel, SignUpModelValidator>();
+}
+```
 
-## Behaviour
+`AddOrionGuardBlazor()` only calls `AddOrionGuard()`; it registers no validators.
 
-- Both components need a cascading `EditContext`, so place them inside an `EditForm`. Otherwise they throw `InvalidOperationException`.
-- On submit, all messages are cleared and the whole model is validated.
-- When a field changes, the whole model is validated again, but only the errors for that field are shown.
-- Errors are attached to `FieldIdentifier(model, error.ParameterName)`. The parameter name must match the property name for `<ValidationMessage For="..." />` to show the message. Errors for nested objects do not map to a field, but they still appear in `<ValidationSummary />`.
+## The two components
 
-## Hosting
+**`<OrionGuardFluentValidator TModel="..." />`** injects `IValidator<TModel>` and runs it. A validator for the model type must be registered, or the component cannot be constructed.
 
-The package references the `Microsoft.AspNetCore.App` shared framework, so it is meant for server-hosted Blazor (Blazor Server or interactive server rendering). A Blazor WebAssembly client project cannot reference that shared framework.
+**`<OrionGuardValidator />`** needs no registration at all: it validates `EditContext.Model` with `AttributeValidator`, using the attributes from `Moongazing.OrionGuard.Attributes` — `[NotNull]`, `[NotEmpty]`, `[Length]`, `[Email]`, `[Range]`, `[Regex]`, `[Positive]`.
+
+Both react to the same `EditContext` events: on submit the messages are cleared and the whole model is validated; when one field changes the whole model is validated again but only that field's errors are shown. An error is attached to `FieldIdentifier(model, error.ParameterName)`.
+
+## What this does not do
+
+- **No async rules in the form.** `OrionGuardFluentValidator` calls the synchronous `Validate(model)`, so `RuleForAsync` rules never run here. That is forced by Blazor: `EditContext.Validate()` raises its events synchronously and returns a verdict immediately, so an async rule could not finish in time. For a "is this email taken" check, inject `IValidator<TModel>` into the page and `await ValidateAsync(...)` in the submit handler.
+- **`<OrionGuardValidator />` ignores `System.ComponentModel.DataAnnotations`.** `[Required]` and friends are not read; add `<DataAnnotationsValidator />` alongside it if your model uses both.
+- **The error's `ParameterName` must equal the property name** for `<ValidationMessage For="..." />` to find it. An error for a nested object does not map to a field — it still shows in `<ValidationSummary />`, just not next to an input.
+- **Both components require a cascading `EditContext`.** Outside an `EditForm` they throw `InvalidOperationException`.
+- **Server-hosted Blazor only.** The package references the `Microsoft.AspNetCore.App` shared framework, which a Blazor WebAssembly client project cannot reference. Use it from Blazor Server or interactive server rendering.
 
 ## Targets
 
-- `net8.0`, `net9.0`, `net10.0`
-- Razor class library using the `Microsoft.AspNetCore.App` shared framework
+`net8.0`, `net9.0`, `net10.0`. A Razor class library on the ASP.NET Core shared framework.
+
+## With the rest of OrionGuard
+
+[OrionGuard](https://www.nuget.org/packages/OrionGuard) · [OrionGuard.AspNetCore](https://www.nuget.org/packages/OrionGuard.AspNetCore) (the same validator behind the API the form posts to)
 
 ## Documentation
 
 - [Repository and full documentation](https://github.com/tunahanaliozturk/OrionGuard)
 - [Changelog](https://github.com/tunahanaliozturk/OrionGuard/blob/master/CHANGELOG.md)
-- Related packages: [OrionGuard](https://www.nuget.org/packages/OrionGuard), [OrionGuard.AspNetCore](https://www.nuget.org/packages/OrionGuard.AspNetCore)
 
 ## License
 

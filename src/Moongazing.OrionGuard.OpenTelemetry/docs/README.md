@@ -1,38 +1,49 @@
 # OrionGuard.OpenTelemetry
 
-Metrics and tracing for [OrionGuard](https://github.com/tunahanaliozturk/OrionGuard). It wraps your registered `IValidator<T>` services and the domain-event dispatcher with `System.Diagnostics` instrumentation that OpenTelemetry can collect and export.
-
-## Install
+Answers "how often does validation fail, and what does it cost" by wrapping your registered validators and the domain-event dispatcher in `System.Diagnostics` instrumentation any OpenTelemetry SDK can collect.
 
 ```bash
 dotnet add package OrionGuard.OpenTelemetry
 ```
 
-The package depends only on `OpenTelemetry.Api`. To collect and export telemetry, add the OpenTelemetry SDK and an exporter, for example `OpenTelemetry.Extensions.Hosting` and `OpenTelemetry.Exporter.OpenTelemetryProtocol`.
-
-## Quick start
-
 ```csharp
+using Microsoft.Extensions.DependencyInjection;
 using Moongazing.OrionGuard.DependencyInjection;
 using Moongazing.OrionGuard.OpenTelemetry;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Trace;
 
-builder.Services.AddValidator<CreateUserRequest, CreateUserValidator>();
-builder.Services.AddOrionGuardOpenTelemetry(); // call after all validators are registered
+public sealed record CreateUserRequest(string Email);
 
-builder.Services.AddOpenTelemetry()
-    .WithMetrics(m => m.AddMeter(OrionGuardInstrumentation.MeterName).AddOtlpExporter())
-    .WithTracing(t => t.AddSource(OrionGuardInstrumentation.ActivitySourceName).AddOtlpExporter());
+public sealed class CreateUserValidator : AbstractValidator<CreateUserRequest>
+{
+    public CreateUserValidator() =>
+        RuleFor(x => x.Email, nameof(CreateUserRequest.Email), p => p.NotEmpty().Email());
+}
+
+public static class TelemetrySetup
+{
+    public static void Add(IServiceCollection services)
+    {
+        services.AddValidator<CreateUserRequest, CreateUserValidator>();
+        services.AddOrionGuardOpenTelemetry(); // after every validator is registered
+
+        services.AddOpenTelemetry()
+            .WithMetrics(m => m.AddMeter(OrionGuardInstrumentation.MeterName))
+            .WithTracing(t => t.AddSource(OrionGuardInstrumentation.ActivitySourceName));
+    }
+}
 ```
 
-There is no `AddOrionGuardInstrumentation()` builder extension. Subscribe to the meter and activity source by name as shown.
+Every validation now emits a count, a failure count and a duration on the meter `Moongazing.OrionGuard`, plus an `Internal` span under whatever activity is current — an ASP.NET Core request span, for instance. The package itself depends only on `OpenTelemetry.Api`; add the SDK and an exporter (`OpenTelemetry.Extensions.Hosting`, `OpenTelemetry.Exporter.OpenTelemetryProtocol`) to get the data out.
+
+There is no `AddOrionGuardInstrumentation()` builder extension — subscribe to the meter and the activity source by name, as above.
 
 ## Validator instrumentation
 
-`AddOrionGuardOpenTelemetry()` replaces every closed, non-keyed `IValidator<T>` registration already in the service collection with an `InstrumentedValidator<T>` that wraps the original and keeps its lifetime. Validators registered after the call are not instrumented. Neither is validation that does not go through a DI-resolved `IValidator<T>`, such as `Guard.Against`, `Ensure`, or `AttributeValidator`.
+`AddOrionGuardOpenTelemetry()` replaces every closed, non-keyed `IValidator<T>` registration already in the collection with an `InstrumentedValidator<T>` that wraps the original and keeps its lifetime. `InstrumentedValidator<T>` implements every `IValidator<T>` overload and passes the `ValidationContext` through, so context-aware rules keep working.
 
-Meter and ActivitySource name: `Moongazing.OrionGuard` (`OrionGuardInstrumentation.MeterName`, `OrionGuardInstrumentation.ActivitySourceName`). The instrumentation version is the package version.
+Meter and `ActivitySource` name: `Moongazing.OrionGuard` (`OrionGuardInstrumentation.MeterName`, `OrionGuardInstrumentation.ActivitySourceName`); the instrumentation version is the package version.
 
 | Instrument | Type | Unit | Tags |
 | --- | --- | --- | --- |
@@ -40,37 +51,34 @@ Meter and ActivitySource name: `Moongazing.OrionGuard` (`OrionGuardInstrumentati
 | `orionguard.validations.failures` | `Counter<long>` | none | none |
 | `orionguard.validations.duration_ms` | `Histogram<double>` | ms | none |
 
-Spans are named `OrionGuard.Validate` or `OrionGuard.ValidateAsync`, depending on the method called. They carry these tags:
-
-- `orionguard.validator_type`: the validated model type's name (`typeof(T).Name`)
-- `orionguard.validation_result`: `success` or `failed`
-- `orionguard.error_count`: set only when validation fails
-
-Spans are `Internal` and start under the current `Activity`, for example an ASP.NET Core request span.
-
-`InstrumentedValidator<T>` implements every `IValidator<T>` overload, including `Validate(T, ValidationContext)` and `ValidateAsync(T, ValidationContext, CancellationToken)`, and passes the `ValidationContext` on to the wrapped validator.
-
-Open-generic registrations (`AddTransient(typeof(IValidator<>), typeof(MyValidator<>))`) and keyed registrations are left unchanged and are not instrumented.
+Spans are named `OrionGuard.Validate` or `OrionGuard.ValidateAsync` after the method actually called, and carry `orionguard.validator_type` (the model type's name), `orionguard.validation_result` (`success` or `failed`) and, on failure, `orionguard.error_count`.
 
 ## Domain-event instrumentation
 
 ```csharp
+using Microsoft.Extensions.DependencyInjection;
 using Moongazing.OrionGuard.DependencyInjection;
 using Moongazing.OrionGuard.OpenTelemetry.DomainEvents;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Trace;
 
-builder.Services.AddOrionGuardDomainEvents();
-builder.Services.WithOpenTelemetryDomainEvents();
+public static class DomainEventTelemetrySetup
+{
+    public static void Add(IServiceCollection services)
+    {
+        services.AddOrionGuardDomainEvents();
+        services.WithOpenTelemetryDomainEvents();
 
-builder.Services.AddOpenTelemetry()
-    .WithMetrics(m => m.AddMeter(OrionGuardDomainEventTelemetry.MeterName))
-    .WithTracing(t => t.AddSource(OrionGuardDomainEventTelemetry.ActivitySourceName));
+        services.AddOpenTelemetry()
+            .WithMetrics(m => m.AddMeter(OrionGuardDomainEventTelemetry.MeterName))
+            .WithTracing(t => t.AddSource(OrionGuardDomainEventTelemetry.ActivitySourceName));
+    }
+}
 ```
 
-`WithOpenTelemetryDomainEvents()` wraps the last registered `IDomainEventDispatcher` in an `InstrumentedDomainEventDispatcher` with the same lifetime. It throws `InvalidOperationException` if no dispatcher is registered, and a second call does nothing. With the MediatR bridge, the order must be `AddOrionGuardDomainEvents()`, then `AddOrionGuardMediatRDomainEvents()`, then `WithOpenTelemetryDomainEvents()`.
+`WithOpenTelemetryDomainEvents()` wraps the last registered `IDomainEventDispatcher` in an `InstrumentedDomainEventDispatcher` of the same lifetime. It throws `InvalidOperationException` when no dispatcher is registered, and a second call does nothing.
 
-Meter and ActivitySource name: `Moongazing.OrionGuard.DomainEvents` (`OrionGuardDomainEventTelemetry.MeterName`, `OrionGuardDomainEventTelemetry.ActivitySourceName`).
+Meter and `ActivitySource` name: `Moongazing.OrionGuard.DomainEvents`.
 
 | Instrument | Type | Unit | Tags |
 | --- | --- | --- | --- |
@@ -78,24 +86,34 @@ Meter and ActivitySource name: `Moongazing.OrionGuard.DomainEvents` (`OrionGuard
 | `orionguard.domain_events.failed` | `Counter<long>` | events | `event_type` |
 | `orionguard.domain_events.duration` | `Histogram<double>` | ms | `event_type` |
 
-`event_type` is the event's short CLR type name. Each event gets its own `Internal` span named `DomainEvent.Dispatch <EventTypeName>`, including events dispatched as a batch. Each span carries these tags:
+`event_type` is the event's short CLR type name. Each event — including each event of a batch — gets its own `Internal` span named `DomainEvent.Dispatch <EventTypeName>`, tagged with `orionguard.event.id`, `orionguard.event.type` (full name) and `orionguard.event.occurred_on` (ISO 8601 round-trip). A failure sets the span status to `Error` with the exception message, adds an `exception` event carrying `exception.type` and `exception.message`, and rethrows.
 
-- `orionguard.event.id`
-- `orionguard.event.type`: the full type name
-- `orionguard.event.occurred_on`: ISO 8601 round-trip format
+## Ordering
 
-On failure, the span status is `Error` with the exception message, and an `exception` event with `exception.type` and `exception.message` is added. The exception is then rethrown.
+Call `AddOrionGuardOpenTelemetry()` **after** every validator is registered — it decorates what is in the collection at that moment, and a validator registered later is not instrumented.
+
+With the MediatR event bridge the order is `AddOrionGuardDomainEvents()`, then `AddOrionGuardMediatRDomainEvents()`, then `WithOpenTelemetryDomainEvents()`. The bridge refuses to run after the decorator, because replacing the registration would silently remove it.
+
+## What this does not do
+
+- **It only sees validation that goes through a DI-resolved `IValidator<T>`.** `Guard.Against...`, `Ensure.That(...)`, `Validate.For(...)` and `AttributeValidator` are invisible to it — they never touch the container.
+- **Open-generic and keyed registrations are left alone.** `AddTransient(typeof(IValidator<>), typeof(MyValidator<>))` and keyed validators are not instrumented (and, deliberately, not broken either).
+- **No metric carries the model type.** The three validator instruments have no tags at all; the type is on the span, not on the counters, so you cannot split failure rate by model in a metrics backend. The counts stay cheap because of it.
+- **It exports nothing on its own.** Without an SDK and an exporter subscribed to the two names, the instruments and spans are inert.
+- **It adds a layer per validator.** One extra object and one span per validation — small, but not free on a hot path that validates millions of times.
 
 ## Targets
 
-- `net8.0`, `net9.0`, `net10.0`
-- `OpenTelemetry.Api` 1.19.0 or later
+`net8.0`, `net9.0`, `net10.0`; `OpenTelemetry.Api` 1.x.
+
+## With the rest of OrionGuard
+
+[OrionGuard](https://www.nuget.org/packages/OrionGuard) · [OrionGuard.MediatR](https://www.nuget.org/packages/OrionGuard.MediatR) (the MediatR event bridge) · [OrionGuard.AspNetCore](https://www.nuget.org/packages/OrionGuard.AspNetCore) · [OrionGuard.EntityFrameworkCore](https://www.nuget.org/packages/OrionGuard.EntityFrameworkCore) (the outbox has its own meter)
 
 ## Documentation
 
 - [Repository and full documentation](https://github.com/tunahanaliozturk/OrionGuard)
 - [Changelog](https://github.com/tunahanaliozturk/OrionGuard/blob/master/CHANGELOG.md)
-- Related packages: [OrionGuard.MediatR](https://www.nuget.org/packages/OrionGuard.MediatR) (MediatR domain-event bridge), [OrionGuard.AspNetCore](https://www.nuget.org/packages/OrionGuard.AspNetCore)
 
 ## License
 
