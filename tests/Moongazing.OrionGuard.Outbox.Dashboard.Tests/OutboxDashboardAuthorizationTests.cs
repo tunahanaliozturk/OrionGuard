@@ -60,6 +60,23 @@ public sealed class OutboxDashboardAuthorizationTests
     }
 
     [Fact]
+    public async Task Dashboard_applies_a_fallback_policy_supplied_by_a_custom_policy_provider()
+    {
+        // The provider supplies the fallback without populating AuthorizationOptions, so a check
+        // against the options alone would attach the weaker default policy instead.
+        using var host = await StartAsync(
+            configureAuthorization: _ => { },
+            configureServices: services => services.AddSingleton<IAuthorizationPolicyProvider, RoleFallbackPolicyProvider>());
+        using var client = host.GetTestClient();
+
+        var withoutRole = await client.SendAsync(Get(FailedPath, user: "operator"));
+        var withRole = await client.SendAsync(Get(FailedPath, user: "operator", role: "outbox-ops"));
+
+        Assert.Equal(HttpStatusCode.Forbidden, withoutRole.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, withRole.StatusCode);
+    }
+
+    [Fact]
     public async Task Dashboard_requires_the_named_policy_when_one_is_configured()
     {
         using var host = await StartAsync(
@@ -100,7 +117,8 @@ public sealed class OutboxDashboardAuthorizationTests
 
     private static Task<IHost> StartAsync(
         Action<AuthorizationOptions> configureAuthorization,
-        Action<OutboxDashboardOptions>? configureDashboard = null)
+        Action<OutboxDashboardOptions>? configureDashboard = null,
+        Action<IServiceCollection>? configureServices = null)
     {
         var databaseName = "dashboard-auth-" + Guid.NewGuid().ToString("N");
         return new HostBuilder()
@@ -116,6 +134,7 @@ public sealed class OutboxDashboardAuthorizationTests
                     services.AddAuthentication(HeaderAuthenticationHandler.SchemeName)
                         .AddScheme<AuthenticationSchemeOptions, HeaderAuthenticationHandler>(HeaderAuthenticationHandler.SchemeName, _ => { });
                     services.AddAuthorization(configureAuthorization);
+                    configureServices?.Invoke(services);
                 });
                 builder.Configure(app =>
                 {
@@ -158,6 +177,26 @@ public sealed class OutboxDashboardAuthorizationTests
             var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, SchemeName));
             return Task.FromResult(AuthenticateResult.Success(new AuthenticationTicket(principal, SchemeName)));
         }
+    }
+
+    private sealed class RoleFallbackPolicyProvider : IAuthorizationPolicyProvider
+    {
+        private static readonly AuthorizationPolicy RequireOutboxOpsRole =
+            new AuthorizationPolicyBuilder().RequireRole("outbox-ops").Build();
+
+        private readonly DefaultAuthorizationPolicyProvider inner;
+
+        public RoleFallbackPolicyProvider(IOptions<AuthorizationOptions> options)
+        {
+            inner = new DefaultAuthorizationPolicyProvider(options);
+        }
+
+        public Task<AuthorizationPolicy> GetDefaultPolicyAsync() => inner.GetDefaultPolicyAsync();
+
+        public Task<AuthorizationPolicy?> GetFallbackPolicyAsync() =>
+            Task.FromResult<AuthorizationPolicy?>(RequireOutboxOpsRole);
+
+        public Task<AuthorizationPolicy?> GetPolicyAsync(string policyName) => inner.GetPolicyAsync(policyName);
     }
 
     private sealed class AuthTestDbContext : DbContext

@@ -6,7 +6,6 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Options;
 using Moongazing.OrionGuard.EntityFrameworkCore.Outbox;
 
 /// <summary>
@@ -342,8 +341,15 @@ public static class OutboxDashboardEndpointRouteBuilderExtensions
             : fallback;
     }
 
-    private static bool HostHasFallbackPolicy(IEndpointRouteBuilder endpoints) =>
-        endpoints.ServiceProvider.GetService<IOptions<AuthorizationOptions>>()?.Value.FallbackPolicy is not null;
+    private static bool HostHasFallbackPolicy(IEndpointRouteBuilder endpoints)
+    {
+        // Ask the registered policy provider rather than AuthorizationOptions: a custom
+        // IAuthorizationPolicyProvider can supply a fallback without populating the options.
+        // ponytail: the fallback is resolved once at map time; a provider whose fallback varies
+        // per request would need a per-request check instead.
+        var policyProvider = endpoints.ServiceProvider.GetService<IAuthorizationPolicyProvider>();
+        return policyProvider?.GetFallbackPolicyAsync().GetAwaiter().GetResult() is not null;
+    }
 
     private static void ValidateOptions(OutboxDashboardOptions options)
     {
