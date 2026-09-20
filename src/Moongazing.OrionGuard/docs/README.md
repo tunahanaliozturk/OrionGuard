@@ -219,7 +219,11 @@ In `Moongazing.OrionGuard.Extensions`, as extension methods on the value:
 
 `Moongazing.OrionGuard.Utilities.LdapEncoding` has the actual LDAP defence the guards are not: `EscapeFilterValue` (RFC 4515) and `EscapeDistinguishedNameValue` (RFC 4514).
 
-Every pattern is a `[GeneratedRegex]`, so nothing is compiled at runtime, anchored patterns end at `\z` rather than `$` (a trailing newline does not slip through), and `[0-9]` is used instead of `\d` so non-ASCII digits are not accepted as numbers. Matching is bounded at one second; in the result-returning APIs a timeout is reported as a validation error, and in the throwing APIs it becomes that guard's own exception rather than `RegexMatchTimeoutException`.
+Every **built-in** pattern is a `[GeneratedRegex]`, compiled at build time rather than at runtime: anchored patterns end at `\z` rather than `$` (a trailing newline does not slip through), and `[0-9]` is used instead of `\d` so non-ASCII digits are not accepted as numbers.
+
+A pattern **you** supply is a different path. `AgainstRegexMismatch`, `Ensure.That(...).Matches(pattern)` and `[Regex("...")]` hand the pattern to `RegexCache`, which calls `new Regex(pattern, RegexOptions.Compiled, …)` the first time it sees it and keeps the instance. So there *is* runtime regex construction for custom patterns — once per distinct pattern, not per call. The cache is bounded at `RegexCache.MaxCacheSize` (default 1000) and evicts the least recently used entry on overflow, so a pattern built per request from user input will churn it rather than grow without limit; prefer a constant pattern, or `[GeneratedRegex]` of your own.
+
+Matching is bounded at one second either way. In the result-returning APIs a timeout is reported as a validation error; in the throwing APIs it becomes that guard's own exception rather than `RegexMatchTimeoutException`.
 
 ## Messages and culture
 
@@ -262,6 +266,7 @@ Messages ship in 14 languages: English, Turkish, German, French, Spanish, Portug
 
   Run these guards on the server, which is the side that has to be convinced anyway. The [playground](https://github.com/tunahanaliozturk/OrionGuard/tree/master/site/playground) demonstrates the browser arm: the fullwidth `．．／secret.txt` sample reports the guard as unavailable rather than as a pass.
 - **Attribute and dynamic validation use reflection.** `AttributeValidator` and `DynamicValidator` read properties at runtime, so they are not NativeAOT- or trimming-safe. `OrionGuard.Generators` exists for exactly that case.
+- **"No runtime regex" holds for the built-in patterns only.** A caller-supplied pattern is built through `RegexCache` with `RegexOptions.Compiled`, and [that option is honoured only where dynamic code compilation is available](https://github.com/dotnet/runtime/blob/release/10.0/src/libraries/System.Text.RegularExpressions/src/System/Text/RegularExpressions/Regex.cs) — under NativeAOT it is silently ignored and the pattern runs on the interpreter. Nothing breaks; you simply do not get the performance the option name promises. If regex throughput is why you chose this package for an AOT build, use the built-in guards or your own `[GeneratedRegex]`, not `Matches(pattern)`.
 - **`DynamicValidator` has a fixed rule vocabulary** — `NotNull`/`Required`, `NotEmpty`, `Length`, `MinLength`, `MaxLength`, `Range`, `GreaterThan`, `LessThan`, `Regex`/`Pattern`, `Email`, `Url`, `In`, `NotIn` (matched case-insensitively), each with a `WhenProperty`/`WhenValue` condition. There is no way to express a custom predicate in JSON; anything else needs code.
 - **`FluentStyleValidator<T>` is a migration surface, not a FluentValidation clone.** It matches FluentValidation on the rules it implements, and `OrionGuard.Migration` reports rather than rewrites the ones where the semantics differ. It is not a drop-in for the whole FluentValidation API.
 - **Nothing here dispatches domain events by itself.** `RaiseEvent` records; you (or `OrionGuard.EntityFrameworkCore`) must pull and publish.

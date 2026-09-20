@@ -23,7 +23,9 @@ public static class OrionGuardServiceDefaults
 }
 ```
 
-Validation, domain-event and EF Core outbox telemetry now show up on the Aspire dashboard's Metrics and Traces pages for every service that uses these defaults, and `/health` gains the OrionGuard checks the service's packages support.
+Every service using these defaults now has `/health` reporting the OrionGuard checks its packages support, and the Aspire dashboard's Metrics and Traces pages subscribed to every OrionGuard meter and activity source — including the EF Core outbox, which instruments itself and starts showing data immediately.
+
+**Validation and domain-event signals need one more call each, in the service that emits them.** `AddOrionGuardDefaults()` subscribes the providers; it does not make anything emit. Add `AddOrionGuardOpenTelemetry()` after your validators are registered for validation metrics and spans, and `WithOpenTelemetryDomainEvents()` after the dispatcher is registered for domain-event ones. Without them those dashboard pages stay empty however correct the rest of the wiring is — [see below](#turn-the-instruments-on-where-they-are-emitted).
 
 The package depends on `OrionGuard.OpenTelemetry`, `OpenTelemetry.Api.ProviderBuilderExtensions` and the health-check and hosting abstractions. It depends on no Aspire package — the dashboard reads the OTLP data your app already exports — and on neither ASP.NET Core nor EF Core: the checks from those packages are picked up only when your app references them.
 
