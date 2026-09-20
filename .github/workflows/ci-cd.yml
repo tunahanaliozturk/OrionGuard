@@ -125,25 +125,29 @@ jobs:
           REPOSITORY_OWNER: ${{ github.repository_owner }}
         run: |
           dotnet nuget add source --username "$REPOSITORY_OWNER" --password "$GITHUB_PACKAGES_TOKEN" --store-password-in-clear-text --name github "https://nuget.pkg.github.com/$REPOSITORY_OWNER/index.json"
-          set +e
-          # 300s (the default) is per package, and a large one on a slow mirror day exceeds it:
-          # the 7.0.0 run died on OrionGuard.Migration with "Pushing took too long". The api-key is
-          # the token again - GitHub Packages accepts the source credentials but warns without it.
-          output=$(dotnet nuget push "./nupkgs/*.nupkg" --source github --api-key "$GITHUB_PACKAGES_TOKEN" --skip-duplicate --timeout 900 2>&1)
-          code=$?
-          set -e
-          echo "$output"
-          if [ $code -ne 0 ]; then
-            # Tolerate the failure ONLY when it is affirmatively all duplicates: at least one
-            # duplicate marker must be present AND no other error/fault line. A non-zero exit
-            # with no recognisable duplicate marker (or with any other error) still fails - so a
-            # genuine auth/connectivity/upload failure is never silently swallowed.
-            dup_markers=$(printf '%s\n' "$output" | grep -iE 'already exists|already been pushed|409 \(Conflict\)' || true)
-            other_errors=$(printf '%s\n' "$output" | grep -iE 'error|fail' | grep -ivE 'already exists|already been pushed|conflict' || true)
-            if [ -n "$dup_markers" ] && [ -z "$other_errors" ]; then
-              echo "GitHub Packages: every failure was a duplicate rejection (--skip-duplicate is not honoured there); treating the mirror push as successful."
-            else
-              echo "::error::GitHub Packages push failed (exit code $code) for a non-duplicate reason."
-              exit 1
+          # Pushed one package at a time on purpose. GitHub Packages answers an already-published
+          # version with 409 instead of honouring --skip-duplicate, and dotnet nuget push stops at the
+          # first failure in a batch - so a retry of a partly-published release would abort on package
+          # one and never attempt the rest, while a batch-level "it was only duplicates" check called
+          # that success and left the mirror permanently incomplete. Per package, a duplicate is
+          # tolerated and anything else fails the job, after every package has had its turn.
+          failed=0
+          for pkg in ./nupkgs/*.nupkg; do
+            set +e
+            output=$(dotnet nuget push "$pkg" --source github --api-key "$GITHUB_PACKAGES_TOKEN" --skip-duplicate --timeout 900 2>&1)
+            code=$?
+            set -e
+            if [ $code -eq 0 ]; then
+              continue
             fi
+            if echo "$output" | grep -qiE 'already exists|already been pushed|409 \(Conflict\)'; then
+              echo "already published, skipping: $(basename "$pkg")"
+            else
+              echo "$output"
+              echo "::error::GitHub Packages push failed for $(basename "$pkg") (exit code $code)."
+              failed=1
+            fi
+          done
+          if [ "$failed" -ne 0 ]; then
+            exit 1
           fi
