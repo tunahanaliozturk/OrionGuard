@@ -1,4 +1,4 @@
-name: CI/CD
+﻿name: CI/CD
 
 on:
   push:
@@ -126,7 +126,10 @@ jobs:
         run: |
           dotnet nuget add source --username "$REPOSITORY_OWNER" --password "$GITHUB_PACKAGES_TOKEN" --store-password-in-clear-text --name github "https://nuget.pkg.github.com/$REPOSITORY_OWNER/index.json"
           set +e
-          output=$(dotnet nuget push "./nupkgs/*.nupkg" --source github --skip-duplicate 2>&1)
+          # 300s (the default) is per package, and a large one on a slow mirror day exceeds it:
+          # the 7.0.0 run died on OrionGuard.Migration with "Pushing took too long". The api-key is
+          # the token again - GitHub Packages accepts the source credentials but warns without it.
+          output=$(dotnet nuget push "./nupkgs/*.nupkg" --source github --api-key "$GITHUB_PACKAGES_TOKEN" --skip-duplicate --timeout 900 2>&1)
           code=$?
           set -e
           echo "$output"
