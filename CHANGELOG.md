@@ -7,6 +7,89 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [7.0.0] - 2026-09-20
+
+Every package in the family moves to `7.0.0` together. The headline of the release is a large
+correctness pass: many guards and rules that used to accept a value now reject it, so read the
+breaking changes below before upgrading a service that validates untrusted input.
+
+### Breaking changes
+
+What a 6.x consumer has to do to move to 7.0.0. Each item is described in full further down.
+
+- **The outbox dashboard's replay and discard need a header.** `POST /{id}/replay` and
+  `POST /{id}/discard` answer `400 missing-mutation-header` unless the request carries
+  `X-OrionGuard-Dashboard` (any non-empty value). Add the header to your own scripts and tooling, or
+  set `RequireMutationHeader = false`. Rename it with `MutationHeaderName` (must start with `X-`).
+- **The dashboard is no longer anonymous by default.** With neither `AuthorizationPolicyName` nor
+  `AllowAnonymous` set and no host fallback policy, dashboard endpoints now require an authenticated
+  user. Authenticate your operators or set `AllowAnonymous = true`.
+- **The outbox setup-SQL helpers reject anything that is not a plain identifier.**
+  `SqlServerBrokerSetupSql.Create` / `Drop` and `PostgresNotifyTriggerSql.Create` / `Drop` now throw
+  `ArgumentException` for a name that is not 1-128 ASCII letters, digits or underscores and does not
+  start with a digit. A schema-qualified name such as `dbo.Outbox` is rejected rather than escaped —
+  pass the bare name.
+- **The FluentValidation compatibility layer follows FluentValidation.** `NotEmpty()` now fails an
+  empty collection and the default of a value type (`0`, `Guid.Empty`, `DateTime.MinValue`, `false`),
+  where it used to pass every non-string. The comparison rules compare numbers by value across types
+  and fail — instead of passing or throwing — on a pair that cannot be compared. Rules that silently
+  did nothing in 6.x now report errors.
+- **Numeric comparison rules compare by value.** `GreaterThan(0)` on a `decimal`, `long` or `double`
+  used to pass every value, negative ones included. It now compares properly, so input your service
+  has been accepting can start failing. `Positive()`, `NotNegative()` and `NotZero()` cover every
+  built-in numeric type and fail on `NaN` and on non-numeric values.
+- **`AgainstNonEmojiCharacters` is anchored.** The whole value must be emoji; `"abc😀"` used to pass
+  because the pattern was a "contains" match.
+- **The SQL injection denylist matches at word boundaries.** "Walter", "executive", "reunion",
+  "selection", "updated" and friends are no longer rejected. If you filtered or logged on the old
+  false positives, that traffic now passes. Nothing the guard caught before is let through.
+- **The ASP.NET Core health check reports different data keys.** `AddOrionGuardCheck()` no longer
+  returns `SupportedLanguages` or `ExceptionFactory`, and `Version` is now read from the loaded
+  assembly instead of the literal `"6.0.0"`. A healthy result carries `ValidatorFactory` and
+  `Version`. Dashboards or alerts reading the old keys need updating.
+- **`Moongazing.OrionGuard.Utilities.RegexPatterns` is gone.** It has shipped `[Obsolete]` since
+  6.0.0. Use `GeneratedRegexPatterns` — `RegexPatterns.Email` is `GeneratedRegexPatterns.Email()`, and
+  `.ToString()` on it gives the pattern text if that is what you passed around.
+- **Every anchored pattern ends at the end of the value.** `\z` replaces `$`, so a trailing newline
+  no longer passes (`"abc\n"`, `"a@b.co\n"`), and `[0-9]` replaces `\d`, so non-ASCII digits such as
+  `١٢٣` are rejected by the numeric, phone, SemVer and strong-password checks.
+- **Email validation is stricter everywhere.** Addresses longer than 254 characters, a trailing
+  newline, and empty domain labels (`a@.b.com`, `a@b..com`, `a@b.com.`) are rejected by every email
+  API in the core package. `FastGuard.Email` also stops accepting a second `@`, tabs and line breaks.
+- **The security guards reject more.** `AgainstOpenRedirect` follows ASP.NET Core's `IsLocalUrl` and
+  rejects every absolute URL when the allow-list is empty; `AgainstPathTraversal` rejects rooted and
+  encoded forms; `AgainstCommandInjection` rejects `& < > $ ' "`, CR/LF and a leading `-`;
+  `AgainstDangerousFileExtension` covers a much longer list; `AgainstMaliciousContent` rejects every
+  `.svg`; `AgainstInvalidXml` rejects any document with a `<!DOCTYPE>`; and the URL rules accept only
+  absolute `http`/`https`. Values your service accepted in 6.x may now be refused.
+- **Several format guards got stricter:** `AgainstCharactersOutsideSet` treats the allowed set as
+  literal characters (no ranges), `AgainstContainingWhitespace` rejects every whitespace character,
+  `AgainstInvalidCreditCard` requires 12-19 ASCII digits, and the hostname, Base64, JWT, connection
+  string and time-zone guards reject input they used to accept.
+- **Date guards convert local times to UTC.** `AgainstFutureDate(DateTime.Now)` used to throw east of
+  UTC; comparisons are now correct, which changes the outcome for local `DateTime` values.
+- **Transient entities are no longer equal to one another.** Two `Entity<TId>` instances with a
+  default `Id` used to compare equal and collapse in a `HashSet`. If you relied on that, key on
+  something else.
+- **`CachedValidator` caches far less.** Without an explicit key selector, only records with
+  compiler-synthesized equality are cached; everything else is validated on every call, and a call
+  with a non-empty `ValidationContext` is never cached. Use `WithCaching(keySelector)` to cache a
+  model by an explicit key.
+- **Domain events behave differently around transactions and synchronous saves.** `SaveChanges()`
+  now writes outbox rows and dispatches inline events (it did nothing before), and in Inline mode
+  inside `Database.BeginTransaction()` handlers now run after the commit and are dropped on rollback.
+- **Generated validators can report new errors.** `[GenerateValidator]` now validates inherited
+  properties, reads only OrionGuard attributes (a `System.ComponentModel.DataAnnotations`
+  `[Range]` is no longer enforced as an OrionGuard range), and emits an `internal` validator unless
+  the type and every enclosing type are public.
+- **Tooling floors moved.** `OrionGuard.Swagger` requires Swashbuckle 10; `OrionGuard.Generators` and
+  `OrionGuard.OpenApi` require **.NET SDK 10.0.400 or newer** (older SDKs report `CS9057` and skip
+  the generators); `OrionGuard.EntityFrameworkCore` is on EF Core 10 for net10.0 and EF Core 9 for
+  net8.0/net9.0; `OrionGuard.Outbox.PostgresNotify` is on Npgsql 10, `OrionGuard.Outbox.SqlServerBroker`
+  on `Microsoft.Data.SqlClient` 7, `OrionGuard.Locks.Redis` on `OrionLock.Redis` 2.
+- **The dashboard's replay and discard now need a relational EF Core provider,** because they use
+  conditional updates.
+
 ### Added
 
 - `OrionGuard.Testing`: **validator snapshots.**
@@ -41,8 +124,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in `Moongazing.OrionGuard.DependencyInjection` runs every `IValidator<T>` registered for an object's runtime
   type through `ValidateAsync` and returns the combined result, or `null` when no validator is registered. The
   SignalR, gRPC, MVC, and Hangfire integrations now share it.
-- `OrionGuard.MediatR`: `StreamValidationBehavior<TRequest, TResponse>`, an `IStreamPipelineBehavior<,>` that
-  validates stream requests.
 - **New package `OrionGuard.MassTransit`.** `cfg.UseOrionGuardValidation(context)` adds
   `OrionGuardConsumeFilter<TMessage>` as a scoped consume filter, on the bus or on one receive endpoint. It runs
   every `IValidator<TMessage>` registered for the consumed type from the consume scope, and throws
@@ -108,8 +189,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   lock tables mapped in `OnModelCreating`, `AddOrionGuardEfCore<T>(o => o.UseOutbox())` and the dispatcher
   hosted service it registers; its one option, `--database`, picks `sqlite` (the default, so the generated
   project runs with no server), `sqlserver` or `postgres`. The pack lives in `templates/` and is
-  deliberately outside `Moongazing.OrionGuard.sln`, so it is packed on its own with
-  `dotnet pack templates/Moongazing.OrionGuard.Templates.csproj`.
+  deliberately outside `Moongazing.OrionGuard.sln` (a template pack compiles nothing), so it is packed on
+  its own with `dotnet pack templates/Moongazing.OrionGuard.Templates.csproj`; the release job runs that
+  command alongside the solution pack and pushes the result with the rest, so the pack is published in
+  lockstep with the packages its templates reference.
 - Contributor on-ramp: `CONTRIBUTING.md` rewritten against the current build (all three TFMs, repo
   layout, the style rules the code actually follows, how to run the benchmarks, how a PR is reviewed and
   merged), GitHub issue forms and a pull request template under `.github/`, and
@@ -118,15 +201,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Build settings consolidated; published package metadata is unchanged.** The target frameworks,
+- **Every package moves to `7.0.0` in lockstep**, including `OrionGuard.OpenTelemetry` (was 6.7.1) and
+  the `OrionGuard.Migration` tool (was 6.8.0), which had drifted off the family version. The
+  `OrionGuard.Templates` pack and the `PackageReference` versions in the templates it scaffolds move
+  with them, so a freshly scaffolded project restores this release rather than the previous one.
+- **Build settings consolidated; published package metadata is otherwise unchanged.** The target frameworks,
   `Nullable`, `LangVersion`, `ImplicitUsings`, `GenerateDocumentationFile`, `TreatWarningsAsErrors`,
   `NoWarn` and the packaging metadata (authors, licence, repository, project URL, icon, readme) moved
   out of the twenty-one `src/*.csproj` files into `src/Directory.Build.props`. Every per-project
   difference was kept: the two netstandard2.0 Roslyn components and the `dotnet orionguard` tool still
   target a single framework, and `OrionGuard` still declares its licence as a packaged file rather than
-  an SPDX expression. Packing all twenty-one packages before and after produces byte-identical `.nuspec`
-  files and identical package contents, so nothing a consumer sees on NuGet has changed: same ids,
-  versions, target frameworks, dependencies, licence, authors and repository metadata.
+  an SPDX expression. Packing all twenty-one packages before and after the move produces byte-identical
+  `.nuspec` files and identical package contents, so apart from the version bump above, nothing a consumer
+  sees on NuGet has changed: same ids, target frameworks, dependencies, licence, authors and repository
+  metadata.
 - **The solution builds with zero warnings.** The two long-standing ones were both in test code and
   are fixed at the cause rather than suppressed: a test local is declared `object?` where it always
   held `null`, and the Redis integration fixture passes its container image to the `RedisBuilder`
@@ -135,7 +223,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and the solution item resolves. The copy packed into `OrionGuard` is untouched.
 - The demo banner and two README passages no longer name v6.3.0 as if it were the current or upcoming
   release. The version was removed rather than bumped, so those lines cannot go stale again.
-- **Dependencies refreshed across the solution.** Package versions are bumped in the release PR.
+- **Dependencies refreshed across the solution.**
   - `Microsoft.Extensions.*` → **10.0.12** in every shipped package, including net8.0/net9.0 targets.
   - `OrionGuard.EntityFrameworkCore`: EF Core **10.0.12** on net10.0, **9.0.20** on net8.0/net9.0
     (EF Core 10 only supports net10.0).
@@ -154,40 +242,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `Newtonsoft.Json` 13.0.4), `OrionGuard.OpenTelemetry` (`OpenTelemetry.Api` 1.19.0).
   - `OrionGuard.MediatR` stays on MediatR **12.4.1**, the last Apache-2.0 release; MediatR 13+ requires a
     commercial license key.
-- **Every package's NuGet README was checked against the current code.** Each snippet was compiled against
-  the sources, and claims that were no longer true were removed or corrected: Swagger's registration call and
-  attribute names, gRPC's status code (`InvalidArgument`), OpenTelemetry's instrument names and registration,
-  Blazor's hosting support (not WebAssembly), the Dashboard's endpoints and authorization defaults, and the
-  localization count (14 languages). The defects found along the way are fixed in this release and listed
-  under Fixed. The Blazor and Generators package descriptions were corrected too.
-- **Every package's NuGet README was then rewritten for this release.** Each one now opens with what the
+- **Every package's NuGet README was rewritten against the current code.** Each one now opens with what the
   package does and a snippet you can paste and run, then the API grouped by task, the options that matter with
   their defaults, and an explicit "what this does not do" section naming each package's real edges. Every C#
-  snippet was extracted and compiled against these sources, behaviour claims were re-checked against the code
-  on this branch, and version numbers were removed from prose in favour of the rule behind them (a TFM, an EF
-  Core major, a MassTransit range, the SDK floor the generators need). Two limitations were verified against
-  Microsoft's documentation rather than left as folklore: Service Broker is unavailable on Azure SQL Database
-  and on by default on Managed Instance, and in globalization-invariant mode `string.Normalize` is a silent
-  no-op, which weakens the NFKC arm of `AgainstPathTraversal` without raising anything. The root README's
-  package table now lists every shipped package, and `OrionGuard.Templates` gained the same treatment,
-  including a restore-tested table of the EF Core provider versions each target framework needs.
+  snippet was extracted and compiled against these sources, and claims that were no longer true were removed
+  or corrected: Swagger's registration call and attribute names, gRPC's status code (`InvalidArgument`),
+  OpenTelemetry's instrument names and registration, Blazor's hosting support (not WebAssembly), the
+  Dashboard's endpoints and authorization defaults, and the localization count (14 languages). The defects
+  found along the way are fixed in this release and listed under Fixed; the Blazor and Generators package
+  descriptions were corrected too. Version numbers were removed from prose in favour of the rule behind them
+  (a TFM, an EF Core major, a MassTransit range, the SDK floor the generators need). Two limitations were
+  verified against Microsoft's documentation rather than left as folklore: Service Broker is unavailable on
+  Azure SQL Database and on by default on Managed Instance, and in globalization-invariant mode
+  `string.Normalize` is a silent no-op, which weakens the NFKC arm of `AgainstPathTraversal` without raising
+  anything. The root README's package table now lists every shipped package, and `OrionGuard.Templates` gained
+  the same treatment, including a restore-tested table of the EF Core provider versions each target framework
+  needs.
 - Test and benchmark tooling: xUnit 2.9.3, `xunit.runner.visualstudio` 4.0.0, `Microsoft.NET.Test.Sdk` 18.10.1,
-  coverlet 10.0.1, BenchmarkDotNet 0.15.8.
+  coverlet 10.0.1, BenchmarkDotNet 0.15.8. `Testcontainers.Redis` 4.0.0 → 4.15.0 in the Redis lock tests, which
+  drops the transitive `SSH.NET` 2023.0.0 ([GHSA-mggc-4xg6-vcxf](https://github.com/advisories/GHSA-mggc-4xg6-vcxf),
+  [GHSA-q939-rpr3-3284](https://github.com/advisories/GHSA-q939-rpr3-3284), High). Test only — no shipped package
+  ever referenced it.
+- **The outbox dispatcher, archival worker and `SkipLockedDistributedLock` read the time from a `TimeProvider`.**
+  They used `DateTime.UtcNow`, so their timestamps could not be controlled in tests. New constructor overloads
+  take a `TimeProvider`, and the DI registrations pass one when it is registered; existing constructors are
+  unchanged.
 
 ### Fixed
+
 - **`DynamicValidator` survives the JSON a rule editor produces.** `"Rules": null` or `"Parameters": null`
   overwrote the collection initializers and `Validate` threw `NullReferenceException`; a null assignment now
   leaves the collection empty. An invalid regex in a `Regex` / `Pattern` rule escaped `Validate` as
   `ArgumentException`, taking every other rule in the set with it; it is now reported as a failure of that one
   property, saying the rule's pattern is not a valid regular expression.
-
 - `OrionGuard.SignalR`: `OrionGuardHubFilter` threw `AmbiguousMatchException` for every hub call whose argument
-  had a registered validator, because it looked up `Validate` by name and `IValidator<T>` has two overloads. It
-  now validates the argument and throws `HubException` with a `Validation failed: <field>: <message>; ...`
-  message, errors listed in argument order and then validator registration order.
-- `OrionGuard.SignalR`: the filter is a singleton and resolved validators from the root service provider, so
-  scoped validators failed, and it called the synchronous `Validate`, so `RuleForAsync` rules never ran.
-  Validators now come from the hub invocation's scope and run through `ValidateAsync`.
+  had a registered validator, because it looked up `Validate` by name and `IValidator<T>` has two overloads.
+  It was also a singleton resolving validators from the root service provider, so scoped validators failed, and
+  it called the synchronous `Validate`, so `RuleForAsync` rules never ran. Validators now come from the hub
+  invocation's scope and run through `ValidateAsync`, and a failure throws `HubException` with a
+  `Validation failed: <field>: <message>; ...` message, errors listed in argument order and then validator
+  registration order.
 - `OrionGuard.AspNetCore`: `[ValidateRequest]` did nothing. `OrionGuardMvcFilter` was registered in DI but never
   added to the MVC filter pipeline, and when added by hand it threw `AmbiguousMatchException`. The attribute now
   adds the filter to the action's pipeline. The filter honours `OrionGuardAspNetCoreOptions.DefaultStatusCode`
@@ -269,7 +363,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   matched before a trailing newline, so `"abc\n"` passed `AgainstNonAlphanumericCharacters` and
   `"a@b.co\n"` passed the email guards. `\d` became `[0-9]`, so `AgainstNonNumericCharacters`, the phone, Turkish
   phone, SemVer and strong-password patterns no longer accept non-ASCII digits such as `١٢٣`. The inline patterns in
-  `GuardProfiles`, `CommonProfiles` and the obsolete `RegexPatterns` constants got the same treatment.
+  `GuardProfiles` and `CommonProfiles` got the same treatment.
 - **`AgainstCharactersOutsideSet`** (`Guard` and `StringGuards`) no longer builds a regex character class: every
   character of the allowed set is literal. `"+-="` used to allow `0`-`9` (a range), `"ab]"` rejected `"a"`, and
   `"z-a"` threw `RegexParseException`. An empty value is still rejected.
@@ -360,9 +454,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   threshold fired on every healthy worker at the default 1-hour interval. Unset thresholds now follow the archival
   polling interval (Degraded after two intervals, Unhealthy after three, never below 5 and 15 minutes); explicit
   `DegradedAfter`/`UnhealthyAfter` values are still used as given.
-- **The outbox dispatcher, archival worker and `SkipLockedDistributedLock` read the time from a `TimeProvider`.** They
-  used `DateTime.UtcNow`, so their timestamps could not be controlled in tests. New constructor overloads take a
-  `TimeProvider`, and the DI registrations pass one when it is registered; existing constructors are unchanged.
 - **The FluentValidation compatibility builder (`FluentStyleValidator<T>`) now gives FluentValidation's results.**
   - `NotEmpty()` passed every non-string value. It now also fails an empty collection or sequence and the default
     value of a value type (`0`, `Guid.Empty`, `DateTime.MinValue`, `false`). A nullable property holding `0` still
@@ -376,9 +467,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `Length(min, max)` is now a single rule, so `WithMessage` and `WithErrorCode` also cover a value that is too
     short. Before, such a value kept the default minimum-length message and code. Without an override the codes
     stay `MIN_LENGTH` and `MAX_LENGTH`.
-- **`FluentStyleValidator<T>` no longer recompiles its property accessors for every instance.** Validators are
-  registered as transient, so every resolution compiled every `RuleFor` expression again. Member selectors now
-  come from the shared accessor cache and are compiled once per process.
 - **`OrionGuard.Migration` now rewrites a rule only when the OrionGuard equivalent gives the same result.**
   - `Matches(...)` and `EmailAddress()` are reported instead of rewritten. FluentValidation checks empty strings
     against both rules, and its email check only requires one `@`. The compatibility builder skips blank values
@@ -479,16 +567,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   it to pass it on to your database or HTTP call.
 
 ### Performance
-- **`Validate.CrossProperties` compiles its selectors once.** Every rule (`AreEqual`, `AreNotEqual`,
-  `IsGreaterThan`, `IsLessThan`, `AtLeastOneRequired`) compiled both of its selector expressions on each
-  call; they now come from the same accessor cache the other validators use.
-- **A generated validator allocates nothing when the input is valid.** The emitted code built its error list
-  before the first check; it is now created on the first failure only, which with the shared success result
-  takes the passing path of a generated validator to zero allocations.
 
 Measured with BenchmarkDotNet (`--job short`, .NET 10, `HotPathBenchmarks`). Your hardware will differ; the
 ratios are the point.
 
+- **`Validate.CrossProperties` compiles its selectors once.** Every rule (`AreEqual`, `AreNotEqual`,
+  `IsGreaterThan`, `IsLessThan`, `AtLeastOneRequired`) compiled both of its selector expressions on each
+  call; they now come from the same accessor cache the other validators use.
+- **`FluentStyleValidator<T>` no longer recompiles its property accessors for every instance.** Validators are
+  registered as transient, so every resolution compiled every `RuleFor` expression again. Member selectors now
+  come from the shared accessor cache and are compiled once per process.
+- **A generated validator allocates nothing when the input is valid.** The emitted code built its error list
+  before the first check; it is now created on the first failure only, which with the shared success result
+  takes the passing path of a generated validator to zero allocations.
 - **Nested and collection validation no longer compiles an expression on every call.**
   `Validate.Nested(...)`'s `Property`, `Nested` and `Collection` each called `Expression.Compile()` per
   invocation, so validating an order with a customer, an address and ten lines compiled 24 selectors every
@@ -530,11 +621,22 @@ ratios are the point.
 
 - `IExceptionFactory`, `ExceptionFactoryProvider`, `AddOrionGuardExceptionFactory<TFactory>()`,
   `ExceptionFactoryProvider.Configure` / `Reset` and `DefaultExceptionFactory` are marked `[Obsolete]` and will
-  be removed in v7. No guard ever called `IExceptionFactory`, so registering a factory never changed the
+  be removed in **v8**. No guard ever called `IExceptionFactory`, so registering a factory never changed the
   exceptions guards throw, contrary to the documentation. Catch `GuardException` (or the specific exception
   type) at your boundary instead. The interface and the provider were left un-obsoleted before because the
   ASP.NET Core health check read them; it no longer does. `AddOrionGuard()` still registers
   `DefaultExceptionFactory` so code that resolves the interface keeps working until it is removed.
+  They are *not* removed in 7.0.0: the obsoletion landed in this cycle and never shipped in a 6.x release, so
+  taking them out now would be a break nobody was warned about. 7.0.0 is the warning; v8 is the removal.
+
+### Removed
+
+- **`Moongazing.OrionGuard.Utilities.RegexPatterns`.** It has shipped marked `[Obsolete]` since 6.0.0, with
+  `GeneratedRegexPatterns` named as the replacement in the warning, so the deprecation period is a real one.
+  `RegexPatterns.Email`, `.Url` and `.PhoneNumber` are replaced by `GeneratedRegexPatterns.Email()`, `.Url()`
+  and `.PhoneNumber()` — source-generated, NativeAOT-compatible and timeout-bounded. Where you passed the
+  constant to an API that takes a pattern string, `GeneratedRegexPatterns.Email().ToString()` gives the same
+  text. Nothing inside the library used the class any more.
 
 ### Security
 
@@ -553,9 +655,6 @@ ratios are the point.
   `OrionGuard.Generators` pick this up on the next build. A match that times out is reported as a validation
   failure, in the core package (see "A regex timeout is a validation failure" below) and in generated validators
   (see Fixed).
-- `Testcontainers.Redis` 4.0.0 → 4.15.0 in the Redis lock tests drops the transitive `SSH.NET` 2023.0.0
-  ([GHSA-mggc-4xg6-vcxf](https://github.com/advisories/GHSA-mggc-4xg6-vcxf),
-  [GHSA-q939-rpr3-3284](https://github.com/advisories/GHSA-q939-rpr3-3284), High). Test only.
 - **The injection guards are documented as heuristics.** The XML documentation of `AgainstSqlInjection`,
   `AgainstXss`, `AgainstCommandInjection`, `AgainstLdapInjection`, `AgainstXxe` and `AgainstInjection`, and both
   READMEs, now say plainly that these are denylists that miss payloads and reject some ordinary text, and name the
@@ -615,8 +714,8 @@ ratios are the point.
   runs in linear time and caps the address at 254 characters before anything else. Every email check in the core
   package now uses it: `Guard.AgainstInvalidEmail`, `string.AgainstInvalidEmail`, `Ensure...Email()`,
   `FastGuard.Email`, `[Email]`, `PropertyValidator<T>.Email()`, `Validate.Nested(...).Email()`, the compatibility
-  layer's `EmailAddress()`, the dynamic `Email` rule, `CommonProfiles.Email`, `GuardProfiles.Email` and the obsolete
-  `RegexPatterns.Email` constant; `OrionGuard.OpenApi` emits the same pattern for `format: email`. Newly rejected
+  layer's `EmailAddress()`, the dynamic `Email` rule, `CommonProfiles.Email` and `GuardProfiles.Email`;
+  `OrionGuard.OpenApi` emits the same pattern for `format: email`. Newly rejected
   everywhere: addresses longer than 254 characters, a trailing newline, and empty domain labels (`a@.b.com`,
   `a@b..com`, `a@b.com.`). `FastGuard.Email` additionally stops accepting a second `@` (`a@b@c.com`) and tabs or
   line breaks.
@@ -669,7 +768,13 @@ ratios are the point.
   package code runs; the NuGet and GitHub Packages credentials are passed through `env:` instead of being
   written into the command line; and the release build and pack run with `ContinuousIntegrationBuild=true`
   while `PublishRepositoryUrl=true` (new, in `Directory.Build.props`) records the repository and commit in
-  every package. Triggers, job names and the publishing steps are unchanged.
+  every package. Triggers and job names are unchanged.
+- **The release job publishes `OrionGuard.Templates`.** The template pack sits outside
+  `Moongazing.OrionGuard.sln` and outside `src/`, so the solution pack never reached it and the pack was never
+  pushed to NuGet — a release could ship twenty-one packages and silently leave the twenty-second behind. The
+  publish job now packs it into the same folder as the rest (both push steps already glob that folder), and
+  the "every packable project produced a package" guard counts it, so a missing template pack fails the
+  release instead of going unnoticed.
 
 ## [6.8.1] - 2026-07-21
 
