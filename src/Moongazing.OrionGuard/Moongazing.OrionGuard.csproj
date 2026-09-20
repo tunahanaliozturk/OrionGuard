@@ -9,7 +9,7 @@
 		<OutputType>Library</OutputType>
 
 		<PackageId>OrionGuard</PackageId>
-		<Version>6.7.0</Version>
+		<Version>7.0.0</Version>
 		<Company>Tunahan Ali Ozturk</Company>
 		<GeneratePackageOnBuild>false</GeneratePackageOnBuild>
 		<IncludeContentInPack>true</IncludeContentInPack>

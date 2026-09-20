@@ -22,7 +22,7 @@
 
     <PackageId>OrionGuard.Templates</PackageId>
     <!-- Tracks the OrionGuard version the templates scaffold against. -->
-    <Version>6.7.0</Version>
+    <Version>7.0.0</Version>
     <Authors>Tunahan Ali Ozturk</Authors>
     <Company>Tunahan Ali Ozturk</Company>
     <Description>dotnet new templates for OrionGuard. "orionguard-webapi" scaffolds a minimal API wired with OrionGuard validation, the ASP.NET Core integration and the health check. "orionguard-outbox" adds EF Core with the transactional outbox and its dispatcher hosted service.</Description>

@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>OrionGuard.OpenTelemetry</PackageId>
-    <Version>6.7.1</Version>
+    <Version>7.0.0</Version>
     <Description>OpenTelemetry integration for OrionGuard validation library. Provides validation metrics (success/failure rates, latency) and distributed tracing spans.</Description>
     <PackageTags>guard;validation;opentelemetry;metrics;tracing;observability</PackageTags>
   </PropertyGroup>

@@ -7,8 +7,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="OrionGuard.AspNetCore" Version="6.7.0" />
-    <PackageReference Include="OrionGuard.EntityFrameworkCore" Version="6.7.0" />
+    <PackageReference Include="OrionGuard.AspNetCore" Version="7.0.0" />
+    <PackageReference Include="OrionGuard.EntityFrameworkCore" Version="7.0.0" />
 <!--#if (database == "sqlite") -->
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.12" />
 <!--#endif -->

@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>OrionGuard.SignalR</PackageId>
-    <Version>6.7.0</Version>
+    <Version>7.0.0</Version>
     <Description>SignalR integration for OrionGuard validation library. Provides Hub filter for automatic method parameter validation.</Description>
     <PackageTags>guard;validation;signalr;realtime;hub;filter</PackageTags>
   </PropertyGroup>

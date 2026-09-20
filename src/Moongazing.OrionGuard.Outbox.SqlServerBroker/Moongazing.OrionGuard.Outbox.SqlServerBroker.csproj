@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>OrionGuard.Outbox.SqlServerBroker</PackageId>
-    <Version>6.7.0</Version>
+    <Version>7.0.0</Version>
     <Description>SQL Server Service Broker backed IOutboxWakeSignal for OrionGuard.EntityFrameworkCore. Sibling to OrionGuard.Outbox.PostgresNotify (v6.5.2) for the SQL Server provider. Replaces the v6.5.1 polling-only fallback with an event-driven wake on every committed outbox row via Service Broker's queueing primitives.</Description>
     <PackageTags>guard;outbox;sqlserver;service-broker;push;dispatch;entity-framework-core;efcore</PackageTags>
   </PropertyGroup>

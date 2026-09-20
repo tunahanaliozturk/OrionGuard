@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>OrionGuard.Locks.Redis</PackageId>
-    <Version>6.7.0</Version>
+    <Version>7.0.0</Version>
     <Description>Redis-backed IDistributedLock for OrionGuard.EntityFrameworkCore's outbox dispatcher. Bridges OrionGuard's IDistributedLock contract to the OrionLock.Redis backend so multi-instance outbox workers can share a Redis-coordinated lease instead of the default SkipLocked DB lock.</Description>
     <PackageTags>guard;outbox;distributed-lock;redis;orionlock;entity-framework-core;efcore</PackageTags>
   </PropertyGroup>

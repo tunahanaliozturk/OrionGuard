@@ -16,7 +16,7 @@
     <!-- No NU1900: this project restores nothing from a private feed. -->
     <NoWarn>CS1591</NoWarn>
     <PackageId>OrionGuard.OpenApi</PackageId>
-    <Version>6.7.0</Version>
+    <Version>7.0.0</Version>
     <Description>OpenAPI-first validation for OrionGuard. An incremental source generator that reads an OpenAPI 3 document supplied as an AdditionalFile and emits an OrionGuard validator enforcing the referenced schema's constraints (type, required, nullable, string length/pattern/format, numeric range, enum, array bounds, and intra-document $ref). The inverse of OrionGuard.Swagger.</Description>
     <PackageTags>guard;validation;openapi;swagger;source-generator;roslyn;contract-first;codegen;schema</PackageTags>
     <IncludeBuildOutput>false</IncludeBuildOutput>

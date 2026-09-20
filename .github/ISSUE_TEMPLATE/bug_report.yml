@@ -45,8 +45,8 @@ body:
     id: version
     attributes:
       label: Package version
-      description: The exact version from your PackageReference, for example 6.7.0. "latest" is not a version.
-      placeholder: "6.7.0"
+      description: The exact version from your PackageReference, for example 7.0.0. "latest" is not a version.
+      placeholder: "7.0.0"
     validations:
       required: true
 
