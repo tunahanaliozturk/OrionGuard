@@ -1,5 +1,4 @@
 using Microsoft.CodeAnalysis;
-using Moongazing.OrionGuard.Core;
 
 namespace Moongazing.OrionGuard.OpenApi.Tests;
 

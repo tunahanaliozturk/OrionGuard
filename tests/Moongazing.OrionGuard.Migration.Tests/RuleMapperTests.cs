@@ -1,6 +1,5 @@
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Moongazing.OrionGuard.Migration;
 
 namespace Moongazing.OrionGuard.Migration.Tests;
 

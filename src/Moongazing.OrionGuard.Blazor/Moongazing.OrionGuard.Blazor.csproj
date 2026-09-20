@@ -1,23 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk.Razor">
   <PropertyGroup>
-    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-    <LangVersion>latest</LangVersion>
-    <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <NoWarn>CS1591;NU1900</NoWarn>
     <PackageId>OrionGuard.Blazor</PackageId>
     <Version>6.7.0</Version>
-    <Authors>Tunahan Ali Ozturk</Authors>
     <Description>Blazor integration for OrionGuard validation library. Provides EditForm validation components that run OrionGuard attribute rules or a registered IValidator&lt;TModel&gt;.</Description>
     <PackageTags>guard;validation;blazor;editform;component;wasm;server</PackageTags>
-    <PackageReadmeFile>docs/README.md</PackageReadmeFile>
-    <PackageIcon>docs/logo.png</PackageIcon>
-    <RepositoryUrl>https://github.com/tunahanaliozturk/OrionGuard</RepositoryUrl>
-    <RepositoryType>git</RepositoryType>
-    <PackageProjectUrl>https://github.com/tunahanaliozturk/OrionGuard</PackageProjectUrl>
-    <PackageLicenseExpression>MIT</PackageLicenseExpression>
   </PropertyGroup>
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />

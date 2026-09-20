@@ -1,4 +1,3 @@
-using System.Collections.Immutable;
 using System.Runtime.CompilerServices;
 
 namespace Moongazing.OrionGuard.Core;

@@ -1,4 +1,3 @@
-using System.Linq;
 using Hangfire;
 using Hangfire.Common;
 using Microsoft.Extensions.DependencyInjection;

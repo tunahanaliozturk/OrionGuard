@@ -1,5 +1,3 @@
-using Moongazing.OrionGuard.Migration;
-
 namespace Moongazing.OrionGuard.Migration.Tests;
 
 public sealed class MigrationEngineTests

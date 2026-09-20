@@ -24,7 +24,9 @@ public class OrionLockBridgeRedisIntegrationTests : IAsyncLifetime
     {
         try
         {
-            _redis = new RedisBuilder().WithImage("redis:7-alpine").Build();
+            // Testcontainers 4.15 deprecated the parameterless builder: the image is now a
+            // constructor argument rather than a WithImage() call on a default. Same image.
+            _redis = new RedisBuilder("redis:7-alpine").Build();
             await _redis.StartAsync();
             var cs = _redis.GetConnectionString();
             _muxA = await ConnectionMultiplexer.ConnectAsync(cs);

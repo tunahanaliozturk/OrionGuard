@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using Moongazing.OrionGuard.Domain.Events;
 
 namespace Moongazing.OrionGuard.Domain.Primitives;

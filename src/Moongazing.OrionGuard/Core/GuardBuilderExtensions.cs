@@ -1,6 +1,4 @@
-﻿using Moongazing.OrionGuard.Exceptions;
-
-namespace Moongazing.OrionGuard.Core;
+﻿namespace Moongazing.OrionGuard.Core;
 
 public static class GuardBuilderExtensions
 {

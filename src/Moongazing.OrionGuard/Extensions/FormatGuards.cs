@@ -1,7 +1,6 @@
 using System.Buffers;
 using System.Collections.Frozen;
 using System.Globalization;
-using Moongazing.OrionGuard.Core;
 
 namespace Moongazing.OrionGuard.Extensions;
 

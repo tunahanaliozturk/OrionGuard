@@ -1,4 +1,3 @@
-using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Moongazing.OrionGuard.AspNetCore.ExceptionHandling;
 using Moongazing.OrionGuard.AspNetCore.Filters;

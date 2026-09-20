@@ -1,6 +1,5 @@
 using System.Diagnostics.CodeAnalysis;
 using global::Hangfire.Client;
-using global::Hangfire.Common;
 using Microsoft.Extensions.DependencyInjection;
 using Moongazing.OrionGuard.Core;
 using Moongazing.OrionGuard.DependencyInjection;

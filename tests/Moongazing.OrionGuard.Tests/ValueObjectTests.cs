@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using Moongazing.OrionGuard.Domain.Primitives;
 
 namespace Moongazing.OrionGuard.Tests;

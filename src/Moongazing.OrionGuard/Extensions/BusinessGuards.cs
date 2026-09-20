@@ -1,5 +1,4 @@
 using System.Collections.Frozen;
-using Moongazing.OrionGuard.Core;
 
 namespace Moongazing.OrionGuard.Extensions;
 

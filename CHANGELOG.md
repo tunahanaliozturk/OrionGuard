@@ -118,6 +118,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Build settings consolidated; published package metadata is unchanged.** The target frameworks,
+  `Nullable`, `LangVersion`, `ImplicitUsings`, `GenerateDocumentationFile`, `TreatWarningsAsErrors`,
+  `NoWarn` and the packaging metadata (authors, licence, repository, project URL, icon, readme) moved
+  out of the twenty-one `src/*.csproj` files into `src/Directory.Build.props`. Every per-project
+  difference was kept: the two netstandard2.0 Roslyn components and the `dotnet orionguard` tool still
+  target a single framework, and `OrionGuard` still declares its licence as a packaged file rather than
+  an SPDX expression. Packing all twenty-one packages before and after produces byte-identical `.nuspec`
+  files and identical package contents, so nothing a consumer sees on NuGet has changed: same ids,
+  versions, target frameworks, dependencies, licence, authors and repository metadata.
+- **The solution builds with zero warnings.** The two long-standing ones were both in test code and
+  are fixed at the cause rather than suppressed: a test local is declared `object?` where it always
+  held `null`, and the Redis integration fixture passes its container image to the `RedisBuilder`
+  constructor now that the parameterless one is obsolete. No shipped code changed.
+- `LICENSE.txt` now exists at the repository root, so the MIT licence is detected for the repository
+  and the solution item resolves. The copy packed into `OrionGuard` is untouched.
+- The demo banner and two README passages no longer name v6.3.0 as if it were the current or upcoming
+  release. The version was removed rather than bumped, so those lines cannot go stale again.
 - **Dependencies refreshed across the solution.** Package versions are bumped in the release PR.
   - `Microsoft.Extensions.*` → **10.0.12** in every shipped package, including net8.0/net9.0 targets.
   - `OrionGuard.EntityFrameworkCore`: EF Core **10.0.12** on net10.0, **9.0.20** on net8.0/net9.0
