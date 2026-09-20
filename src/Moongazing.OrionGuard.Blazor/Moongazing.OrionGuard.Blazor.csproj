@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk.Razor">
   <PropertyGroup>
     <PackageId>OrionGuard.Blazor</PackageId>
-    <Version>6.7.0</Version>
+    <Version>7.0.0</Version>
     <Description>Blazor integration for OrionGuard validation library. Provides EditForm validation components that run OrionGuard attribute rules or a registered IValidator&lt;TModel&gt;.</Description>
     <PackageTags>guard;validation;blazor;editform;component;wasm;server</PackageTags>
   </PropertyGroup>

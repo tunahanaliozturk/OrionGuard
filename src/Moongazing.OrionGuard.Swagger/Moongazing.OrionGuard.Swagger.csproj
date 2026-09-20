@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>OrionGuard.Swagger</PackageId>
-    <Version>6.7.0</Version>
+    <Version>7.0.0</Version>
     <Description>Swagger/OpenAPI integration for OrionGuard. Auto-generates OpenAPI constraints from OrionGuard validation attributes.</Description>
     <PackageTags>guard;validation;swagger;openapi;swashbuckle</PackageTags>
   </PropertyGroup>

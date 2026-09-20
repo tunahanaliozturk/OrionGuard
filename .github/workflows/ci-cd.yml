@@ -86,12 +86,21 @@ jobs:
         # Each package carries its own <Version>, so mixed versions (e.g. the Migration tool)
         # pack correctly.
         run: dotnet pack ${{ env.SOLUTION_PATH }} --no-build --configuration Release -o ./nupkgs -p:ContinuousIntegrationBuild=true
+
+      - name: Pack the template pack
+        # OrionGuard.Templates lives outside the solution (a template pack compiles nothing, and its
+        # content must not be built as part of the build above), so the solution pack never reaches it.
+        # It is packed here into the same folder, which is what both push steps glob over. No --no-build:
+        # the project was not part of the Build step.
+        run: dotnet pack templates/Moongazing.OrionGuard.Templates.csproj --configuration Release -o ./nupkgs -p:ContinuousIntegrationBuild=true
+
       - name: Verify every packable project produced a package
         run: |
-          expected=$(find src -name '*.csproj' -exec grep -L '<IsPackable>false' {} + | wc -l)
+          # The packable projects under src/, plus the out-of-solution template pack.
+          expected=$(( $(find src -name '*.csproj' -exec grep -L '<IsPackable>false' {} + | wc -l) + 1 ))
           actual=$(find ./nupkgs -name '*.nupkg' -not -name '*.symbols.nupkg' | wc -l)
-          echo "Packable src projects: $expected"
-          echo "Packages produced:     $actual"
+          echo "Packable src projects + template pack: $expected"
+          echo "Packages produced:                     $actual"
           find ./nupkgs -name '*.nupkg' -printf '  %f\n' | sort
           if [ "$expected" -ne "$actual" ]; then
             echo "::error::Expected $expected packages but produced $actual. Refusing to publish a partial set."

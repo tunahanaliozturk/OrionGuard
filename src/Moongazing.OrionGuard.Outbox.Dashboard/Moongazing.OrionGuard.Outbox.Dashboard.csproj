@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>OrionGuard.Outbox.Dashboard</PackageId>
-    <Version>6.7.0</Version>
+    <Version>7.0.0</Version>
     <Description>Outbox operator dashboard for OrionGuard. Maps an authorized listing of failed / poisoned messages from the consumer's DbContext to an ASP.NET Core endpoint group, plus POST /{id}/replay and POST /{id}/discard mutation endpoints (v6.5.5) with an optional OnMutation audit hook.</Description>
     <PackageTags>guard;outbox;dashboard;aspnetcore;poisoned-messages;dead-letter</PackageTags>
   </PropertyGroup>

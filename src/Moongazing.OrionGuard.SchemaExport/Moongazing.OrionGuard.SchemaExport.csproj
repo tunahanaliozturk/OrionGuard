@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>OrionGuard.SchemaExport</PackageId>
-    <Version>6.7.0</Version>
+    <Version>7.0.0</Version>
     <Description>Exports the OrionGuard validation attributes on a model as a JSON Schema (draft 2020-12) document or a TypeScript interface, so a frontend consumes the rules instead of re-writing them by hand. Rules OrionGuard cannot express in the artifact are listed rather than dropped.</Description>
     <PackageTags>guard;validation;json-schema;typescript;codegen;schema;export;contract</PackageTags>
   </PropertyGroup>

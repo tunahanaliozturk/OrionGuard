@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>OrionGuard.Hangfire</PackageId>
-    <Version>6.7.0</Version>
+    <Version>7.0.0</Version>
     <Description>Hangfire integration for OrionGuard validation library. Provides a client filter that validates background job arguments at enqueue time, so an invalid job is rejected by the enqueue call instead of failing inside a worker.</Description>
     <PackageTags>guard;validation;hangfire;background-jobs;client-filter;enqueue</PackageTags>
   </PropertyGroup>

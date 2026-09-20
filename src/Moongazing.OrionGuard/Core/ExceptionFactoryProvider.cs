@@ -8,7 +8,7 @@ namespace Moongazing.OrionGuard.Core;
 /// exceptions they throw. See <see cref="IExceptionFactory"/>.
 /// </remarks>
 [Obsolete("OrionGuard guards never read ExceptionFactoryProvider, so configuring a factory does not change the exceptions they throw. " +
-          "Catch GuardException (or the specific exception type) and translate it at your boundary instead. This class will be removed in v7.")]
+          "Catch GuardException (or the specific exception type) and translate it at your boundary instead. This class will be removed in v8.")]
 public static class ExceptionFactoryProvider
 {
     private static volatile IExceptionFactory _factory = DefaultExceptionFactory.Instance;
@@ -18,7 +18,7 @@ public static class ExceptionFactoryProvider
 
     /// <summary>Set a custom exception factory.</summary>
     [Obsolete("OrionGuard guards never read ExceptionFactoryProvider, so configuring a factory does not change the exceptions they throw. " +
-              "Catch GuardException (or the specific exception type) and translate it at your boundary instead. This method will be removed in v7.")]
+              "Catch GuardException (or the specific exception type) and translate it at your boundary instead. This method will be removed in v8.")]
     public static void Configure(IExceptionFactory factory)
     {
         ArgumentNullException.ThrowIfNull(factory);
@@ -26,6 +26,6 @@ public static class ExceptionFactoryProvider
     }
 
     /// <summary>Reset to default factory.</summary>
-    [Obsolete("OrionGuard guards never read ExceptionFactoryProvider. This method will be removed in v7.")]
+    [Obsolete("OrionGuard guards never read ExceptionFactoryProvider. This method will be removed in v8.")]
     public static void Reset() => _factory = DefaultExceptionFactory.Instance;
 }

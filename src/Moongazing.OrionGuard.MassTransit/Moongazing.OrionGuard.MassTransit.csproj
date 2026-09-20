@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>OrionGuard.MassTransit</PackageId>
-    <Version>6.7.0</Version>
+    <Version>7.0.0</Version>
     <Description>MassTransit integration for OrionGuard validation library. Provides a scoped consume filter that validates every consumed message with its registered validators, so an invalid message faults before it reaches the consumer.</Description>
     <PackageTags>guard;validation;masstransit;messaging;consume-filter;middleware</PackageTags>
   </PropertyGroup>

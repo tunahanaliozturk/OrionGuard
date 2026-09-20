@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>OrionGuard.Grpc</PackageId>
-    <Version>6.7.0</Version>
+    <Version>7.0.0</Version>
     <Description>gRPC integration for OrionGuard validation library. Provides server interceptor for automatic request validation in gRPC services.</Description>
     <PackageTags>guard;validation;grpc;interceptor;protobuf;microservices</PackageTags>
   </PropertyGroup>

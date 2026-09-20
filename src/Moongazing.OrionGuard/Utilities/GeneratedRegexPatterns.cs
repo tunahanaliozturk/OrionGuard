@@ -13,8 +13,8 @@ public static partial class GeneratedRegexPatterns
     #region Common Formats
 
     /// <summary>
-    /// The email pattern, shared with the pattern-string APIs (<c>GuardProfiles.Email</c>,
-    /// <c>RegexPatterns.Email</c>) so every email check accepts the same set.
+    /// The email pattern, shared with the pattern-string APIs (<c>GuardProfiles.Email</c>)
+    /// so every email check accepts the same set.
     /// </summary>
     /// <remarks>
     /// The leading lookahead caps the address at 254 characters (the RFC 5321 path limit) before anything

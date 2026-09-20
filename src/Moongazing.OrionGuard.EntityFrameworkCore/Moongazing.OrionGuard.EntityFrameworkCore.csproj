@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>OrionGuard.EntityFrameworkCore</PackageId>
-    <Version>6.7.0</Version>
+    <Version>7.0.0</Version>
     <Description>EF Core integration for OrionGuard. Provides a SaveChanges interceptor that dispatches domain events from AggregateRoot&lt;TId&gt; instances after commit (Inline mode) or via a transactional outbox (Outbox mode) consumed by a hosted background worker. Includes W3C trace context propagation across the outbox boundary.</Description>
     <PackageTags>guard;validation;ddd;domain-events;outbox;entity-framework-core;efcore;aggregate-root</PackageTags>
   </PropertyGroup>
