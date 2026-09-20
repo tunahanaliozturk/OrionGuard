@@ -9,7 +9,7 @@ namespace Moongazing.OrionGuard.Core;
 /// <see cref="IExceptionFactory"/>.
 /// </remarks>
 [Obsolete("OrionGuard guards never call IExceptionFactory, and this factory's exception types differ from the ones guards throw. " +
-          "It will be removed in v7.")]
+          "It will be removed in v8.")]
 public sealed class DefaultExceptionFactory : IExceptionFactory
 {
     public static readonly DefaultExceptionFactory Instance = new();

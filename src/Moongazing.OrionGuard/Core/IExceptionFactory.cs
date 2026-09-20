@@ -12,12 +12,12 @@ namespace Moongazing.OrionGuard.Core;
 /// <para>
 /// This interface, its registration entry points (<c>AddOrionGuardExceptionFactory</c>,
 /// <see cref="ExceptionFactoryProvider"/>) and <see cref="DefaultExceptionFactory"/> are obsolete and will be
-/// removed in v7. To map guard failures to your own exception types, catch <c>GuardException</c> (or the
+/// removed in v8. To map guard failures to your own exception types, catch <c>GuardException</c> (or the
 /// specific type) at your boundary.
 /// </para>
 /// </remarks>
 [Obsolete("OrionGuard guards never call IExceptionFactory, so implementing or registering one does not change the exceptions they throw. " +
-          "Catch GuardException (or the specific exception type) and translate it at your boundary instead. This interface will be removed in v7.")]
+          "Catch GuardException (or the specific exception type) and translate it at your boundary instead. This interface will be removed in v8.")]
 public interface IExceptionFactory
 {
     /// <summary>

@@ -56,7 +56,7 @@ public static class ServiceCollectionExtensions
     /// exception a guard throws.
     /// </remarks>
     [Obsolete("OrionGuard guards never call IExceptionFactory, so registering one does not change the exceptions they throw. " +
-              "Catch GuardException (or the specific exception type) and translate it at your boundary instead. This method will be removed in v7.")]
+              "Catch GuardException (or the specific exception type) and translate it at your boundary instead. This method will be removed in v8.")]
     public static IServiceCollection AddOrionGuardExceptionFactory<TFactory>(this IServiceCollection services)
         where TFactory : class, IExceptionFactory, new()
     {
