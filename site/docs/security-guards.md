@@ -148,12 +148,23 @@ quadratic.
 
 ## Running in a browser
 
-.NET on WebAssembly does not implement NFKC normalization, and `AgainstPathTraversal` normalizes
-before it looks for traversal sequences. A non-ASCII value therefore throws
-`PlatformNotSupportedException` there instead of being judged; ASCII values take a fast path and work
-normally. This affects `AgainstPathTraversal`, `AgainstUnsafeFileName` and `AgainstInjection` in
-Blazor WebAssembly only — server-side runtimes are unaffected. The playground shows it: pick the
-fullwidth `．．／secret.txt` sample.
+`AgainstPathTraversal` normalizes with `NormalizationForm.FormKC` before it looks for traversal
+sequences, and browser ICU does not carry the data for the compatibility forms `FormKC` and `FormKD`
+([runtime source](https://github.com/dotnet/runtime/blob/release/10.0/src/libraries/System.Private.CoreLib/src/System/Globalization/Normalization.Icu.cs)).
+A non-ASCII value therefore throws `PlatformNotSupportedException` there instead of being judged;
+ASCII values are returned by a fast path before normalization is attempted and work normally. This
+affects `AgainstPathTraversal`, `AgainstUnsafeFileName` and `AgainstInjection`. Setting
+`BlazorWebAssemblyLoadAllGlobalizationData` does not change it — the check is on the platform and the
+normalization form, not on which ICU shard was loaded. The playground shows it: pick the fullwidth
+`．．／secret.txt` sample.
+
+A server-side runtime is unaffected, with one exception that fails the other way round. In
+globalization-invariant mode (`InvariantGlobalization=true`, common in trimmed and container builds)
+normalization is skipped instead of attempted: [the string comes back unchanged and `IsNormalized`
+always returns `true`](https://github.com/dotnet/runtime/blob/main/docs/design/features/globalization-invariant-mode.md#string-normalization).
+Nothing throws, so there is no signal at all — the literal and URL-decoded passes keep working while
+the normalized pass silently stops catching the fullwidth forms. Of the two, the browser's exception
+is the kinder failure.
 
 ## See also
 

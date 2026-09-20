@@ -1,20 +1,18 @@
 # OrionGuard.Testing
 
-Test helpers for [OrionGuard](https://github.com/tunahanaliozturk/OrionGuard). For domain events: capture what an aggregate raised, swap in an in-memory dispatcher, and assert on the result with a small fluent API. For validators: pin what a validator enforces to a snapshot file, and fail a test when a model grows a property nobody validates. It has no dependency on xUnit, NUnit, MSTest, FluentAssertions, Verify, or Snapshooter; a failed assertion throws `DomainEventAssertionException` or `ValidatorAssertionException`, which every test runner reports as a failure.
-
-## Install
+Two things that are awkward to test by hand: what an aggregate *raised* rather than what it stored, and what a validator actually enforces. Capture domain events and assert on them, or pin a validator's rules to a snapshot file that fails when they drift.
 
 ```bash
 dotnet add package OrionGuard.Testing
 ```
 
-## Quick start
-
-The examples use this aggregate, built on the core `OrionGuard` primitives:
-
 ```csharp
+namespace Shop.Tests;
+
 using Moongazing.OrionGuard.Domain.Events;
 using Moongazing.OrionGuard.Domain.Primitives;
+using Moongazing.OrionGuard.Testing.DomainEvents;
+using Xunit;
 
 public sealed record OrderId(Guid Value) : StronglyTypedId<Guid>(Value);
 public sealed record OrderShipped(OrderId OrderId) : DomainEventBase;
@@ -25,13 +23,6 @@ public sealed class Order(OrderId id) : AggregateRoot<OrderId>(id)
     public void Ship() => RaiseEvent(new OrderShipped(Id));
     public void Cancel() => RaiseEvent(new OrderCancelled(Id));
 }
-```
-
-A unit test with xUnit (any other runner works the same way):
-
-```csharp
-using Moongazing.OrionGuard.Testing.DomainEvents;
-using Xunit;
 
 public class OrderTests
 {
@@ -51,58 +42,92 @@ public class OrderTests
 }
 ```
 
-`DomainEventCapture.From(order)` calls `order.PullDomainEvents()`, so it empties the aggregate's event buffer. Capture after the action under test, and only once per action.
+A failed assertion throws `DomainEventAssertionException` (or `ValidatorAssertionException` on the validator side), which every runner reports as a failure — the package has no dependency on xUnit, NUnit, MSTest, FluentAssertions, Verify or Snapshooter, so it does not pick your test stack for you. The message names what it wanted and lists what it found: `Expected OrderShipped to be raised but it was not. Captured events: [OrderCancelled]`.
 
 ## DomainEventCapture
 
-Namespace `Moongazing.OrionGuard.Testing.DomainEvents`. A snapshot of domain events to assert on.
+Namespace `Moongazing.OrionGuard.Testing.DomainEvents`. A snapshot of events to assert on.
 
 | Member | Description |
 | --- | --- |
-| `static DomainEventCapture From(IAggregateRoot aggregate)` | Pulls the aggregate's pending events (empties its buffer). |
-| `static DomainEventCapture FromList(IEnumerable<IDomainEvent> events)` | Wraps an existing list of events without pulling from anything. |
-| `IReadOnlyList<IDomainEvent> All` | Every captured event, in the order it was raised. |
-| `TEvent Single<TEvent>()` | The only event of that type. Throws `InvalidOperationException` when there are none or more than one. |
-| `IEnumerable<TEvent> OfType<TEvent>()` | All captured events of that type. |
-| `bool Contains<TEvent>()` | True when at least one event of that type was captured. |
-| `bool Contains<TEvent>(Func<TEvent, bool> predicate)` | True when at least one event of that type matches the predicate. |
-| `DomainEventAssertions Should()` | Starts a fluent assertion chain. |
+| `static DomainEventCapture From(IAggregateRoot aggregate)` | Pulls the aggregate's pending events — this **empties its buffer**. |
+| `static DomainEventCapture FromList(IEnumerable<IDomainEvent> events)` | Wraps a list you already have. |
+| `IReadOnlyList<IDomainEvent> All` | Everything captured, in the order raised. |
+| `TEvent Single<TEvent>()` | The only event of that type; throws `InvalidOperationException` for none or several. |
+| `IEnumerable<TEvent> OfType<TEvent>()` | All events of that type. |
+| `bool Contains<TEvent>()` / `Contains<TEvent>(predicate)` | Whether one was captured, optionally matching a predicate. |
+| `DomainEventAssertions Should()` | Starts a fluent chain. |
 
-`Single<TEvent>()` is handy when you want to inspect one event's data with your own assertions:
+`Single<TEvent>()` is the hand-off point when you want your own assertions on the payload:
 
 ```csharp
-OrderShipped shipped = DomainEventCapture.From(order).Single<OrderShipped>();
-Assert.Equal(order.Id, shipped.OrderId);
+namespace Shop.Tests.Detail;
+
+using Moongazing.OrionGuard.Domain.Events;
+using Moongazing.OrionGuard.Domain.Primitives;
+using Moongazing.OrionGuard.Testing.DomainEvents;
+using Xunit;
+
+public sealed record OrderId(Guid Value) : StronglyTypedId<Guid>(Value);
+public sealed record OrderShipped(OrderId OrderId) : DomainEventBase;
+
+public sealed class Order(OrderId id) : AggregateRoot<OrderId>(id)
+{
+    public void Ship() => RaiseEvent(new OrderShipped(Id));
+}
+
+public class ShippedPayloadTests
+{
+    [Fact]
+    public void Ship_carries_the_order_id()
+    {
+        var order = new Order(new OrderId(Guid.NewGuid()));
+        order.Ship();
+
+        OrderShipped shipped = DomainEventCapture.From(order).Single<OrderShipped>();
+
+        Assert.Equal(order.Id, shipped.OrderId);
+    }
+}
 ```
 
 ## Assertions
 
-`DomainEventAssertions` methods return the same assertions object, so calls chain. Each one throws `DomainEventAssertionException` when it fails.
+Every `DomainEventAssertions` method returns the same object, so calls chain, and each throws `DomainEventAssertionException` on failure.
 
 | Method | Passes when |
 | --- | --- |
-| `HaveRaised<TEvent>(Func<TEvent, bool>? predicate = null)` | At least one event of `TEvent` was captured (and matches `predicate`, if given). |
-| `NotHaveRaised<TEvent>()` | No event of `TEvent` was captured. |
+| `HaveRaised<TEvent>(Func<TEvent, bool>? predicate = null)` | At least one `TEvent` was captured, and matches `predicate` if one was given. |
+| `NotHaveRaised<TEvent>()` | No `TEvent` was captured. |
 | `HaveRaisedExactly(int expected).Of<TEvent>()` | Exactly `expected` events of `TEvent` were captured. |
-
-Failure messages from `HaveRaised` and `NotHaveRaised` list the type names of every captured event, for example `Expected OrderShipped to be raised but it was not. Captured events: [OrderCancelled]`.
 
 ## InMemoryDomainEventDispatcher
 
-An `IDomainEventDispatcher` that records every event it is given instead of invoking handlers. Use it where production code publishes events through the dispatcher.
+An `IDomainEventDispatcher` that records instead of invoking handlers — for testing code that publishes through the dispatcher rather than exposing the aggregate.
 
 | Member | Description |
 | --- | --- |
-| `Task DispatchAsync(IDomainEvent @event, CancellationToken cancellationToken = default)` | Records one event. No handlers run. |
-| `Task DispatchAsync(IEnumerable<IDomainEvent> events, CancellationToken cancellationToken = default)` | Records the events in iteration order. No handlers run. |
+| `DispatchAsync(IDomainEvent, CancellationToken)` | Records one event; no handler runs. |
+| `DispatchAsync(IEnumerable<IDomainEvent>, CancellationToken)` | Records them in iteration order; no handler runs. |
 | `IReadOnlyList<IDomainEvent> Captured` | Everything dispatched so far, in order. |
 | `DomainEventAssertions Should()` | Fluent assertions over `Captured`. |
-| `void Clear()` | Forgets all captured events. |
+| `void Clear()` | Forgets everything captured. |
 
 ```csharp
+namespace Shop.Tests.Handlers;
+
 using Moongazing.OrionGuard.Domain.Events;
+using Moongazing.OrionGuard.Domain.Primitives;
 using Moongazing.OrionGuard.Testing.DomainEvents;
 using Xunit;
+
+public sealed record OrderId(Guid Value) : StronglyTypedId<Guid>(Value);
+public sealed record OrderShipped(OrderId OrderId) : DomainEventBase;
+
+public sealed class Order(OrderId id) : AggregateRoot<OrderId>(id)
+{
+    public void Ship() => RaiseEvent(new OrderShipped(Id));
+}
 
 // Application code under test.
 public sealed class ShipOrderHandler(IDomainEventDispatcher dispatcher)
@@ -129,32 +154,59 @@ public class ShipOrderHandlerTests
 }
 ```
 
-In an integration test that builds the real service container (for example with `WebApplicationFactory`), replace the registered dispatcher:
+In an integration test that builds the real container (`WebApplicationFactory`, say), replace the registration:
 
 ```csharp
-services.Replace(ServiceDescriptor.Singleton<IDomainEventDispatcher>(dispatcher));
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Moongazing.OrionGuard.Domain.Events;
+using Moongazing.OrionGuard.Testing.DomainEvents;
+
+public static class TestServices
+{
+    public static void UseInMemoryDispatcher(IServiceCollection services, InMemoryDomainEventDispatcher dispatcher) =>
+        services.Replace(ServiceDescriptor.Singleton<IDomainEventDispatcher>(dispatcher));
+}
 ```
 
-`Replace` comes from `Microsoft.Extensions.DependencyInjection.Extensions`. `AddOrionGuardDomainEvents()` registers its dispatcher with `TryAdd`, so registering the in-memory dispatcher before calling it also works.
+`AddOrionGuardDomainEvents()` registers its dispatcher with `TryAdd`, so registering the in-memory one *before* that call works just as well.
 
-## Validator snapshots
+## Pin a validator's rules to a snapshot
 
-Namespace `Moongazing.OrionGuard.Testing.Validators`. A snapshot test records the rules a validator actually enforces in a `.verified.txt` file, and fails when they change without the file being updated. Useful on a validator that several people edit: the diff on the snapshot says, in one screen, what the change did to the contract.
+Namespace `Moongazing.OrionGuard.Testing.Validators`. A snapshot records what a validator enforces and fails when that changes without the file being updated — on a validator several people edit, the diff on the snapshot says in one screen what the change did to the contract.
 
 ```csharp
+namespace Shop.Tests.Validators;
+
+using Moongazing.OrionGuard.DependencyInjection;
 using Moongazing.OrionGuard.Testing.Validators;
+using Xunit;
+
+public sealed class CreateUserRequest
+{
+    public string? Email { get; set; }
+    public int Age { get; set; }
+    public string? Notes { get; set; }
+}
+
+public sealed class CreateUserValidator : AbstractValidator<CreateUserRequest>
+{
+    public CreateUserValidator()
+    {
+        RuleFor(x => x.Email, nameof(CreateUserRequest.Email), p => p.NotEmpty().Email());
+        RuleFor(x => x.Age > 0, "Age must be greater than 0.", nameof(CreateUserRequest.Age));
+    }
+}
 
 public class CreateUserValidatorTests
 {
     [Fact]
-    public Task Rules_are_unchanged()
-        => OrionGuardSnapshot.Of<CreateUserValidator, CreateUserRequest>().MatchAsync();
+    public Task Rules_are_unchanged() =>
+        OrionGuardSnapshot.Of<CreateUserValidator, CreateUserRequest>().MatchAsync();
 }
 ```
 
-The first run writes `CreateUserValidator.verified.txt` next to the test's source file and passes; review it and commit it. After that, any change to what the validator reports fails the test.
-
-The snapshot is what the validator says about a fixed set of probe values, one section per property:
+The first run writes `CreateUserValidator.verified.txt` next to the test's source file and passes; review it, commit it, and after that any change to what the validator reports fails the test. The file is what the validator says about a fixed set of probe values, one section per property:
 
 ```text
 validator: CreateUserValidator
@@ -180,27 +232,15 @@ model: CreateUserRequest
   string(256) -> accepted
 ```
 
-Probe values depend on the property's type: `null` for anything nullable, then `""` / `"   "` / `"x"` / a 256-character string, `-1` / `0` / `1` for numbers (`0` / `1` / `2` for unsigned ones), `false` / `true`, every member of an enum, the empty and a non-empty `Guid`, `DateTime.MinValue` and a fixed past and future date, and `[]` / `[one]` for collections. A collection is probed with a value of its declared type — an array, a `List<T>`, or the type itself for a `HashSet<T>` or `Dictionary<TKey, TValue>` — so a rule that accepts `null` but rejects an empty collection is seen. When no value of the declared type can be constructed (`ReadOnlyCollection<T>` has no parameterless constructor, `ImmutableArray<T>` has no usable default), the property is probed with `null` only and the snapshot says so:
-
-```text
-[Items]
-  null -> ITEMS: Items is required.
-  (no value of this type could be constructed to probe with)
-```
-
-A rule that reports several properties at once (`"StartDate,EndDate"`) is listed under each of them; a rule whose reported name is not a property of the model is listed under a final `[unattributed]` section. A probe that makes the validator throw is recorded as `-> threw NullReferenceException` — only the exception type, never its message.
-
-Both synchronous and asynchronous rules are covered: the sweep runs the validator through `ValidateAsync`, which runs `RuleFor` and `RuleForAsync` rules alike, so a property covered only by an async rule appears like any other. Each rule runs once per probe value; the sync rules are not reported twice.
-
-Nothing machine- or run-dependent goes into the file: properties and errors are ordered ordinally, numbers and dates are formatted with the invariant culture, and lines end with `\n` on every platform. The messages come from your validator, so a validator that localizes its messages produces a snapshot that depends on the test's culture.
+Probe values follow the property's type: `null` for anything nullable, then `""` / `"   "` / `"x"` / a 256-character string, `-1` / `0` / `1` for numbers (`0` / `1` / `2` when unsigned), `false` / `true`, every member of an enum, the empty and a non-empty `Guid`, `DateTime.MinValue` and a fixed past and future date, and `[]` / `[one]` for collections. A collection is probed with a value of its *declared* type — an array, a `List<T>`, or the type itself for a `HashSet<T>` or `Dictionary<TKey, TValue>` — so a rule that accepts `null` but rejects an empty collection is seen.
 
 | Member | Description |
 | --- | --- |
 | `static ValidatorSnapshot<TValidator, TModel> OrionGuardSnapshot.Of<TValidator, TModel>()` | Starts a snapshot. Both types need a public parameterless constructor, and `TValidator` must implement `IValidator<TModel>`. |
-| `Task MatchAsync(string? snapshotPath = null, bool ci = false, CancellationToken cancellationToken = default)` | Compares against the snapshot and throws `ValidatorAssertionException` on a mismatch. The token is observed while the validator runs, so an async rule doing I/O is cancelled with the test. |
+| `Task MatchAsync(string? snapshotPath = null, bool ci = false, CancellationToken cancellationToken = default)` | Compares against the snapshot and throws `ValidatorAssertionException` on a mismatch. The token reaches the rules, so an async rule doing I/O is cancelled with the test. |
 | `string Render()` | The snapshot text, without touching the file system. |
 
-`MatchAsync` writes a `.received.txt` beside the snapshot whenever the two differ, and the failure message names the first three differing lines:
+A mismatch writes a `.received.txt` beside the snapshot and names the first three differing lines:
 
 ```text
 CreateUserValidator no longer matches its snapshot '...\CreateUserValidator.verified.txt'.
@@ -209,59 +249,100 @@ CreateUserValidator no longer matches its snapshot '...\CreateUserValidator.veri
     actual:     -1 -> AGE: Age must be greater than 0.
 ```
 
-`snapshotPath` overrides where the snapshot lives; by default it is `{TValidator}.verified.txt` in the directory of the source file that called `MatchAsync`. `ci` decides what a *missing* snapshot means: with the default `false` it is written and the test passes, with `true` it is a failure, so a build server never silently accepts a snapshot nobody reviewed. No environment variable is read for you — pass the switch yourself:
+`snapshotPath` moves the file; by default it is `{TValidator}.verified.txt` in the directory of the source file that called `MatchAsync`. `ci` decides what a *missing* snapshot means: `false` (the default) writes it and passes, `true` fails, so a build server never silently accepts a snapshot nobody reviewed. No environment variable is read for you — pass the switch:
 
 ```csharp
-await OrionGuardSnapshot.Of<CreateUserValidator, CreateUserRequest>()
-    .MatchAsync(ci: Environment.GetEnvironmentVariable("CI") is not null);
+namespace Shop.Tests.Validators.Ci;
+
+using Moongazing.OrionGuard.DependencyInjection;
+using Moongazing.OrionGuard.Testing.Validators;
+
+public sealed class CreateUserRequest
+{
+    public string? Email { get; set; }
+}
+
+public sealed class CreateUserValidator : AbstractValidator<CreateUserRequest>
+{
+    public CreateUserValidator() =>
+        RuleFor(x => x.Email, nameof(CreateUserRequest.Email), p => p.NotEmpty().Email());
+}
+
+public static class SnapshotOnCi
+{
+    public static Task MatchAsync() =>
+        OrionGuardSnapshot.Of<CreateUserValidator, CreateUserRequest>()
+            .MatchAsync(ci: Environment.GetEnvironmentVariable("CI") is not null);
+}
 ```
 
 Add `*.received.txt` to your `.gitignore`.
 
-## Rule coverage
+## Fail the build when a property has no rule
 
-`OrionGuardCoverage` reports which properties of a model carry no rule at all, so a test fails when someone adds a property and forgets to validate it.
+`OrionGuardCoverage` reports the properties of a model that carry no rule at all — the test that fails when someone adds a field and forgets to validate it.
 
 ```csharp
-[Fact]
-public void Every_property_is_validated()
-    => OrionGuardCoverage.For<CreateUserValidator, CreateUserRequest>()
-        .AssertEveryPropertyIsValidated(except: [nameof(CreateUserRequest.Notes)]);
+namespace Shop.Tests.Coverage;
+
+using Moongazing.OrionGuard.DependencyInjection;
+using Moongazing.OrionGuard.Testing.Validators;
+using Xunit;
+
+public sealed class CreateUserRequest
+{
+    public string? Email { get; set; }
+    public string? Notes { get; set; }
+}
+
+public sealed class CreateUserValidator : AbstractValidator<CreateUserRequest>
+{
+    public CreateUserValidator() =>
+        RuleFor(x => x.Email, nameof(CreateUserRequest.Email), p => p.NotEmpty().Email());
+}
+
+public class CreateUserCoverageTests
+{
+    [Fact]
+    public void Every_property_is_validated() =>
+        OrionGuardCoverage.For<CreateUserValidator, CreateUserRequest>()
+            .AssertEveryPropertyIsValidated(except: [nameof(CreateUserRequest.Notes)]);
+}
 ```
 
 | Member | Description |
 | --- | --- |
-| `static ValidatorCoverage<TValidator, TModel> OrionGuardCoverage.For<TValidator, TModel>()` | Measures coverage. Throws `ValidatorAssertionException` when the validator's rules cannot be enumerated at all. |
+| `static ValidatorCoverage<TValidator, TModel> OrionGuardCoverage.For<TValidator, TModel>()` | Measures coverage. Throws `ValidatorAssertionException` when no rule can be enumerated at all, rather than calling zero coverage a pass. |
 | `IReadOnlyList<string> UnvalidatedProperties` | The properties no rule was found for, in ordinal order. |
 | `void AssertEveryPropertyIsValidated(params string[] except)` | Throws unless every property outside `except` carries a rule. Each `except` entry must be a real property, so a rename cannot leave a stale exemption behind. |
 
-**What it can see.** A rule is found in one of two ways. Statically, from a `Moongazing.OrionGuard.Attributes.ValidationAttribute` on the property — the only rule shape this package can read without running anything. Behaviourally, by running the validator over the probe values above and reading the `ParameterName` off every error it reports. Behavioural discovery is the only option for `AbstractValidator<T>` and `FluentStyleValidator<T>`: both hold their rules as closures over an opaque predicate and expose neither the rule list nor the property a rule targets, so there is nothing to reflect over. `RuleFor` and `RuleForAsync` rules count equally, because the sweep goes through `ValidateAsync`.
+A rule is found either statically, from a `Moongazing.OrionGuard.Attributes.ValidationAttribute` on the property, or behaviourally, by running the validator over the probe values and reading `ParameterName` off every error. The behavioural route is the only one available for `AbstractValidator<T>` and `FluentStyleValidator<T>`: both hold their rules as closures over an opaque predicate and expose neither the rule list nor the property a rule targets, so there is nothing to reflect over.
 
-**What it cannot see.**
+Both sweeps go through `ValidateAsync`, so `RuleFor` and `RuleForAsync` rules count equally and each rule runs exactly once per probe value.
 
-- A rule no probe value can make fail — `Must(x => x.Age != 42)` — is invisible, and its property is reported as unvalidated.
-- A rule on a collection property whose declared type no value can be constructed for is only seen if it fails for `null`; the snapshot marks the property as un-probed.
-- A rule that reports a name which is not a property of the model is attributed to that name, not to a property.
-- A rule that throws instead of reporting does not count as coverage. An **async** rule that throws is different: `AbstractValidator<T>` catches it and reports a `RULE_EXECUTION_FAILED` error whose message embeds the exception's own text, which is localized on some runtimes — the one place a snapshot can differ between machines, and a bug in the rule either way.
-- A property carrying a validation attribute counts as validated even when `TValidator` never runs the attribute validator.
+## What this does not do
 
-**When nothing at all is visible**, `For<TValidator, TModel>()` throws rather than reporting every property as unvalidated, because a validator with no rules and one whose rules never fail for a probe value look identical from the outside:
-
-```text
-NeverFailingValidator reported nothing for any probe value of CreateUserRequest, so its rules could not
-be enumerated. ...
-```
+- **`DomainEventCapture.From(aggregate)` is destructive.** It calls `PullDomainEvents()`, so the aggregate's buffer is empty afterwards. Capture once, after the action under test — a second capture sees nothing, and production code that pulls after your test did will find nothing either.
+- **The in-memory dispatcher runs no handlers.** It proves an event was published, never that a handler did the right thing. Test handlers directly.
+- **There are three event assertions.** `HaveRaised`, `NotHaveRaised`, `HaveRaisedExactly(n).Of<T>()` — no ordering assertions, no "exactly these events and no others", no payload matchers beyond a predicate. Reach for `All` or `Single<T>()` and your own test framework for anything else.
+- **Coverage cannot see a rule no probe value can break.** `Must(x => x.Age != 42)` never fails for any probed value, so its property is reported as unvalidated. The same goes for a rule on a collection property whose declared type nothing can be constructed for (`ReadOnlyCollection<T>` has no parameterless constructor, `ImmutableArray<T>` no usable default): the property is probed with `null` only, the snapshot says `(no value of this type could be constructed to probe with)`, and any rule that does not fail for `null` is invisible.
+- **A rule that throws is not coverage.** A probe that makes the validator throw is recorded as `-> threw NullReferenceException` — the exception type only, never its message. The exception is an async rule inside `AbstractValidator<T>`, which catches it and reports `RULE_EXECUTION_FAILED` with the exception's own text embedded; that text is localized on some runtimes and is the one place a snapshot can differ between machines. It is a bug in the rule either way.
+- **A snapshot is only as stable as your messages.** The text comes from your validator, so a validator that localizes its messages produces a snapshot that depends on the test's culture. Everything the package controls is pinned: ordinal ordering, invariant-culture numbers and dates, `\n` endings on every platform.
+- **A rule reporting a name that is not a property** is listed under that name — in the snapshot's final `[unattributed]` section — not against a property. A rule that reports several properties at once (`"StartDate,EndDate"`) is listed under each of them.
+- **It is not a test framework adapter.** A failure is an exception, so a runner reports it as an error rather than as a pretty diff.
 
 ## Targets
 
-- `net8.0`, `net9.0`, `net10.0`
-- Depends only on the core `OrionGuard` package. No test-framework dependency.
+`net8.0`, `net9.0`, `net10.0`. Depends only on the core `OrionGuard` package.
+
+## With the rest of OrionGuard
+
+[OrionGuard](https://www.nuget.org/packages/OrionGuard) (aggregates, events, dispatcher) · [OrionGuard.EntityFrameworkCore](https://www.nuget.org/packages/OrionGuard.EntityFrameworkCore) (dispatch on `SaveChanges`) · [OrionGuard.MediatR](https://www.nuget.org/packages/OrionGuard.MediatR)
 
 ## Documentation
 
 - [OrionGuard README](https://github.com/tunahanaliozturk/OrionGuard#readme)
 - [CHANGELOG](https://github.com/tunahanaliozturk/OrionGuard/blob/master/CHANGELOG.md)
-- Related packages: [OrionGuard](https://www.nuget.org/packages/OrionGuard) (aggregates, domain events, dispatcher), [OrionGuard.EntityFrameworkCore](https://www.nuget.org/packages/OrionGuard.EntityFrameworkCore) (dispatch on `SaveChanges`, transactional outbox), [OrionGuard.MediatR](https://www.nuget.org/packages/OrionGuard.MediatR) (MediatR-backed dispatcher)
 
 ## License
 

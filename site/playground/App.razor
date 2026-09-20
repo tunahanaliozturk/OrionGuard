@@ -140,11 +140,13 @@
             and does not promise.
         </p>
         <p class="note">
-            One browser limit: <code>AgainstPathTraversal</code> applies NFKC normalization before it looks
-            for traversal sequences, and .NET on WebAssembly does not implement that normalization. A
-            non-ASCII value — try <em>．．／secret.txt</em> — therefore reports
-            <em>unavailable in the browser</em> above. On a server or desktop runtime the same call rejects
-            that value.
+            One browser limit: <code>AgainstPathTraversal</code> normalizes with NFKC before it looks for
+            traversal sequences, and browser ICU does not carry the data for the compatibility forms.
+            A non-ASCII value — try <em>．．／secret.txt</em> — therefore reports
+            <em>unavailable in the browser</em> above, while an ASCII one is returned by a fast path and is
+            judged normally. On a server or desktop runtime the same call rejects that value — unless the
+            app was built with <code>InvariantGlobalization</code>, where normalization is skipped instead
+            and the value is quietly accepted.
         </p>
     </section>
 </article>

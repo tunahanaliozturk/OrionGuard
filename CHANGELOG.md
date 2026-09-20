@@ -137,12 +137,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `Newtonsoft.Json` 13.0.4), `OrionGuard.OpenTelemetry` (`OpenTelemetry.Api` 1.19.0).
   - `OrionGuard.MediatR` stays on MediatR **12.4.1**, the last Apache-2.0 release; MediatR 13+ requires a
     commercial license key.
-- **Every package's NuGet README was rewritten against the current code.** Each snippet was compiled against
+- **Every package's NuGet README was checked against the current code.** Each snippet was compiled against
   the sources, and claims that were no longer true were removed or corrected: Swagger's registration call and
   attribute names, gRPC's status code (`InvalidArgument`), OpenTelemetry's instrument names and registration,
   Blazor's hosting support (not WebAssembly), the Dashboard's endpoints and authorization defaults, and the
-  localization count (14 languages). Known defects found along the way are listed as known issues in the
-  affected READMEs until they are fixed. The Blazor and Generators package descriptions were corrected too.
+  localization count (14 languages). The defects found along the way are fixed in this release and listed
+  under Fixed. The Blazor and Generators package descriptions were corrected too.
+- **Every package's NuGet README was then rewritten for this release.** Each one now opens with what the
+  package does and a snippet you can paste and run, then the API grouped by task, the options that matter with
+  their defaults, and an explicit "what this does not do" section naming each package's real edges. Every C#
+  snippet was extracted and compiled against these sources, behaviour claims were re-checked against the code
+  on this branch, and version numbers were removed from prose in favour of the rule behind them (a TFM, an EF
+  Core major, a MassTransit range, the SDK floor the generators need). Two limitations were verified against
+  Microsoft's documentation rather than left as folklore: Service Broker is unavailable on Azure SQL Database
+  and on by default on Managed Instance, and in globalization-invariant mode `string.Normalize` is a silent
+  no-op, which weakens the NFKC arm of `AgainstPathTraversal` without raising anything. The root README's
+  package table now lists every shipped package, and `OrionGuard.Templates` gained the same treatment,
+  including a restore-tested table of the EF Core provider versions each target framework needs.
 - Test and benchmark tooling: xUnit 2.9.3, `xunit.runner.visualstudio` 4.0.0, `Microsoft.NET.Test.Sdk` 18.10.1,
   coverlet 10.0.1, BenchmarkDotNet 0.15.8.
 

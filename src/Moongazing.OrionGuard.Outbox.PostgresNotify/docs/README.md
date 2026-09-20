@@ -1,43 +1,34 @@
 # OrionGuard.Outbox.PostgresNotify
 
-PostgreSQL LISTEN/NOTIFY wake-up for the outbox in `OrionGuard.EntityFrameworkCore`, part of [OrionGuard](https://github.com/tunahanaliozturk/OrionGuard). A database trigger sends a notification for every row inserted into the outbox table, and a background listener wakes the dispatcher so new rows are picked up without waiting for the polling interval.
-
-## Install
+Turns the outbox dispatcher from a poller into a listener on PostgreSQL: a trigger fires `NOTIFY` when a row is committed, and the dispatcher wakes instead of waiting out its interval.
 
 ```bash
 dotnet add package OrionGuard.Outbox.PostgresNotify
 ```
 
-`OrionGuard.EntityFrameworkCore` and `Npgsql` are installed as dependencies.
-
-## Quick start
-
 ```csharp
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Moongazing.OrionGuard.EntityFrameworkCore;
 using Moongazing.OrionGuard.Outbox.PostgresNotify;
 
-builder.Services.AddPostgresNotifyOutboxWakeSignal(o =>
-    o.ConnectionString = builder.Configuration.GetConnectionString("App"));
+public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options);
 
-builder.Services.AddOrionGuardEfCore<AppDbContext>(opts => opts.UseOutbox());
+public static class WakeSignalSetup
+{
+    public static void Add(IServiceCollection services, string connectionString)
+    {
+        services.AddPostgresNotifyOutboxWakeSignal(o => o.ConnectionString = connectionString);
+        services.AddOrionGuardEfCore<AppDbContext>(opts => opts.UseOutbox());
+    }
+}
 ```
 
-Then install the trigger once, as shown below.
+Install the trigger once (below), and an event committed by one process is dispatched by another within milliseconds instead of up to `PollingInterval`. `OrionGuard.EntityFrameworkCore` and `Npgsql` come along as dependencies.
 
-## How it works
+## Install the trigger
 
-`AddPostgresNotifyOutboxWakeSignal` registers `PostgresNotifyOutboxWakeSignal` as the `IOutboxWakeSignal`, replacing the polling-only default whichever order you call it in, and as a hosted service.
-
-- The hosted service opens its own `NpgsqlConnection` (not one from your `DbContext` pool), runs `LISTEN "orionguard_outbox";`, and waits for notifications.
-- Each notification wakes the dispatcher. So does every `SaveChanges`/`SaveChangesAsync` in the same process, which signals directly after the save. Wake-ups coalesce: at most one is pending at a time.
-- PostgreSQL delivers a notification only when the inserting transaction commits, so rolled-back inserts wake nothing.
-- A wake-up does not carry rows. The dispatcher still takes its lock and reads the table, so on several replicas every listener wakes but only the lock holder dispatches.
-- If the connection drops, the listener reconnects with a doubling delay (1 s up to 30 s by default). Until then the dispatcher falls back to `OutboxOptions.PollingInterval`, which bounds latency in every case.
-- Hosted services stop in reverse registration order, so on shutdown the listener can stop before the dispatcher. The dispatcher's remaining waits then simply last the polling interval until it stops too.
-
-## Trigger installation
-
-The package does not change your schema on its own. Run the helper SQL once, for example from an EF Core migration:
+The package does not touch your schema on its own. Run the helper SQL once, from a migration:
 
 ```csharp
 using Microsoft.EntityFrameworkCore.Migrations;
@@ -53,36 +44,53 @@ public partial class InstallOrionGuardOutboxNotify : Migration
 }
 ```
 
-- `Create(tableName = "OrionGuard_Outbox", channelName = "orionguard_outbox")` creates (or replaces) the function `orionguard_outbox_notify_<channel>` and the `AFTER INSERT ... FOR EACH ROW` trigger `orionguard_outbox_notify_trigger_<channel>`, which calls `pg_notify(channel, NEW."Id"::text)`. It can be run again safely.
-- `Drop(tableName, channelName)` removes both. Pass the same arguments you gave `Create`.
-- For a custom outbox table or channel, pass the names to both methods and set `PostgresNotifyOptions.ChannelName` to the same channel.
-- Both names must be plain identifiers: 1 to 128 ASCII letters, digits or underscores, not starting with a digit. Anything else throws `ArgumentException`, because the names are spliced into DDL and into the function body.
-- The table name is written as a single quoted identifier, so it cannot include a schema prefix; the table must be reachable through the `search_path`.
+`Create(tableName = "OrionGuard_Outbox", channelName = "orionguard_outbox")` creates (or replaces) the function `orionguard_outbox_notify_<channel>` and the `AFTER INSERT ... FOR EACH ROW` trigger `orionguard_outbox_notify_trigger_<channel>`, which calls `pg_notify(channel, NEW."Id"::text)`. It is safe to run again. `Drop(tableName, channelName)` removes both — pass the same arguments. For a custom table or channel, pass the names to both methods and set `PostgresNotifyOptions.ChannelName` to the same channel.
+
+Both names must be plain identifiers: 1 to 128 ASCII letters, digits or underscores, not starting with a digit. Anything else throws `ArgumentException`, because the names are spliced into DDL and into the function body — a name with a quote or a `$$` in it could otherwise close the statement it sits in.
+
+## How the wake-up works
+
+`AddPostgresNotifyOutboxWakeSignal` registers `PostgresNotifyOutboxWakeSignal` as the `IOutboxWakeSignal`, replacing the polling-only default whichever order you call it in, and as a hosted service.
+
+- The hosted service opens an `NpgsqlConnection` of its own — not one from your `DbContext` pool, because a `LISTEN` connection is parked indefinitely — runs `LISTEN "orionguard_outbox";` and waits.
+- Each notification wakes the dispatcher, as does every `SaveChanges`/`SaveChangesAsync` in the same process. Wake-ups coalesce: at most one is pending at a time.
+- PostgreSQL delivers a notification only when the inserting transaction commits, so a rolled-back insert wakes nothing.
+- If the connection drops, the listener reconnects with a doubling delay. Until it is back the dispatcher falls back to `OutboxOptions.PollingInterval`, which bounds latency in every case.
 
 ## Options
 
 | `PostgresNotifyOptions` | Default | Notes |
 | --- | --- | --- |
-| `ConnectionString` | none | Required. If it is missing, the hosted service throws `InvalidOperationException` and the host does not start. |
-| `ChannelName` | `orionguard_outbox` | Must match the channel used by the trigger. |
-| `InitialReconnectDelay` | 1 s | First delay after a connection failure; doubles on each further failure. |
-| `MaxReconnectDelay` | 30 s | Upper bound for the reconnect delay. |
+| `ConnectionString` | none | Required. Missing means the hosted service throws `InvalidOperationException` and the host does not start. |
+| `ChannelName` | `orionguard_outbox` | Must match the channel the trigger uses. |
+| `InitialReconnectDelay` | 1 s | First delay after a connection failure; doubles each further failure. |
+| `MaxReconnectDelay` | 30 s | Upper bound on that delay. |
 
 ## Locking on PostgreSQL
 
-The default outbox lock, `SkipLockedDistributedLock`, works on PostgreSQL: it takes the lock table's name, schema and column names from your EF Core model and quotes them, so its SQL reaches the `"OrionGuard_OutboxLocks"` table EF Core creates (map it with `OutboxLockEntityTypeConfiguration` and apply the migration). A single instance can skip the table with `UseDistributedLock<NullDistributedLock>()`; [OrionGuard.Locks.Redis](https://www.nuget.org/packages/OrionGuard.Locks.Redis) is the alternative when Redis is already at hand.
+This package only wakes the dispatcher; the lock is still the outbox's. The default `SkipLockedDistributedLock` works on PostgreSQL — it takes the lock table's name, schema and columns from your EF Core model and quotes them the way the provider does, which the mixed-case `"OrionGuard_OutboxLocks"` needs. Map it with `OutboxLockEntityTypeConfiguration` and apply the migration. A single instance can skip the table with `UseDistributedLock<NullDistributedLock>()`, and [OrionGuard.Locks.Redis](https://www.nuget.org/packages/OrionGuard.Locks.Redis) is the alternative where Redis is already at hand.
+
+## What this does not do
+
+- **It is an optimization, not a delivery mechanism.** A wake-up carries no rows: the dispatcher still takes its lock and reads the table. On several replicas every listener wakes and only the lock holder dispatches. Delivery correctness rests entirely on the outbox table, which is why `PollingInterval` still bounds the worst case.
+- **The trigger is yours to install and keep.** Nothing installs or verifies it at runtime, so a database restored without it silently degrades to polling with no error anywhere.
+- **`AFTER INSERT` only.** A row updated back into the unprocessed state — a dashboard replay, say — fires nothing. That row waits for the next poll.
+- **No schema prefix.** The table name is written as a single quoted identifier, so `myschema.OrionGuard_Outbox` is rejected; the table must be reachable through the `search_path` of the session that runs the SQL.
+- **It raises Npgsql for your whole application.** The Npgsql reference flows to every project that references this package, so your `Npgsql.EntityFrameworkCore.PostgreSQL` provider must be a release that works with that Npgsql major.
+- **Shutdown is best effort.** Hosted services stop in reverse registration order, so the listener may stop before the dispatcher; the dispatcher's remaining waits then simply last the polling interval until it stops too.
 
 ## Targets
 
-- `net8.0`, `net9.0`, `net10.0`
-- `Npgsql` 10.0.3 or later. This raises Npgsql for your whole application, so an `Npgsql.EntityFrameworkCore.PostgreSQL` provider must be a release that works with Npgsql 10.
-- `OrionGuard.EntityFrameworkCore` of the same version (6.7.0), which uses EF Core 9.0.20 on net8.0/net9.0 and EF Core 10.0.12 on net10.0
+`net8.0`, `net9.0`, `net10.0`; Npgsql 10.x. Use the `OrionGuard.EntityFrameworkCore` build from the same OrionGuard release.
+
+## With the rest of OrionGuard
+
+[OrionGuard.EntityFrameworkCore](https://www.nuget.org/packages/OrionGuard.EntityFrameworkCore) (the outbox) · [OrionGuard.Outbox.SqlServerBroker](https://www.nuget.org/packages/OrionGuard.Outbox.SqlServerBroker) (the SQL Server equivalent) · [OrionGuard.Outbox.Dashboard](https://www.nuget.org/packages/OrionGuard.Outbox.Dashboard) · [OrionGuard.Locks.Redis](https://www.nuget.org/packages/OrionGuard.Locks.Redis)
 
 ## Documentation
 
 - [Repository and full documentation](https://github.com/tunahanaliozturk/OrionGuard)
 - [Changelog](https://github.com/tunahanaliozturk/OrionGuard/blob/master/CHANGELOG.md)
-- Related packages: [OrionGuard.EntityFrameworkCore](https://www.nuget.org/packages/OrionGuard.EntityFrameworkCore) (the outbox), [OrionGuard.Outbox.SqlServerBroker](https://www.nuget.org/packages/OrionGuard.Outbox.SqlServerBroker) (the SQL Server equivalent), [OrionGuard.Locks.Redis](https://www.nuget.org/packages/OrionGuard.Locks.Redis)
 
 ## License
 
