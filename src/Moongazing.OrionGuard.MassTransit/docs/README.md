@@ -104,7 +104,7 @@ Validators are resolved for the *consumed* type, the `T` in `IConsumer<T>`, not 
 - **A message type with no registered validator passes through**, silently. There is no assembly scanning here — register each validator with `AddValidator<T, TValidator>()`.
 - **It cannot tell the sender what was wrong.** The failure is a fault, not a reply; the errors reach the `_error` queue and your fault observers, not the publisher.
 - **Retries are not ignored for you.** Without `r.Ignore<MessageValidationException>()` a validation failure burns the whole retry budget before it dead-letters.
-- **MassTransit 8.x only.** MassTransit 9 moved to a commercial licence, so this package stays on the Apache-2.0 line and its package reference carries an upper bound below 9.0.0 — a solution that pulls MassTransit 9 fails restore rather than silently running on an unsupported major.
+- **MassTransit 8.x only.** MassTransit 9 moved to a commercial licence, so this package stays on the Apache-2.0 line and its package reference carries an upper bound below 9.0.0. A solution that references MassTransit 9 gets NuGet warning NU1608 at restore (an error only when warnings are treated as errors); that combination is unsupported.
 
 ## Targets
 

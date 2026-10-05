@@ -8,8 +8,8 @@ body:
         Please fill in the package, the version, the target framework and a minimal repro. Without
         those four the first reply is always a request for them, which costs both of us a round trip.
 
-        If the bug has security implications, do not file it here. Contact the maintainer directly at
-        the address in the package NuGet metadata.
+        If the bug has security implications, do not file it here. Report it privately as described in
+        [SECURITY.md](https://github.com/tunahanaliozturk/OrionGuard/blob/master/SECURITY.md).
 
   - type: dropdown
     id: package
@@ -23,7 +23,9 @@ body:
         - OrionGuard.Generators
         - OrionGuard.Swagger
         - OrionGuard.OpenApi
+        - OrionGuard.SchemaExport
         - OrionGuard.OpenTelemetry
+        - OrionGuard.Aspire
         - OrionGuard.Blazor
         - OrionGuard.Grpc
         - OrionGuard.SignalR

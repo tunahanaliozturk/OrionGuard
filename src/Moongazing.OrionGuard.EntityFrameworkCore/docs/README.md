@@ -2,6 +2,8 @@
 
 Publishes the domain events your aggregates raise, at the moment the data they describe is committed — inline after the save, or through a transactional outbox that survives the process dying.
 
+![Outbox dispatch: SaveChanges writes OutboxMessage rows, the dispatcher takes the lock, dispatches each row and retries a failing row until MaxRetries, then dead-letters it](https://raw.githubusercontent.com/tunahanaliozturk/OrionGuard/master/docs/diagrams/outbox-dispatch.png)
+
 ```bash
 dotnet add package OrionGuard.EntityFrameworkCore
 ```

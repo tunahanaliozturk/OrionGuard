@@ -1,14 +1,14 @@
 blank_issues_enabled: false
 contact_links:
+  - name: Documentation
+    url: https://github.com/tunahanaliozturk/OrionGuard#readme
+    about: "\"How do I ...\" is usually answered in the README or the package's NuGet readme; they document the real behaviour."
   - name: Good first issues
     url: https://github.com/tunahanaliozturk/OrionGuard/blob/master/docs/good-first-issues.md
     about: Concrete, small tasks that exist in the codebase today, with the files and the check for each.
   - name: Roadmap
     url: https://github.com/tunahanaliozturk/OrionGuard/blob/master/docs/ROADMAP.md
-    about: What is already planned through v7.0.0. Comment on a roadmap item rather than opening a duplicate request.
-  - name: Usage question
-    url: https://github.com/tunahanaliozturk/OrionGuard/discussions
-    about: "\"How do I ...\" belongs in Discussions. Read the package's NuGet readme first; it documents the real behaviour."
+    about: What is planned next. Comment on a roadmap item rather than opening a duplicate request.
   - name: Security vulnerability
-    url: https://github.com/tunahanaliozturk/OrionGuard/blob/master/CONTRIBUTING.md#reporting-bugs
-    about: Do not file a public issue. Contact the maintainer directly.
+    url: https://github.com/tunahanaliozturk/OrionGuard/blob/master/SECURITY.md
+    about: Do not file a public issue. Report it privately as described in SECURITY.md.
