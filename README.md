@@ -383,13 +383,6 @@ dotnet add package OrionGuard.AspNetCore
 builder.Services.AddOrionGuardAspNetCore();
 builder.Services.AddValidator<CreateUserRequest, CreateUserValidator>(); // no assembly scanning
 
-var app = builder.Build();
-app.UseOrionGuardValidation(); // UseExceptionHandler() for OrionGuardExceptionHandler
-
-// Minimal API with automatic validation (passes through when no IValidator<T> is registered)
-app.MapPost("/api/users", (CreateUserRequest req) => { ... })
-   .WithValidation<CreateUserRequest>();
-
 // IOptions validation
 builder.Services.AddOptions<AppSettings>()
     .BindConfiguration("App")
@@ -397,6 +390,14 @@ builder.Services.AddOptions<AppSettings>()
 
 // Health check
 builder.Services.AddHealthChecks().AddOrionGuardCheck();
+
+// Every builder.Services call goes before Build(); the collection is read-only afterwards.
+var app = builder.Build();
+app.UseOrionGuardValidation(); // UseExceptionHandler() for OrionGuardExceptionHandler
+
+// Minimal API with automatic validation (passes through when no IValidator<T> is registered)
+app.MapPost("/api/users", (CreateUserRequest req) => { ... })
+   .WithValidation<CreateUserRequest>();
 
 // MVC controller with attribute
 [ValidateRequest]
