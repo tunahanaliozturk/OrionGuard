@@ -1,0 +1,127 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="840" viewBox="0 0 1200 840">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#64748b"/>
+    </marker>
+    <marker id="arrow-fail" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#dc2626"/>
+    </marker>
+  </defs>
+  <style>
+    text { font-family: "Segoe UI", Inter, "Helvetica Neue", Arial, sans-serif; fill: #1e1b4b; }
+    .title { font-size: 24px; font-weight: 700; }
+    .subtitle { font-size: 14px; fill: #475569; }
+    .label { font-size: 15px; font-weight: 600; }
+    .small { font-size: 12.5px; fill: #475569; }
+    .code { font-family: "Cascadia Code", Consolas, "SF Mono", monospace; font-size: 13px; fill: #3730a3; }
+    .edge { font-size: 12.5px; fill: #334155; }
+    .step { fill: #eef2ff; stroke: #4f46e5; stroke-width: 2; }
+    .ext { fill: #f0f9ff; stroke: #0284c7; stroke-width: 2; }
+    .ok { fill: #ecfdf5; stroke: #059669; stroke-width: 2; }
+    .fail { fill: #fef2f2; stroke: #dc2626; stroke-width: 2; }
+    .decision { fill: #fffbeb; stroke: #d97706; stroke-width: 2; }
+    .note { fill: #f8fafc; stroke: #cbd5e1; stroke-width: 1.5; stroke-dasharray: 4 3; }
+    .lane { stroke: #cbd5e1; stroke-width: 1.5; stroke-dasharray: 6 5; }
+    .flow { fill: none; stroke: #64748b; stroke-width: 2; marker-end: url(#arrow); }
+    .flow.alt { stroke: #dc2626; stroke-dasharray: 6 4; marker-end: url(#arrow-fail); }
+    .flow.back { stroke-dasharray: 6 4; }
+    .badge { fill: #4f46e5; }
+    .badge-text { font-size: 12px; font-weight: 700; fill: #ffffff; }
+  </style>
+
+  <rect width="1200" height="840" fill="#ffffff"/>
+
+  <text class="title" x="40" y="52">OrionGuard.EntityFrameworkCore - outbox dispatch and retry</text>
+  <text class="subtitle" x="40" y="78">Events are written in the same SaveChanges; one replica at a time dispatches them, and a row that keeps failing is dead-lettered.</text>
+
+  <!-- row A -->
+  <rect class="step" x="40" y="120" width="270" height="90" rx="14"/>
+  <text class="label" x="175" y="150" text-anchor="middle">SaveChanges(Async)</text>
+  <text class="small" x="175" y="174" text-anchor="middle">with UseOutbox(): one OutboxMessage</text>
+  <text class="small" x="175" y="194" text-anchor="middle">per event, in the same transaction</text>
+
+  <path class="flow" d="M310,165 L348,165"/>
+
+  <rect class="ext" x="350" y="120" width="240" height="90" rx="14"/>
+  <text class="label" x="470" y="150" text-anchor="middle">OrionGuard_Outbox</text>
+  <text class="small" x="470" y="174" text-anchor="middle">OutboxMessage rows</text>
+  <text class="small" x="470" y="194" text-anchor="middle">ProcessedOnUtc null = pending</text>
+
+  <path class="flow" d="M590,165 L628,165"/>
+
+  <rect class="step" x="630" y="120" width="250" height="90" rx="14"/>
+  <text class="code" x="755" y="148" text-anchor="middle">IOutboxWakeSignal</text>
+  <text class="small" x="755" y="172" text-anchor="middle">every PollingInterval (5 s), sooner</text>
+  <text class="small" x="755" y="192" text-anchor="middle">with PostgresNotify / SqlServerBroker</text>
+
+  <path class="flow" d="M880,165 L908,165"/>
+
+  <rect class="step" x="910" y="120" width="250" height="90" rx="14"/>
+  <text class="code" x="1035" y="155" text-anchor="middle">OutboxDispatcherHostedService</text>
+  <text class="small" x="1035" y="180" text-anchor="middle">one tick</text>
+
+  <!-- row B: lock -->
+  <path class="flow" d="M1035,210 L1035,253"/>
+  <polygon class="decision" points="1035,255 1150,325 1035,395 920,325"/>
+  <text class="code" x="1035" y="322" text-anchor="middle">TryAcquireAsync</text>
+  <text class="small" x="1035" y="342" text-anchor="middle">LockKey, 30 s lease</text>
+
+  <path class="flow back" d="M920,325 L882,325"/>
+  <rect class="note" x="640" y="290" width="240" height="70" rx="10"/>
+  <text class="label" x="760" y="318" text-anchor="middle">Skip this tick</text>
+  <text class="small" x="760" y="340" text-anchor="middle">lock held by another replica</text>
+
+  <!-- row C -->
+  <path class="flow" d="M1035,395 L1035,438"/>
+  <text class="edge" x="1045" y="422">acquired</text>
+  <rect class="step" x="910" y="440" width="250" height="90" rx="14"/>
+  <text class="label" x="1035" y="468" text-anchor="middle">Read a batch</text>
+  <text class="small" x="1035" y="490" text-anchor="middle">pending rows, oldest first</text>
+  <text class="small" x="1035" y="510" text-anchor="middle">Take(BatchSize), default 100</text>
+
+  <path class="flow" d="M910,485 L842,485"/>
+  <rect class="step" x="600" y="440" width="240" height="90" rx="14"/>
+  <text class="label" x="720" y="468" text-anchor="middle">Dispatch one row</text>
+  <text class="code" x="720" y="492" text-anchor="middle">IDomainEventDispatcher</text>
+  <text class="small" x="720" y="512" text-anchor="middle">DispatchAsync, own DI scope</text>
+
+  <!-- failure -->
+  <path class="flow alt" d="M600,485 L512,485"/>
+  <text class="edge" x="556" y="475" text-anchor="middle">throws</text>
+  <polygon class="decision" points="400,420 510,485 400,550 290,485"/>
+  <text class="code" x="400" y="478" text-anchor="middle">RetryCount + 1</text>
+  <text class="code" x="400" y="500" text-anchor="middle" style="font-variant-ligatures: none">&gt;= MaxRetries (5)?</text>
+
+  <path class="flow alt" d="M290,485 L252,485"/>
+  <text class="edge" x="271" y="475" text-anchor="middle">no</text>
+  <rect class="note" x="40" y="440" width="210" height="90" rx="10"/>
+  <text class="label" x="145" y="468" text-anchor="middle">Retry next tick</text>
+  <text class="small" x="145" y="490" text-anchor="middle">Error recorded,</text>
+  <text class="small" x="145" y="510" text-anchor="middle">row stays pending</text>
+
+  <path class="flow alt" d="M400,550 L400,598"/>
+  <text class="edge" x="410" y="580">yes</text>
+  <rect class="fail" x="280" y="600" width="240" height="90" rx="14"/>
+  <text class="label" x="400" y="630" text-anchor="middle">Dead letter</text>
+  <text class="small" x="400" y="654" text-anchor="middle">ProcessedOnUtc stamped,</text>
+  <text class="small" x="400" y="674" text-anchor="middle">Error and RetryCount kept</text>
+
+  <!-- success -->
+  <path class="flow" d="M720,530 L720,598"/>
+  <text class="edge" x="730" y="570">handled</text>
+  <rect class="ok" x="600" y="600" width="240" height="90" rx="14"/>
+  <text class="label" x="720" y="630" text-anchor="middle">Processed</text>
+  <text class="code" x="720" y="654" text-anchor="middle">MarkProcessedAsync</text>
+  <text class="small" x="720" y="674" text-anchor="middle">ProcessedOnUtc stamped</text>
+
+  <!-- notes -->
+  <rect class="note" x="40" y="720" width="540" height="90" rx="10"/>
+  <text class="small" x="60" y="746">A row that cannot be read (TYPE_NOT_FOUND, TYPE_NOT_DOMAIN_EVENT,</text>
+  <text class="small" x="60" y="766">DESERIALIZE_FAILED) is dead-lettered on the first attempt.</text>
+  <text class="small" x="60" y="786">There is no backoff: a failed row is retried on the next tick.</text>
+
+  <rect class="note" x="600" y="720" width="560" height="90" rx="10"/>
+  <text class="small" x="620" y="746">OrionGuard.Outbox.Dashboard, for an operator:</text>
+  <text class="small" x="620" y="766">POST /{id}/replay: RetryCount = 0, Error and ProcessedOnUtc cleared</text>
+  <text class="small" x="620" y="786">POST /{id}/discard: stamps ProcessedOnUtc on an unprocessed row</text>
+</svg>

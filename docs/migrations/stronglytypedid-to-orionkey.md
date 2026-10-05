@@ -2,8 +2,8 @@
 
 OrionGuard's `[StronglyTypedId<TValue>]` source generator is soft-deprecated as of
 v6.4.0. The feature now lives in the standalone **OrionKey** package and will be
-removed from OrionGuard in v7.0.0. The generator still works in the v6.x line —
-this migration is not urgent, but new code should use OrionKey.
+removed from OrionGuard in the next major version. The generator still ships and
+works in 7.0.0 — this migration is not urgent, but new code should use OrionKey.
 
 This applies only to the **source generator** (`[StronglyTypedId]` on a `readonly
 partial struct`). The manual `StronglyTypedId<TValue>` abstract record,

@@ -2,6 +2,8 @@
 
 Turns OrionGuard validation into HTTP responses: an RFC 9457 `ProblemDetails` body for every OrionGuard exception, a filter that validates Minimal API and MVC requests before the handler runs, and a startup check for bound options.
 
+![Minimal API request through OrionGuardEndpointFilter: a valid request reaches the handler, an invalid one is answered with ValidationProblemDetails](https://raw.githubusercontent.com/tunahanaliozturk/OrionGuard/master/docs/diagrams/endpoint-filter.png)
+
 ```bash
 dotnet add package OrionGuard.AspNetCore
 ```
@@ -91,7 +93,7 @@ public sealed class UsersController : ControllerBase
 | --- | --- | --- |
 | `AggregateValidationException` — from `GuardResult.ThrowIfInvalid()`, or from OrionGuard.MediatR | `DefaultStatusCode` | `ValidationProblemDetails`, type `https://tools.ietf.org/html/rfc9457`, title `Validation Failed`, `errors` keyed by parameter name |
 | `BusinessRuleValidationException` | `BusinessRuleStatusCode` | `ValidationProblemDetails`, type `https://moongazing.dev/orionguard/problems/business-rule-violation`, title `Business Rule Violation`, `errors` keyed by the rule's type name |
-| `GuardException` | 400 | `ValidationProblemDetails`, title `Validation Failed`, `errors` keyed by parameter name |
+| `GuardException` | 400 | `ValidationProblemDetails`, title `Validation Failed`, `errors` keyed by parameter name (an empty key for `Ensure.That`, whose `GuardException` carries no `ParameterName`) |
 
 Anything else falls through to the next handler. With `UseProblemDetails = false` the three bodies become `{ "errors": [{ "parameterName", "message" }] }`, `{ "ruleName", "message" }` and `{ "error", "parameterName" }`; the two filters write `{ "<field>": ["<message>"] }` instead.
 

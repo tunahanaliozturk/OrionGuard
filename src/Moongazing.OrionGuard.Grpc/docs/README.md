@@ -36,7 +36,7 @@ public static class GrpcSetup
 }
 ```
 
-A caller sending an empty `email` gets an `RpcException` with status `InvalidArgument` (code 3), the error messages joined with `"; "` as the status detail, and one trailer, `validation-errors-json`, holding a JSON array such as `[{"ParameterName":"Email","Message":"Email must be a valid email."}]`. The service method is not entered. The core `OrionGuard` package comes along as a dependency; keep using `Grpc.AspNetCore` (or `Grpc.Tools` with `Google.Protobuf`) for code generation.
+A caller sending an `email` such as `not-an-email` gets an `RpcException` with status `InvalidArgument` (code 3), the error messages joined with `"; "` as the status detail, and one trailer, `validation-errors-json`, holding a JSON array such as `[{"ParameterName":"Email","Message":"Email must be a valid email."}]`. The service method is not entered. The core `OrionGuard` package comes along as a dependency; keep using `Grpc.AspNetCore` (or `Grpc.Tools` with `Google.Protobuf`) for code generation.
 
 ## Reading the errors on the client
 

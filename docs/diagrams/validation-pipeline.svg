@@ -1,0 +1,116 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="670" viewBox="0 0 1200 670">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#64748b"/>
+    </marker>
+    <marker id="arrow-fail" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#dc2626"/>
+    </marker>
+  </defs>
+  <style>
+    text { font-family: "Segoe UI", Inter, "Helvetica Neue", Arial, sans-serif; fill: #1e1b4b; }
+    .title { font-size: 24px; font-weight: 700; }
+    .subtitle { font-size: 14px; fill: #475569; }
+    .label { font-size: 15px; font-weight: 600; }
+    .small { font-size: 12.5px; fill: #475569; }
+    .code { font-family: "Cascadia Code", Consolas, "SF Mono", monospace; font-size: 13px; fill: #3730a3; }
+    .edge { font-size: 12.5px; fill: #334155; }
+    .step { fill: #eef2ff; stroke: #4f46e5; stroke-width: 2; }
+    .ext { fill: #f0f9ff; stroke: #0284c7; stroke-width: 2; }
+    .ok { fill: #ecfdf5; stroke: #059669; stroke-width: 2; }
+    .fail { fill: #fef2f2; stroke: #dc2626; stroke-width: 2; }
+    .decision { fill: #fffbeb; stroke: #d97706; stroke-width: 2; }
+    .note { fill: #f8fafc; stroke: #cbd5e1; stroke-width: 1.5; stroke-dasharray: 4 3; }
+    .lane { stroke: #cbd5e1; stroke-width: 1.5; stroke-dasharray: 6 5; }
+    .flow { fill: none; stroke: #64748b; stroke-width: 2; marker-end: url(#arrow); }
+    .flow.alt { stroke: #dc2626; stroke-dasharray: 6 4; marker-end: url(#arrow-fail); }
+    .flow.back { stroke-dasharray: 6 4; }
+    .badge { fill: #4f46e5; }
+    .badge-text { font-size: 12px; font-weight: 700; fill: #ffffff; }
+  </style>
+
+  <rect width="1200" height="670" fill="#ffffff"/>
+
+  <text class="title" x="40" y="52">OrionGuard - the validation pipeline</text>
+  <text class="subtitle" x="40" y="78">The same path everywhere: a validator runs its rules, failures become ValidationErrors, and the GuardResult is thrown, returned or turned into ProblemDetails.</text>
+
+  <!-- input -->
+  <rect class="ext" x="40" y="170" width="170" height="100" rx="14"/>
+  <text class="label" x="125" y="205" text-anchor="middle">Input</text>
+  <text class="small" x="125" y="229" text-anchor="middle">value, DTO, command</text>
+  <text class="small" x="125" y="249" text-anchor="middle">or message</text>
+
+  <path class="flow" d="M210,220 L248,220"/>
+
+  <!-- validators -->
+  <rect class="step" x="250" y="120" width="350" height="200" rx="14"/>
+  <text class="label" x="425" y="150" text-anchor="middle">Validator</text>
+  <text class="code" x="272" y="180">Ensure.That / Ensure.Accumulate</text>
+  <text class="code" x="272" y="204">Validate.For / Nested / Polymorphic</text>
+  <text class="code" x="272" y="228">AbstractValidator&lt;T&gt;</text>
+  <text class="code" x="272" y="252">FluentStyleValidator&lt;T&gt;</text>
+  <text class="code" x="272" y="276">[GenerateValidator] {T}Validator</text>
+  <text class="code" x="272" y="300">DynamicValidator.FromJson</text>
+
+  <path class="flow" d="M600,220 L638,220"/>
+
+  <!-- rules -->
+  <rect class="step" x="640" y="160" width="260" height="120" rx="14"/>
+  <text class="label" x="770" y="190" text-anchor="middle">Rules, per property</text>
+  <text class="code" x="770" y="218" text-anchor="middle">NotEmpty, Email, MinLength</text>
+  <text class="code" x="770" y="242" text-anchor="middle">Must, MustAsync, ...</text>
+  <text class="small" x="770" y="266" text-anchor="middle">a failure adds a ValidationError</text>
+
+  <!-- Ensure.That throws at once -->
+  <path class="flow alt" d="M900,195 L938,195"/>
+  <rect class="fail" x="940" y="150" width="220" height="90" rx="14"/>
+  <text class="label" x="1050" y="183" text-anchor="middle">GuardException</text>
+  <text class="small" x="1050" y="207" text-anchor="middle">Ensure.That: first failure</text>
+  <text class="small" x="1050" y="227" text-anchor="middle">Guard.*: a typed subclass</text>
+
+  <!-- collect -->
+  <path class="flow" d="M770,280 L770,368"/>
+  <text class="edge" x="782" y="330">collect every error</text>
+
+  <!-- GuardResult -->
+  <rect class="step" x="640" y="370" width="260" height="100" rx="14"/>
+  <text class="label" x="770" y="402" text-anchor="middle">GuardResult</text>
+  <text class="small" x="770" y="428" text-anchor="middle">IsValid / IsInvalid, Errors</text>
+  <text class="small" x="770" y="450" text-anchor="middle">SuggestedHttpStatusCode</text>
+
+  <!-- throw all -->
+  <path class="flow alt" d="M900,420 L933,420"/>
+  <rect class="fail" x="935" y="375" width="235" height="90" rx="14"/>
+  <text class="code" x="1052" y="410" text-anchor="middle">AggregateValidationException</text>
+  <text class="small" x="1052" y="434" text-anchor="middle">ThrowIfInvalid(Async):</text>
+  <text class="small" x="1052" y="454" text-anchor="middle">every error at once</text>
+
+  <!-- return or ProblemDetails -->
+  <path class="flow" style="marker-end: none" d="M770,470 L770,510"/>
+  <path class="flow" style="marker-end: none" d="M600,510 L980,510"/>
+  <path class="flow" d="M600,510 L600,548"/>
+  <path class="flow" d="M980,510 L980,548"/>
+
+  <rect class="ok" x="440" y="550" width="320" height="90" rx="14"/>
+  <text class="label" x="600" y="582" text-anchor="middle">Returned to the caller</text>
+  <text class="code" x="600" y="608" text-anchor="middle">ToResult() / Validate()</text>
+  <text class="small" x="600" y="628" text-anchor="middle">ToResultAsync() when rules are async</text>
+
+  <rect class="ext" x="790" y="550" width="380" height="90" rx="14"/>
+  <text class="label" x="980" y="580" text-anchor="middle">OrionGuard.AspNetCore</text>
+  <text class="code" x="980" y="604" text-anchor="middle">ValidationProblemDetails</text>
+  <text class="small" x="980" y="626" text-anchor="middle">status: SuggestedHttpStatusCode ?? DefaultStatusCode (422)</text>
+
+  <!-- note -->
+  <rect class="note" x="40" y="370" width="360" height="270" rx="10"/>
+  <text class="small" x="60" y="400">Ensure.That throws at the first failing rule.</text>
+  <text class="small" x="60" y="420">Every other entry point collects all errors</text>
+  <text class="small" x="60" y="440">into one GuardResult.</text>
+  <text class="small" x="60" y="476">A validator with MustAsync rules must finish with</text>
+  <text class="small" x="60" y="496">ToResultAsync, BuildAsync or ThrowIfInvalidAsync;</text>
+  <text class="small" x="60" y="516">the sync terminals throw InvalidOperationException.</text>
+  <text class="small" x="60" y="552">Integrations reuse the result: MediatR throws</text>
+  <text class="small" x="60" y="572">AggregateValidationException, gRPC answers</text>
+  <text class="small" x="60" y="592">InvalidArgument, MassTransit faults the message,</text>
+  <text class="small" x="60" y="612">Hangfire rejects the job at enqueue time.</text>
+</svg>

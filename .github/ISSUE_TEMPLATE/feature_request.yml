@@ -24,7 +24,9 @@ body:
         - OrionGuard.Generators
         - OrionGuard.Swagger
         - OrionGuard.OpenApi
+        - OrionGuard.SchemaExport
         - OrionGuard.OpenTelemetry
+        - OrionGuard.Aspire
         - OrionGuard.Blazor
         - OrionGuard.Grpc
         - OrionGuard.SignalR

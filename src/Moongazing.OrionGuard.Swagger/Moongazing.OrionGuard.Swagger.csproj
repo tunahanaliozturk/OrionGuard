@@ -11,6 +11,5 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="docs\README.md" Pack="true" PackagePath="docs/" />
-    <None Include="docs\logo.png" Pack="true" PackagePath="docs/" />
   </ItemGroup>
 </Project>

@@ -45,9 +45,7 @@ and `OrionGuard.OpenApi` reference `Microsoft.CodeAnalysis.CSharp` 5.9.0, and ol
 `CS9057` and silently skip the generators. The .NET 8 and .NET 9 *runtimes* are still needed to run
 the multi-targeted test matrix.
 
-Two warnings are expected today and are not yours to fix in an unrelated PR:
-`GuardTests.cs` `CS8600` and `OrionLockBridgeRedisIntegrationTests.cs` `CS0618`. A PR must not add a
-third.
+The solution builds with no warnings today. A PR must not add one.
 
 Shipped projects set `TreatWarningsAsErrors`, so a warning in `src/` fails the build outright.
 
@@ -55,17 +53,19 @@ Shipped projects set `TreatWarningsAsErrors`, so a warning in `src/` fails the b
 
 | Path | What lives there |
 | --- | --- |
-| `src/` | Every shipped package. One project per NuGet package, each with its own `docs/README.md` (the NuGet readme), `docs/logo.png`, and `<Version>` |
+| `src/` | Every shipped package. One project per NuGet package, each with its own `docs/README.md` (the NuGet readme) and `<Version>`. The package icon is the shared `docs/icon.png` |
 | `tests/` | One xUnit project per package under test, named `<ProjectName>.Tests` |
 | `benchmarks/` | The BenchmarkDotNet suite |
 | `demo/` | A console app that exercises the features end to end; not packable |
 | `templates/` | The `dotnet new` template pack (`OrionGuard.Templates`). Deliberately **outside** the solution, see below |
 | `docs/` | Feature guides, the roadmap, and the good-first-issue list |
-| `Directory.Build.props` | Repo-wide NuGet audit policy only. Everything else is set per-csproj |
+| `Directory.Build.props` | Repo-wide settings every project inherits: the NuGet audit policy, `PublishRepositoryUrl`, and packing `docs/icon.png` into every packable project |
+| `src/Directory.Build.props` | What the shipped packages share: target frameworks, nullable, XML docs, `TreatWarningsAsErrors`, and the common package metadata |
 
-`templates/` is not in `Moongazing.OrionGuard.sln` on purpose: the release workflow packs the
-solution and then asserts that the number of produced `.nupkg` files equals the number of packable
-projects under `src/`. A packable project outside `src/` would break that check. Pack it on its own:
+`templates/` is not in `Moongazing.OrionGuard.sln` on purpose: a template pack compiles nothing, and
+its content must not be built as part of the solution build. The release workflow packs it on its own
+and then asserts that the number of produced `.nupkg` files equals the packable projects under `src/`
+plus the template pack. To pack it locally:
 
 ```bash
 dotnet pack templates/Moongazing.OrionGuard.Templates.csproj -c Release -o ./nupkgs
@@ -73,8 +73,10 @@ dotnet pack templates/Moongazing.OrionGuard.Templates.csproj -c Release -o ./nup
 
 ## Code style
 
-`.editorconfig` carries one rule (`csharp_style_prefer_primary_constructors = false`, so IDE0290 does
-not nag). Everything else is convention, enforced by review:
+`.editorconfig` records the house style the tree already follows: indentation, Allman braces, `var`,
+naming rules, and `csharp_style_prefer_primary_constructors = false` (so IDE0290 does not nag). Where
+the codebase is unanimous a rule is a warning; where it is mixed the rule is only a suggestion. The rest
+is convention, enforced by review:
 
 - **Nullable reference types are enabled everywhere.** `<Nullable>enable</Nullable>` is on in every
   project, including tests. Do not silence a nullable warning with `!` when the type can be fixed.
@@ -155,8 +157,12 @@ Use the [bug report form](https://github.com/tunahanaliozturk/OrionGuard/issues/
 It asks for the package and version, the target framework, and a minimal reproduction, because
 without those the first reply is always a request for them.
 
-If the bug has security implications, do not open a public issue. Contact the maintainer directly at
-the address in the package NuGet metadata.
+If the bug has security implications, do not open a public issue; follow [SECURITY.md](SECURITY.md).
+
+## Security
+
+Do not file public issues for vulnerabilities. Report them privately through GitHub as described in
+[SECURITY.md](SECURITY.md).
 
 ## Conduct
 

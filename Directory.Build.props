@@ -26,4 +26,13 @@
   <PropertyGroup>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
   </PropertyGroup>
+
+  <!--
+    Pack the package icon (PackageIcon = icon.png) for every packable project from one place, so
+    the src/ packages, the template pack and any package added later share it. Each package's
+    nuget.org README (docs/README.md) is still packed by its own csproj.
+  -->
+  <ItemGroup Condition="'$(IsPackable)' == 'true'">
+    <None Include="$(MSBuildThisFileDirectory)docs/icon.png" Pack="true" PackagePath="\" Visible="false" />
+  </ItemGroup>
 </Project>

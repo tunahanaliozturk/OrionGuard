@@ -28,7 +28,7 @@
     <Description>dotnet new templates for OrionGuard. "orionguard-webapi" scaffolds a minimal API wired with OrionGuard validation, the ASP.NET Core integration and the health check. "orionguard-outbox" adds EF Core with the transactional outbox and its dispatcher hosted service.</Description>
     <PackageTags>guard;validation;dotnet-new;template;templates;aspnetcore;minimal-api;outbox;efcore;domain-events</PackageTags>
     <PackageReadmeFile>docs/README.md</PackageReadmeFile>
-    <PackageIcon>docs/logo.png</PackageIcon>
+    <PackageIcon>icon.png</PackageIcon>
     <RepositoryUrl>https://github.com/tunahanaliozturk/OrionGuard</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageProjectUrl>https://github.com/tunahanaliozturk/OrionGuard</PackageProjectUrl>
@@ -41,7 +41,6 @@
 
   <ItemGroup>
     <None Include="docs\README.md" Pack="true" PackagePath="docs/" />
-    <None Include="docs\logo.png" Pack="true" PackagePath="docs/" />
   </ItemGroup>
 
 </Project>

@@ -40,14 +40,15 @@
   <!--
     Package metadata shared by every shipped package. PackageId, Version, Description and
     PackageTags stay per-project: they are what makes one package different from the next.
-    The <None Include="docs\..." Pack="true"/> items that back PackageReadmeFile and PackageIcon
-    also stay per-project - moving them here would declare them ahead of the SDK's default item
-    globs and trip NETSDK1022 duplicate-item errors.
+    The <None Include="docs\README.md" Pack="true"/> item that backs PackageReadmeFile also stays
+    per-project - moving it here would declare it ahead of the SDK's default item globs and trip
+    NETSDK1022 duplicate-item errors. The icon behind PackageIcon is the repo's docs/icon.png,
+    packed for every packable project by the repo-root Directory.Build.props.
   -->
   <PropertyGroup>
     <Authors>Tunahan Ali Ozturk</Authors>
     <PackageReadmeFile>docs/README.md</PackageReadmeFile>
-    <PackageIcon>docs/logo.png</PackageIcon>
+    <PackageIcon>icon.png</PackageIcon>
     <PackageProjectUrl>https://github.com/tunahanaliozturk/OrionGuard</PackageProjectUrl>
     <RepositoryUrl>https://github.com/tunahanaliozturk/OrionGuard</RepositoryUrl>
     <RepositoryType>git</RepositoryType>

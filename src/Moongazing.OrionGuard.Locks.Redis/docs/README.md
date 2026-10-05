@@ -2,6 +2,8 @@
 
 Moves the outbox dispatcher's leader election off your application database and onto Redis, for deployments where every replica polling a lock table is the write you do not want.
 
+![Outbox dispatch: SaveChanges writes OutboxMessage rows, the dispatcher takes the lock, dispatches each row and retries a failing row until MaxRetries, then dead-letters it](https://raw.githubusercontent.com/tunahanaliozturk/OrionGuard/master/docs/diagrams/outbox-dispatch.png)
+
 ```bash
 dotnet add package OrionGuard.Locks.Redis
 ```

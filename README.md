@@ -1,6 +1,8 @@
 <p align="center">
- <img width="150" height="150" alt="OrionGuard logo" src="docs/logo.png" />
-
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/logo.png">
+    <img src="docs/icon.png" alt="OrionGuard logo" width="150">
+  </picture>
 </p>
 
 <h1 align="center">OrionGuard</h1>
@@ -10,8 +12,8 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/tunahanaliozturk/OrionGuard/actions/workflows/ci-cd.yml"><img src="https://github.com/tunahanaliozturk/OrionGuard/actions/workflows/ci-cd.yml/badge.svg" alt="CI/CD" /></a>
   <a href="https://www.nuget.org/packages/OrionGuard"><img src="https://img.shields.io/nuget/v/OrionGuard?style=flat-square&color=blue" alt="NuGet" /></a>
-  <a href="https://www.nuget.org/packages/OrionGuard"><img src="https://img.shields.io/nuget/dt/OrionGuard?style=flat-square&color=green" alt="Downloads" /></a>
   <a href="https://github.com/tunahanaliozturk/OrionGuard/blob/master/src/Moongazing.OrionGuard/docs/LICENSE.txt"><img src="https://img.shields.io/badge/license-MIT-yellow?style=flat-square" alt="License" /></a>
   <img src="https://img.shields.io/badge/.NET-8.0%20%7C%209.0%20%7C%2010.0-purple?style=flat-square" alt="Target" />
 </p>
@@ -23,63 +25,17 @@
 
 ---
 
+![OrionGuard packages: the core OrionGuard package with guards, validators and DDD primitives; integration packages for request pipelines, domain events and outbox, observability and API schemas; tooling for build time and tests](docs/diagrams/overview.png)
+
 ## How it works
 
 OrionGuard's validation pipeline is the same regardless of where it runs (ASP.NET Core filter, MediatR behavior, manual call). Input arrives, a validator runs each rule against each targeted property, the rule outcomes collapse into a `GuardResult`, and the result is either thrown as an exception, returned as a result object, or converted to RFC 9457 ProblemDetails by the AspNetCore package.
 
-```mermaid
-flowchart LR
-    In([Input<br/>DTO / command / value]) --> V[Validator<br/>FluentStyleValidator / AbstractValidator / generated]
-    V --> R[Rule<br/>NotEmpty, Email, MinLength, ...]
-    R --> Out{Outcome}
-    Out -- pass --> Acc[Accumulate]
-    Out -- fail --> Err[Add error<br/>property + code + message]
-    Acc --> More{more rules?}
-    Err --> More
-    More -- yes --> R
-    More -- no --> Result([GuardResult])
-    Result --> Throw[throw on Ensure]
-    Result --> Return[return on Validate]
-    Result --> PD[ProblemDetails<br/>OrionGuard.AspNetCore]
+![OrionGuard validation pipeline: a validator runs its rules, failures become ValidationErrors in a GuardResult, which is thrown as an exception, returned to the caller or turned into ProblemDetails](docs/diagrams/validation-pipeline.png)
 
-    classDef rule fill:#e0e7ff,stroke:#312e81,color:#1e1b4b
-    classDef pass fill:#dcfce7,stroke:#166534,color:#14532d
-    classDef fail fill:#fee2e2,stroke:#991b1b,color:#7f1d1d
-    classDef out fill:#dbeafe,stroke:#1e40af,color:#1e3a8a
-    class V,R rule
-    class Acc pass
-    class Err fail
-    class Throw,Return,PD out
-```
+In an ASP.NET Core minimal-API endpoint the same pipeline is wrapped by `OrionGuardEndpointFilter<T>` (added by `WithValidation<T>()`), which intercepts the request before the handler runs and short-circuits with a ProblemDetails payload when validation fails. The default status code is 422, set by `OrionGuardAspNetCoreOptions.DefaultStatusCode`; a validator that returns `GuardResult.FailureWithStatus(...)` overrides it for that response.
 
-In an ASP.NET Core minimal-API endpoint the same pipeline is wrapped by the OrionGuard endpoint filter, which intercepts the request before the handler runs and short-circuits with a ProblemDetails payload when validation fails. The default status code is 422, set by `OrionGuardAspNetCoreOptions.DefaultStatusCode`; a validator that returns `GuardResult.FailureWithStatus(...)` overrides it for that response.
-
-```mermaid
-sequenceDiagram
-    autonumber
-    actor C as Client
-    participant API as ASP.NET Core<br/>minimal API
-    participant Filt as OrionGuardEndpointFilter
-    participant Val as IValidator&lt;T&gt;
-    participant Hnd as Handler
-    participant PD as ProblemDetails
-
-    C->>API: POST /api/users (JSON body)
-    API->>API: model binding -> CreateUserRequest
-    API->>Filt: invoke filter chain
-    Filt->>Val: Validate(request)
-    Val-->>Filt: GuardResult
-    alt valid
-        Filt->>Hnd: continue
-        Hnd-->>API: response
-        API-->>C: 2xx OK
-    else invalid
-        Filt->>PD: build ValidationProblem (errors dictionary)
-        PD-->>Filt: status = options.DefaultStatusCode (defaults to 422)
-        Filt-->>API: short-circuit (Results.Problem)
-        API-->>C: 422 (default) application/problem+json
-    end
-```
+![Minimal API request through OrionGuardEndpointFilter: the filter runs IValidator<T>.ValidateAsync; a valid request reaches the handler, an invalid one is answered with ValidationProblemDetails and the handler is not called](docs/diagrams/endpoint-filter.png)
 
 ---
 
@@ -185,8 +141,8 @@ Ensure.That(password).NotNull().MinLength(8);
 
 // Transform and default
 var cleaned = Ensure.That(rawEmail)
-    .Transform(e => e.Trim().ToLowerInvariant())
     .Default("unknown@example.com")
+    .Transform(e => e.Trim().ToLowerInvariant())
     .Email()
     .Value;
 
@@ -227,18 +183,18 @@ var fullPath = fileName.AgainstPathEscape(uploadRoot, nameof(fileName)); // Reso
 returnUrl.AgainstOpenRedirect(nameof(returnUrl), "example.com");        // Local path or allow-listed host
 ```
 
-### International Guards (NEW in v6.0)
+### International Guards
 
 ```csharp
-"DEUTDEFF".AgainstInvalidSwiftCode(nameof(swift));     // SWIFT/BIC
-"978-3-16-148410-0".AgainstInvalidIsbn(nameof(isbn));  // ISBN-10/13
-"1HGCM82633A004352".AgainstInvalidVin(nameof(vin));    // Vehicle ID
-"4006381333931".AgainstInvalidEan(nameof(ean));         // EAN-13
-"DE123456789".AgainstInvalidVatNumber(nameof(vat));     // EU VAT
-"490154203237518".AgainstInvalidImei(nameof(imei));     // IMEI
+swift.AgainstInvalidSwiftCode(nameof(swift));   // SWIFT/BIC, e.g. "DEUTDEFF"
+isbn.AgainstInvalidIsbn(nameof(isbn));          // ISBN-10/13, e.g. "978-3-16-148410-0"
+vin.AgainstInvalidVin(nameof(vin));             // Vehicle ID, e.g. "1HGCM82633A004352"
+ean.AgainstInvalidEan(nameof(ean));             // EAN-13, e.g. "4006381333931"
+vat.AgainstInvalidVatNumber(nameof(vat));       // EU VAT, e.g. "DE123456789"
+imei.AgainstInvalidImei(nameof(imei));          // IMEI, e.g. "490154203237518"
 ```
 
-### Deep Nested Validation (NEW in v6.0)
+### Deep Nested Validation
 
 ```csharp
 var result = Validate.Nested(order)
@@ -257,7 +213,7 @@ var result = Validate.Nested(order)
 // Errors: "Customer.Address.City", "Items[2].ProductName", etc.
 ```
 
-### Cross-Property Validation (NEW in v6.0)
+### Cross-Property Validation
 
 ```csharp
 var result = Validate.CrossProperties(booking)
@@ -269,7 +225,7 @@ var result = Validate.CrossProperties(booking)
     .ToResult();
 ```
 
-### Polymorphic Validation (NEW in v6.0)
+### Polymorphic Validation
 
 ```csharp
 var validator = Validate.Polymorphic<Payment>()
@@ -285,7 +241,7 @@ var validator = Validate.Polymorphic<Payment>()
 var result = validator.Validate(payment);
 ```
 
-### Dynamic Rule Engine (NEW in v6.0)
+### Dynamic Rule Engine
 
 ```csharp
 // Load rules from JSON (e.g., from database, config file, API)
@@ -307,9 +263,9 @@ var validator = DynamicValidator.FromJson(json);
 var result = validator.Validate(userDto);
 ```
 
-### DDD Primitives (NEW in v6.1)
+### DDD Primitives
 
-> **Deprecated in v6.4.0.** The `[StronglyTypedId]` source generator is superseded by the standalone [OrionKey](https://github.com/tunahanaliozturk/OrionKey) package (`[OrionId]`). It still works through the v6.x line and is removed in v7.0.0. See [the migration guide](docs/migrations/stronglytypedid-to-orionkey.md). The manual `StronglyTypedId<TValue>` record is not affected.
+> **Deprecated in v6.4.0.** The `[StronglyTypedId]` source generator is superseded by the standalone [OrionKey](https://github.com/tunahanaliozturk/OrionKey) package (`[OrionId]`). It still ships in 7.0.0 and will be removed in the next major version. See [the migration guide](docs/migrations/stronglytypedid-to-orionkey.md). The manual `StronglyTypedId<TValue>` record is not affected.
 
 ```csharp
 // Hybrid ValueObject — abstract class or record-based marker
@@ -333,7 +289,7 @@ public sealed class Money : ValueObject
 // Record-based value object — structural equality from the compiler
 public sealed record Address(string Street, string City, string PostalCode) : IValueObject;
 
-// Strongly-typed id via source generator (EF Core + JSON + TypeConverter all auto-generated)
+// Strongly-typed id via the deprecated source generator (OrionGuard.Generators); see the note above
 [StronglyTypedId<Guid>]
 public readonly partial struct OrderId;
 
@@ -358,11 +314,11 @@ services.AddOrionGuardStronglyTypedIds();
 
 > **v6.2 update:** `IStronglyTypedId<TValue>` marker interface unifies source-gen struct ids and manual record ids under one guard. `DomainEventBase` record spares you the `EventId`/`OccurredOnUtc` boilerplate. Generated ids implement `IParsable<TSelf>` / `ISpanParsable<TSelf>` for ASP.NET Core minimal API binding. EF Core converter emission is now conditional on the consumer referencing EF Core. Sub-package NuGet IDs dropped the `Moongazing.` prefix — install as `OrionGuard.AspNetCore`, `OrionGuard.Blazor`, etc. (C# namespaces unchanged).
 >
-> Domain events ship as `IDomainEventDispatcher`, the MediatR bridge and the EF Core `SaveChanges` interceptor. The `BusinessRule` base class, `Guard.Against.BrokenRule` and the ASP.NET Core ProblemDetails integration ship alongside them.
+> Domain events ship as `IDomainEventDispatcher`, the MediatR bridge and the EF Core `SaveChanges` interceptor. The `BusinessRule` base class, `Guard.AgainstBrokenRule` and the ASP.NET Core ProblemDetails integration ship alongside them.
 
 ---
 
-### RuleSets (NEW in v6.0)
+### RuleSets
 
 ```csharp
 public class UserValidator : AbstractValidator<User>
@@ -388,7 +344,7 @@ validator.Validate(user, RuleSet.Default, RuleSet.Create);
 validator.Validate(user, RuleSet.Update);
 ```
 
-### Async Validation (NEW in v6.6)
+### Async Validation
 
 Rules that need I/O, such as a uniqueness check against a database or a remote lookup,
 join the same pipeline as the synchronous rules and are awaited together. The cancellation
@@ -402,7 +358,7 @@ var result = await Validate.For(input)
     .MustAsync(u => u.Email, IsEmailAvailableAsync, "Email is already registered.", "EMAIL_TAKEN")
     .ToResultAsync(cancellationToken);
 
-// Or throw on the first failure, awaiting the I/O rules:
+// Or throw AggregateValidationException with every error, awaiting the I/O rules:
 var validated = await Validate.For(input)
     .MustAsync(u => u.Email, IsEmailAvailableAsync, "Email is already registered.")
     .ThrowIfInvalidAsync(cancellationToken);
@@ -425,8 +381,12 @@ dotnet add package OrionGuard.AspNetCore
 ```csharp
 // Program.cs
 builder.Services.AddOrionGuardAspNetCore();
+builder.Services.AddValidator<CreateUserRequest, CreateUserValidator>(); // no assembly scanning
 
-// Minimal API with automatic validation
+var app = builder.Build();
+app.UseOrionGuardValidation(); // UseExceptionHandler() for OrionGuardExceptionHandler
+
+// Minimal API with automatic validation (passes through when no IValidator<T> is registered)
 app.MapPost("/api/users", (CreateUserRequest req) => { ... })
    .WithValidation<CreateUserRequest>();
 
@@ -473,6 +433,9 @@ dotnet add package OrionGuard.Generators
 ```
 
 ```csharp
+using Moongazing.OrionGuard.Attributes;   // [NotNull], [NotEmpty], [Length], [Email], [Range]
+using Moongazing.OrionGuard.Generators;   // [GenerateValidator]
+
 [GenerateValidator]
 public sealed class CreateUserRequest
 {
@@ -486,7 +449,7 @@ public sealed class CreateUserRequest
     public int Age { get; set; }
 }
 
-// Auto-generated at compile time — no reflection!
+// Generated at compile time as a static class, no reflection
 var result = CreateUserRequestValidator.Validate(request);
 ```
 
@@ -549,6 +512,8 @@ BackgroundJob.Enqueue<IEmailSender>(s => s.Send(new SendEmailArgs("not-an-email"
 
 English, Turkish, German, French, Spanish, Portuguese, Arabic, Japanese, Italian, Chinese, Korean, Russian, Dutch, Polish
 
+`ValidationMessages` resolves business-rule messages and your own lookups in these languages. The built-in guard and validator messages are English.
+
 ```csharp
 ValidationMessages.SetCulture("zh");
 var msg = ValidationMessages.Get("NotNull", "Email");
@@ -559,11 +524,11 @@ var msg = ValidationMessages.Get("NotNull", "Email");
 
 ## Performance
 
-- **GeneratedRegex** — All 24 regex patterns are source-generated. Zero runtime compilation.
+- **GeneratedRegex** — Every built-in pattern is source-generated. A pattern you supply is compiled once and cached by `RegexCache`; every match has a one-second timeout.
 - **FastGuard** — Span-based zero-allocation validation with `[MethodImpl(AggressiveInlining)]`
-- **FrozenSet** — O(1) lookups for security patterns (SQL, XSS, path traversal)
+- **SearchValues** — SIMD multi-pattern matching for the security denylists on .NET 9+, a `FrozenSet` scan on .NET 8
 - **ThrowHelper** — `[DoesNotReturn]` + `[StackTraceHidden]` for minimal JIT footprint
-- **Validation Caching** — Cache results with TTL for identical inputs
+- **Validation Caching** — `validator.WithCaching(...)` caches results with a TTL, keyed by record equality or an explicit key
 - **NativeAOT** — Source generator enables reflection-free validation
 - **AOT story for domain events:** `ServiceProviderDomainEventDispatcher` and `OutboxDispatcherHostedService` use runtime reflection; they are marked with `[RequiresUnreferencedCode]` and `[RequiresDynamicCode]`. Two AOT-friendly paths exist: (1) use the **MediatR bridge** (`MediatRDomainEventDispatcher`) which has no reflection, or (2) root your event/handler types via `[DynamicDependency]` and use System.Text.Json source generation for outbox payloads. The core guard / validation surface remains fully AOT-safe.
 
@@ -623,16 +588,15 @@ catch (GuardException ex)
 }
 ```
 
-`IExceptionFactory` is never called by the guards. It, `AddOrionGuardExceptionFactory<T>()`, `ExceptionFactoryProvider` and `DefaultExceptionFactory` are obsolete and will be removed in v7.
+`IExceptionFactory` is never called by the guards. It, `AddOrionGuardExceptionFactory<T>()`, `ExceptionFactoryProvider` and `DefaultExceptionFactory` are obsolete since 7.0.0 and will be removed in v8.
 
 ---
 
 ## Roadmap
 
-OrionGuard publishes a public, twelve-month forward roadmap covering the next minor releases
-through **v7.0.0 (Q2 2027)**. See [docs/ROADMAP.md](docs/ROADMAP.md) for the next-12-months
-view (v6.5.0 family integration, v6.6.0 asynchronous validation, v6.7.0 production excellence,
-v7.0.0 API freeze) plus the deep tier backlog of every item under consideration.
+OrionGuard 7.0.0 shipped on 2026-09-20; [CHANGELOG.md](CHANGELOG.md) lists what changed and how to
+upgrade. [docs/ROADMAP.md](docs/ROADMAP.md) holds the public roadmap and the backlog of every item
+under consideration.
 
 If something on the roadmap matters to you, open an issue with the `roadmap` label. Real
 workload demand is what moves items up the list.
@@ -647,6 +611,7 @@ OrionGuard is the flagship of a set of focused, standalone .NET libraries that s
 - [OrionKey](https://github.com/tunahanaliozturk/OrionKey) - source-generated strongly-typed IDs.
 - [OrionLock](https://github.com/tunahanaliozturk/OrionLock) - distributed locks with fencing tokens.
 - [OrionPatch](https://github.com/tunahanaliozturk/OrionPatch) - transactional outbox for EF Core.
+- [OrionInbox](https://github.com/tunahanaliozturk/OrionInbox) - transactional inbox for exactly-once message effects.
 - [OrionGrant](https://github.com/tunahanaliozturk/OrionGrant) - permission / policy authorization.
 - [OrionLedger](https://github.com/tunahanaliozturk/OrionLedger) - API-key issuance, verification, rotation.
 - [OrionBeacon](https://github.com/tunahanaliozturk/OrionBeacon) - leader election.
@@ -658,6 +623,13 @@ OrionGuard is the flagship of a set of focused, standalone .NET libraries that s
 - [OrionShade](https://github.com/tunahanaliozturk/OrionShade) - sensitive-data redaction.
 - [OrionClock](https://github.com/tunahanaliozturk/OrionClock) - testable time, TTLs, deadlines.
 - [OrionResult](https://github.com/tunahanaliozturk/OrionResult) - Result/Option types.
+- [OrionEnvelope](https://github.com/tunahanaliozturk/OrionEnvelope) - one HTTP response contract: `{ data, meta }` envelopes and RFC 9457 problem details.
+- [OrionPage](https://github.com/tunahanaliozturk/OrionPage) - keyset (cursor) pagination.
+- [OrionCache](https://github.com/tunahanaliozturk/OrionCache) - cache-aside with per-key single-flight.
+- [OrionRate](https://github.com/tunahanaliozturk/OrionRate) - token-bucket and sliding-window rate limiting.
+- [OrionResilience](https://github.com/tunahanaliozturk/OrionResilience) - retry and timeout over a testable clock.
+- [OrionFlag](https://github.com/tunahanaliozturk/OrionFlag) - in-process feature flags with percentage rollout.
+- [OrionHealth](https://github.com/tunahanaliozturk/OrionHealth) - liveness and readiness health checks.
 - [OrionLens](https://github.com/tunahanaliozturk/OrionLens) - ambient correlation context.
 - [Orion.Abstractions](https://github.com/tunahanaliozturk/Orion.Abstractions) - the shared contracts spine.
 

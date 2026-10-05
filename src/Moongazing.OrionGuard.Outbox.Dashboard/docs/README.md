@@ -2,12 +2,15 @@
 
 Gives an on-call operator the two things they need when the outbox has failures: a list of what is stuck, and a way to replay or discard a row — as JSON endpoints in your own app, behind your own auth.
 
+![Outbox dispatch: SaveChanges writes OutboxMessage rows, the dispatcher takes the lock, dispatches each row and retries a failing row until MaxRetries, then dead-letters it](https://raw.githubusercontent.com/tunahanaliozturk/OrionGuard/master/docs/diagrams/outbox-dispatch.png)
+
 ```bash
 dotnet add package OrionGuard.Outbox.Dashboard
 ```
 
 ```csharp
 using Microsoft.EntityFrameworkCore;
+using Moongazing.OrionGuard.EntityFrameworkCore.Outbox;
 using Moongazing.OrionGuard.Outbox.Dashboard;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -25,7 +28,11 @@ app.MapOutboxDashboard<AppDbContext>(o => o.AuthorizationPolicyName = "OutboxOps
 
 app.Run();
 
-public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options);
+public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
+{
+    protected override void OnModelCreating(ModelBuilder modelBuilder) =>
+        modelBuilder.ApplyConfiguration(new OutboxMessageEntityTypeConfiguration("OrionGuard_Outbox"));
+}
 ```
 
 `GET /_orion/outbox/failed` now returns a page of stuck rows — id, event type, when it happened, retry count and the truncated error — and `POST /_orion/outbox/{id}/replay` puts one back in the queue. `OrionGuard.EntityFrameworkCore` comes along as a dependency; your `AppDbContext` must be registered and must map `OutboxMessage`. There is no HTML UI, and authentication is yours to set up.

@@ -2,6 +2,8 @@
 
 Turns the outbox dispatcher from a poller into a listener on PostgreSQL: a trigger fires `NOTIFY` when a row is committed, and the dispatcher wakes instead of waiting out its interval.
 
+![Outbox dispatch: SaveChanges writes OutboxMessage rows, the dispatcher takes the lock, dispatches each row and retries a failing row until MaxRetries, then dead-letters it](https://raw.githubusercontent.com/tunahanaliozturk/OrionGuard/master/docs/diagrams/outbox-dispatch.png)
+
 ```bash
 dotnet add package OrionGuard.Outbox.PostgresNotify
 ```

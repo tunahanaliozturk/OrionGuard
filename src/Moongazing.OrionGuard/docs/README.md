@@ -2,6 +2,8 @@
 
 Guard clauses, object validation, and DDD building blocks in one package, for .NET services that want bad input rejected at the boundary and every problem reported at once.
 
+![OrionGuard validation pipeline: a validator runs its rules, failures become ValidationErrors in a GuardResult, which is thrown, returned or turned into ProblemDetails](https://raw.githubusercontent.com/tunahanaliozturk/OrionGuard/master/docs/diagrams/validation-pipeline.png)
+
 ```bash
 dotnet add package OrionGuard
 ```
@@ -30,7 +32,7 @@ public static class Registration
 }
 ```
 
-You get back a `GuardException` (or one of its subclasses: `NullValueException`, `OutOfRangeException`, `InvalidEmailException`, ...) carrying the parameter name and a message in the calling thread's culture. Nothing is registered, nothing is configured, and no reflection runs on this path.
+`Ensure.That` throws a `GuardException` whose message names the parameter. The static `Guard` methods and the extension guards throw its typed subclasses (`NullValueException`, `OutOfRangeException`, `InvalidEmailException`, ...), which also carry `ParameterName` and `ErrorCode`. Guard messages are in English. Nothing is registered, nothing is configured, and no reflection runs on this path.
 
 When you would rather collect the failures than throw, the same rules return a `GuardResult` that lists every error, carries a severity and an optional HTTP status, and converts to the dictionary shape `ValidationProblem` expects.
 
@@ -129,7 +131,7 @@ Other entry points for the same job:
 
 Any `IValidator<T>` can be wrapped in a result cache with `validator.WithCaching()`. Without a key selector, results are cached only for records with compiler-synthesized equality, because those are the only models whose equality is known to cover every field; anything else, including a type with a hand-written `IEquatable<T>`, runs the inner validator every time. Pass a key when you know what identity means: `validator.WithCaching(order => (order.Id, order.Version))`. A call carrying a non-empty `ValidationContext` is never served from the cache.
 
-Register validators with `services.AddOrionGuard()` plus `services.AddValidator<CreateUser, CreateUserValidator>()`. `ValidatorInvoker.ValidateAsync(serviceProvider, instance)` runs *every* `IValidator<T>` registered for an object's runtime type and combines the results, returning `null` when none is registered; that is the shared path the ASP.NET Core, gRPC, SignalR, Hangfire and MassTransit integrations use.
+Register validators with `services.AddOrionGuard()` plus `services.AddValidator<CreateUser, YourCreateUserValidator>()`, where the validator implements `IValidator<CreateUser>` (an `AbstractValidator<CreateUser>` subclass, for example). `ValidatorInvoker.ValidateAsync(serviceProvider, instance)` runs *every* `IValidator<T>` registered for an object's runtime type and combines the results, returning `null` when none is registered; that is the shared path the ASP.NET Core MVC filter and the gRPC, SignalR, Hangfire and MassTransit integrations use. The ASP.NET Core Minimal API endpoint filter resolves a single `IValidator<T>`.
 
 ## Domain model, rules and events
 
@@ -200,7 +202,7 @@ public static class DomainEventSetup
 }
 ```
 
-`AddOrionGuardDomainEvents()` takes a dispatch mode: `SequentialFailFast` (the default — the first handler that throws stops the rest), `SequentialContinueOnError`, or `Parallel`. `OrionGuard.EntityFrameworkCore` does the pull-and-dispatch step for you on `SaveChanges`, inline or through a transactional outbox.
+`AddOrionGuardDomainEvents(o => o.Mode = DispatchMode.Parallel)` sets the dispatch mode: `SequentialFailFast` (the default — the first handler that throws stops the rest), `SequentialContinueOnError`, or `Parallel`. `OrionGuard.EntityFrameworkCore` does the pull-and-dispatch step for you on `SaveChanges`, inline or through a transactional outbox.
 
 The rest of the domain surface: `Entity<TId>` (identity equality), `ValueObject` and the `IValueObject` marker, `StronglyTypedId<TValue>` with `IStronglyTypedId<TValue>` and the `AgainstDefaultStronglyTypedId` guard, and `BusinessRule` / `AsyncBusinessRule` enforced with `CheckRule` / `CheckRuleAsync` inside an entity or `Guard.AgainstBrokenRule` / `AgainstBrokenRuleAsync` anywhere else.
 
@@ -227,7 +229,7 @@ Matching is bounded at one second either way. In the result-returning APIs a tim
 
 ## Messages and culture
 
-Messages ship in 14 languages: English, Turkish, German, French, Spanish, Portuguese, Arabic, Japanese, Chinese, Korean, Russian, Dutch, Polish, Italian. With no culture set, messages follow the calling thread's `CurrentCulture`. Set one per request with `ValidationMessages.SetCultureForCurrentScope(culture)` (`AsyncLocal`, so it does not leak between requests), process-wide with `SetCulture`, or replace the lookup entirely with `SetMessageResolver`. `AddMessages(cultureName, ...)` adds or overrides keys.
+`ValidationMessages` ships message templates in 14 languages: English, Turkish, German, French, Spanish, Portuguese, Arabic, Japanese, Chinese, Korean, Russian, Dutch, Polish, Italian. Business-rule messages (`BusinessRule.MessageKey`) and your own `ValidationMessages.Get(key, ...)` calls are resolved through it; the built-in guard and validator messages are English and do not go through it. With no culture set, messages follow the calling thread's `CurrentCulture`. Set one per request with `ValidationMessages.SetCultureForCurrentScope(culture)` (`AsyncLocal`, so it does not leak between requests), process-wide with `SetCulture`, or replace the lookup entirely with `SetMessageResolver`. `AddMessages(cultureName, ...)` adds or overrides keys.
 
 ## With the rest of OrionGuard
 

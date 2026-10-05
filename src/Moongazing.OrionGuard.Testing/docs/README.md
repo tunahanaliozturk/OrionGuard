@@ -213,16 +213,16 @@ validator: CreateUserValidator
 model: CreateUserRequest
 
 [Age]
-  -1 -> AGE: Age must be greater than 0.
-  0 -> AGE: Age must be greater than 0.
+  -1 -> (no code): Age must be greater than 0.
+  0 -> (no code): Age must be greater than 0.
   1 -> accepted
 
 [Email]
-  null -> EMAIL: Email is required.
-  "" -> EMAIL: Email is required.
-  "   " -> EMAIL: Email is required.
-  "x" -> EMAIL: Email must be a valid address.
-  string(256) -> EMAIL: Email must be a valid address.
+  null -> accepted
+  "" -> (no code): Email cannot be empty.
+  "   " -> (no code): Email cannot be empty.
+  "x" -> (no code): Email must be a valid email.
+  string(256) -> (no code): Email must be a valid email.
 
 [Notes]
   null -> accepted
@@ -245,8 +245,8 @@ A mismatch writes a `.received.txt` beside the snapshot and names the first thre
 ```text
 CreateUserValidator no longer matches its snapshot '...\CreateUserValidator.verified.txt'.
   line 5:
-    snapshot:   -1 -> AGE: Age must be positive.
-    actual:     -1 -> AGE: Age must be greater than 0.
+    snapshot:   -1 -> (no code): Age must be positive.
+    actual:     -1 -> (no code): Age must be greater than 0.
 ```
 
 `snapshotPath` moves the file; by default it is `{TValidator}.verified.txt` in the directory of the source file that called `MatchAsync`. `ci` decides what a *missing* snapshot means: `false` (the default) writes it and passes, `true` fails, so a build server never silently accepts a snapshot nobody reviewed. No environment variable is read for you — pass the switch:
